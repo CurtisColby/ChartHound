@@ -29,7 +29,7 @@ services:
       # Example Linux:   /mnt/nas1/MUSIC:/music:ro
       # Example Windows: /c/Users/YourName/Music:/music:ro
       # Example Mac:     /Users/YourName/Music:/music:ro
-      - "CHANGE_ME_PATH_TO_YOUR_MUSIC:/music:ro"
+      - "CHANGE_ME_PATH_TO_YOUR_MUSIC:/music"
 
       # Persistent database storage — do not change
       - charthound_data:/data
