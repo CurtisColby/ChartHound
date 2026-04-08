@@ -1,16 +1,21 @@
 version: "3.9"
 
 # ══════════════════════════════════════════════════════════════════
-#  ChartHound — Docker Compose Example
+#  ChartHound — Docker Compose Setup File
 #  Developed by Colby R. Curtis · buymeacoffee.com/colbycurtis
+#  GitHub: https://github.com/CurtisColby/ChartHound
 # ══════════════════════════════════════════════════════════════════
 #
-#  SETUP INSTRUCTIONS:
-#  1. Copy this file and rename it to: docker-compose.yml
-#  2. Fill in all values marked with CHANGE_ME below
-#  3. Run: docker compose up --build -d
+#  HOW TO USE THIS FILE:
+#  1. Rename this file from docker-compose.example.yml
+#     to docker-compose.yml
+#  2. Fill in all values marked CHANGE_ME below
+#  3. Open a terminal and run: docker compose up --build -d
 #  4. Open http://YOUR-SERVER-IP:8585 in your browser
-#  5. The First Run Wizard will guide you through the rest
+#  5. The setup wizard will guide you through the rest
+#
+#  IMPORTANT: Never share your docker-compose.yml after filling
+#  it in — it contains your SECRET_KEY. Keep it private.
 #
 # ══════════════════════════════════════════════════════════════════
 
@@ -19,62 +24,163 @@ services:
     build: .
     container_name: charthound
     restart: unless-stopped
+
     ports:
-      # Left side = port on your server (change if 8585 is taken)
-      # Right side = port inside Docker (do not change)
+      # Format: "HOST_PORT:CONTAINER_PORT"
+      # Left side = the port you open in your browser
+      # Right side = internal Docker port (do not change)
+      # Change 8585 if that port is already in use on your server
       - "8585:8000"
+
+    extra_hosts:
+      # This allows ChartHound to reach services running on your
+      # server (Plex, Emby, Jellyfin etc.) using host.docker.internal
+      # Required on Linux. Windows and Mac support it natively.
+      - "host.docker.internal:host-gateway"
+
     volumes:
-      # CHANGE_ME: Replace with the full path to your music library
-      # This is READ ONLY — ChartHound will NEVER move or rename your files
-      # Example Linux:   /mnt/nas1/MUSIC:/music:ro
-      # Example Windows: /c/Users/YourName/Music:/music:ro
-      # Example Mac:     /Users/YourName/Music:/music:ro
+      # ══════════════════════════════════════════════════════════
+      # YOUR MUSIC LIBRARY
+      # ══════════════════════════════════════════════════════════
+      # Replace the left side with the full path to your music
+      # library on your server. The right side (/music) never changes.
+      #
+      # NOTE: We do NOT use :ro (read only) here because ChartHound
+      # needs write access to tag your music files with metadata.
+      # ChartHound will NEVER move, rename, or delete your files.
+      # It ONLY writes metadata tags and artwork to existing files.
+      #
+      # Examples by operating system:
+      #
+      # Linux server:
+      #   - "/media/colby/NAS1/MUSIC TAGGED:/music"
+      #   - "/mnt/nas1/music:/music"
+      #   - "/home/username/Music:/music"
+      #
+      # Windows with Docker Desktop:
+      #   - "C:/Users/YourName/Music:/music"
+      #   - "D:/Media/Music:/music"
+      #
+      # Mac with Docker Desktop:
+      #   - "/Users/YourName/Music:/music"
+      #   - "/Volumes/NAS/Music:/music"
+      #
+      # Synology NAS:
+      #   - "/volume1/music:/music"
+      #   - "/volume2/Media/Music:/music"
+      #
+      # QNAP NAS:
+      #   - "/share/CACHEDEV1_DATA/music:/music"
+      #   - "/share/Music:/music"
+      #
+      # Unraid:
+      #   - "/mnt/user/music:/music"
+      #   - "/mnt/user/Media/Music:/music"
+      #
+      # TrueNAS:
+      #   - "/mnt/pool/music:/music"
+      #
+      # TIP: If your path has spaces wrap the whole line in quotes
+      # ══════════════════════════════════════════════════════════
       - "CHANGE_ME_PATH_TO_YOUR_MUSIC:/music"
 
-      # Persistent database storage — do not change
+      # Persistent database — stores connections, cached metadata,
+      # and scan history. Do not change this line.
       - charthound_data:/data
 
     environment:
-      # ── REQUIRED ────────────────────────────────────────────────
+      # ══════════════════════════════════════════════════════════
+      # SECRET_KEY (REQUIRED)
+      # ══════════════════════════════════════════════════════════
+      # ChartHound encrypts all your API tokens and passwords
+      # using this key. Generate a unique random key by running
+      # ONE of these commands in a terminal on your server:
       #
-      # SECRET_KEY: Generate a random key by running this command
-      # in a terminal on your server:
+      # Linux / Mac / Unraid / TrueNAS / Proxmox:
+      #   python3 -c "import secrets; print(secrets.token_hex(32))"
       #
-      #   Linux/Mac:  python3 -c "import secrets; print(secrets.token_hex(32))"
-      #   Windows:    python -c "import secrets; print(secrets.token_hex(32))"
-      #   Synology/QNAP/NAS:
-      #               docker run --rm python:3.12-slim python3 -c "import secrets; print(secrets.token_hex(32))"
+      # Windows PowerShell:
+      #   python -c "import secrets; print(secrets.token_hex(32))"
       #
-      # Copy the result and paste it below. Keep this secret!
-      # Never share this file after filling it in.
+      # Windows Command Prompt:
+      #   python -c "import secrets; print(secrets.token_hex(32))"
       #
+      # Synology / QNAP (if Python not available):
+      #   docker run --rm python:3.12-slim python3 -c "import secrets; print(secrets.token_hex(32))"
+      #
+      # Copy the result and paste it below. Example result:
+      #   a3f8c2d1e4b7a9f0c3d2e1b8a7f6c5d4e3b2a1f0c9d8e7b6a5f4c3d2e1b0a9f8
+      #
+      # RULES:
+      # - No quotes around the key
+      # - No spaces around the = sign
+      # - Treat it like a master password — keep it secret
+      # - After changing this value restart the container:
+      #   docker compose down && docker compose up -d
+      # ══════════════════════════════════════════════════════════
       - SECRET_KEY=CHANGE_ME_GENERATE_A_STRONG_RANDOM_KEY
 
-      # ── REGISTRATION LOCK ────────────────────────────────────────
-      # Default: false (Lockdown Mode — registration disabled)
-      # The app allows ONE registration on first run automatically.
-      # After your account is created, registration locks itself.
-      # Only set to "true" temporarily if you need to add a new user.
+      # ══════════════════════════════════════════════════════════
+      # REGISTRATION LOCK
+      # ══════════════════════════════════════════════════════════
+      # ChartHound automatically allows ONE registration on first
+      # run to create your admin account. After that registration
+      # locks itself — you do not need to change this.
+      #
+      # Only set to "true" temporarily to add a new user.
+      # Set back to "false" and restart when done.
+      # ══════════════════════════════════════════════════════════
       - CH_OPEN_REGISTRATION=false
 
-      # ── DATABASE ─────────────────────────────────────────────────
-      # Do not change this
+      # Database path inside container — do not change
       - DATABASE_URL=/data/charthound.db
 
-      # ── PATH TRANSLATION ─────────────────────────────────────────
-      # This tells ChartHound how to translate media server file paths
-      # to Docker paths so it can find and tag your physical files.
+      # ══════════════════════════════════════════════════════════
+      # PATH TRANSLATION
+      # ══════════════════════════════════════════════════════════
+      # ChartHound translates your media server file paths into
+      # Docker /music paths so it can find and tag your files.
       #
-      # MEDIA_SERVER_MUSIC_PREFIX: The path your Plex/Emby/Jellyfin
-      # server uses to find your music. Look at any track's file info
-      # in your media server and copy everything up to the artist folder.
-      # Example: /media/colby/NAS1/MUSIC TAGGED
+      # MEDIA_SERVER_MUSIC_PREFIX:
+      # The path your media server uses for your music library.
+      # Look at any track in Plex/Emby/Jellyfin file info and
+      # copy everything up to (not including) the artist folder.
       #
-      # DOCKER_MUSIC_PREFIX: Leave as /music unless you changed the
-      # volume mapping above.
+      # Example: If Plex shows this file path:
+      #   /media/colby/NAS1/MUSIC TAGGED/ABBA/Gold/Dancing Queen.flac
       #
+      # Then your prefix is:
+      #   /media/colby/NAS1/MUSIC TAGGED
+      #
+      # How the translation works:
+      #   Media server: /media/colby/NAS1/MUSIC TAGGED/ABBA/Dancing Queen.flac
+      #   Docker sees:  /music/ABBA/Dancing Queen.flac
+      #
+      # Examples by OS:
+      #   Linux:    /media/username/NAS/Music
+      #   Windows:  C:/Users/YourName/Music
+      #   Synology: /volume1/music
+      #   Unraid:   /mnt/user/music
+      #
+      # DOCKER_MUSIC_PREFIX:
+      # Leave as /music unless you changed the volume mapping above
+      # ══════════════════════════════════════════════════════════
       - MEDIA_SERVER_MUSIC_PREFIX=CHANGE_ME_YOUR_MEDIA_SERVER_MUSIC_PATH
       - DOCKER_MUSIC_PREFIX=/music
+
+      # ══════════════════════════════════════════════════════════
+      # JELLYFIN USERS — READ THIS IF CONNECTION FAILS
+      # ══════════════════════════════════════════════════════════
+      # If ChartHound cannot connect to Jellyfin add the Docker
+      # subnet to Jellyfin's LAN networks list:
+      #
+      # Jellyfin Dashboard → Networking → LAN Networks
+      # Add this value: 172.28.0.0/16
+      # Save settings and restart your Jellyfin container.
+      #
+      # This tells Jellyfin to treat Docker network requests
+      # as local connections rather than remote ones.
+      # ══════════════════════════════════════════════════════════
 
 volumes:
   charthound_data:
