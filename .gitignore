@@ -1,0 +1,42 @@
+# ChartHound .gitignore
+
+# ══════════════════════════════════════════════════
+# CRITICAL: Never commit your real docker-compose.yml
+# It contains your SECRET_KEY and personal paths.
+# Use docker-compose.example.yml as the template instead.
+# ══════════════════════════════════════════════════
+docker-compose.yml
+
+# Environment files (may contain secrets)
+.env
+*.env
+*.key
+
+# Database (contains encrypted tokens)
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo

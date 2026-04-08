@@ -1,0 +1,1388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ChartHound</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐕</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════════════
+   CHARTHOUND — THE NEW WORLD  |  Milestone 3
+   Developed by Colby R. Curtis · Claude.ai support
+═══════════════════════════════════════════════════ */
+:root {
+  --bg:#0e0e0f; --surface:#17171a; --surface2:#1f1f24; --surface3:#252530;
+  --border:#2a2a32; --border2:#35353f;
+  --gold:#f5a623; --gold-dim:#a06b10; --amber:#ffcc55; --orange:#fb923c;
+  --green:#4ade80; --red:#f87171; --blue:#60a5fa; --purple:#c084fc;
+  --teal:#2dd4bf; --pink:#f472b6; --crimson:#fb7185;
+  --text:#e8e6df; --muted:#6b6a72; --muted2:#3a3a45;
+  --mono:'Space Mono',monospace; --display:'Bebas Neue',sans-serif; --body:'DM Sans',sans-serif;
+  /* Tab accent colors */
+  --c1:var(--purple);  /* Kennel */
+  --c2:var(--teal);    /* Retriever */
+  --c3:var(--gold);    /* Sniffer */
+  --c4:var(--pink);    /* Groomer */
+  --c5:var(--orange);  /* Bloodhound */
+  --c6:var(--crimson); /* Tracker */
+  --c7:var(--blue);    /* Scout */
+  --c8:var(--green);   /* Lookout */
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:var(--body);min-height:100vh;overflow-x:hidden;}
+body::before{content:'';position:fixed;inset:0;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");pointer-events:none;z-index:9999;opacity:0.45;}
+
+/* ── TOOLTIP HELP BUBBLES ── */
+.help-wrap{display:inline-flex;align-items:center;gap:.35rem;position:relative;}
+.help-btn{width:15px;height:15px;border-radius:50%;background:var(--surface3);border:1px solid var(--border2);color:var(--muted);font-size:.55rem;font-family:var(--mono);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s;line-height:1;}
+.help-btn:hover{border-color:var(--gold);color:var(--gold);}
+.tooltip{display:none;position:absolute;left:20px;top:-4px;background:var(--surface3);border:1px solid var(--border2);border-radius:6px;padding:.6rem .8rem;font-family:var(--mono);font-size:.58rem;color:var(--text);line-height:1.7;width:260px;z-index:1000;box-shadow:0 4px 20px rgba(0,0,0,.5);}
+.tooltip.right{left:auto;right:20px;}
+.tooltip.above{top:auto;bottom:20px;}
+.help-btn:focus+.tooltip,.help-wrap:hover .tooltip{display:block;}
+
+/* ── FIELD HINT TEXT ── */
+.field-hint{font-family:var(--mono);font-size:.57rem;color:var(--muted);line-height:1.7;margin-top:-.5rem;margin-bottom:.65rem;}
+.field-hint a{color:var(--gold);text-decoration:none;}
+.field-hint a:hover{text-decoration:underline;}
+
+/* ── LOGIN ── */
+#loginScreen{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:5000;flex-direction:column;gap:.75rem;}
+#loginScreen.hidden{display:none;}
+.login-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:2.5rem 2.5rem 2rem;width:380px;display:flex;flex-direction:column;}
+.login-logo{display:flex;align-items:center;gap:.75rem;margin-bottom:.2rem;}
+.login-logo-icon{width:36px;height:36px;border-radius:50%;background:radial-gradient(circle at 50%,#111 18%,#2a2a2a 19%,#1a1a1a 35%,#2a2a2a 36%,#1a1a1a 52%,#2a2a2a 53%,#1a1a1a 70%,#2a2a2a 71%,#0e0e0f 100%);border:1px solid #333;position:relative;}
+.login-logo-icon::after{content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:8px;height:8px;border-radius:50%;background:var(--gold);}
+.login-logo h1{font-family:var(--display);font-size:2rem;letter-spacing:3px;color:var(--gold);line-height:1;}
+.login-sub{font-family:var(--mono);font-size:.55rem;color:var(--muted);letter-spacing:2px;margin-bottom:.2rem;padding-left:.25rem;}
+.login-credit{font-family:var(--mono);font-size:.5rem;color:var(--muted2);letter-spacing:.5px;margin-bottom:1.75rem;padding-left:.25rem;}
+.login-credit a{color:var(--gold-dim);text-decoration:none;}
+.login-credit a:hover{color:var(--gold);}
+.login-label{font-family:var(--mono);font-size:.62rem;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:.4rem;display:block;}
+.login-input{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--mono);font-size:.8rem;padding:.65rem .85rem;outline:none;transition:border-color .2s;margin-bottom:1rem;}
+.login-input:focus{border-color:var(--gold);}
+.login-btn{width:100%;padding:.75rem;background:var(--gold);color:#000;border:none;border-radius:6px;font-family:var(--display);font-size:1.1rem;letter-spacing:2px;cursor:pointer;transition:all .2s;margin-top:.5rem;}
+.login-btn:hover{background:var(--amber);box-shadow:0 0 20px rgba(245,166,35,.4);}
+.login-err{font-family:var(--mono);font-size:.65rem;color:var(--red);text-align:center;min-height:1rem;margin-top:.75rem;}
+.login-toggle{font-family:var(--mono);font-size:.6rem;color:var(--muted);text-align:center;margin-top:1rem;cursor:pointer;transition:color .15s;}
+.login-toggle:hover{color:var(--gold);}
+.login-toggle.hidden{display:none;}
+.login-donate{font-family:var(--mono);font-size:.55rem;color:var(--muted2);text-align:center;margin-top:.5rem;}
+.login-donate a{color:var(--gold-dim);text-decoration:none;}
+.login-donate a:hover{color:var(--gold);}
+
+/* ── FIRST RUN WIZARD ── */
+#wizardOverlay{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:4000;display:flex;align-items:center;justify-content:center;}
+#wizardOverlay.hidden{display:none;}
+.wizard-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;width:600px;max-height:90vh;overflow-y:auto;display:flex;flex-direction:column;}
+.wizard-header{padding:1.5rem 2rem 1rem;border-bottom:1px solid var(--border);}
+.wizard-header h2{font-family:var(--display);font-size:1.6rem;letter-spacing:2px;color:var(--gold);}
+.wizard-header p{font-family:var(--mono);font-size:.6rem;color:var(--muted);margin-top:.25rem;line-height:1.7;}
+.wizard-steps{display:flex;gap:0;padding:.75rem 2rem;border-bottom:1px solid var(--border);overflow-x:auto;}
+.wizard-step-dot{display:flex;flex-direction:column;align-items:center;gap:.3rem;flex:1;min-width:60px;}
+.wizard-step-num{width:24px;height:24px;border-radius:50%;border:2px solid var(--border2);background:var(--bg);font-family:var(--mono);font-size:.6rem;color:var(--muted);display:flex;align-items:center;justify-content:center;transition:all .3s;}
+.wizard-step-num.active{border-color:var(--gold);background:var(--gold);color:#000;font-weight:bold;}
+.wizard-step-num.done{border-color:var(--green);background:var(--green);color:#000;}
+.wizard-step-label{font-family:var(--mono);font-size:.48rem;color:var(--muted);text-align:center;line-height:1.4;}
+.wizard-body{padding:1.5rem 2rem;flex:1;}
+.wizard-footer{padding:1rem 2rem;border-top:1px solid var(--border);display:flex;gap:.75rem;justify-content:flex-end;}
+.wizard-panel{display:none;}
+.wizard-panel.active{display:block;}
+
+/* OS tabs in wizard */
+.os-tabs{display:flex;gap:.35rem;flex-wrap:wrap;margin-bottom:.75rem;}
+.os-tab{font-family:var(--mono);font-size:.58rem;padding:.3rem .65rem;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--muted);cursor:pointer;transition:all .15s;}
+.os-tab.active{border-color:var(--gold);background:rgba(245,166,35,.1);color:var(--gold);}
+.os-command{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:.75rem 1rem;font-family:var(--mono);font-size:.7rem;color:var(--teal);display:flex;align-items:center;justify-content:space-between;gap:.5rem;margin-bottom:.75rem;}
+.os-command code{flex:1;word-break:break-all;line-height:1.6;}
+.copy-btn{background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--muted);font-family:var(--mono);font-size:.55rem;padding:.25rem .55rem;cursor:pointer;flex-shrink:0;transition:all .15s;white-space:nowrap;}
+.copy-btn:hover{border-color:var(--gold);color:var(--gold);}
+.copy-btn.copied{border-color:var(--green);color:var(--green);}
+
+/* what-do-you-want checklist */
+.goal-list{display:flex;flex-direction:column;gap:.65rem;margin:1rem 0;}
+.goal-item{display:flex;align-items:flex-start;gap:.75rem;padding:.75rem 1rem;background:var(--surface2);border:1px solid var(--border);border-radius:8px;cursor:pointer;transition:border-color .15s;}
+.goal-item:hover{border-color:var(--border2);}
+.goal-item.selected{border-color:var(--gold);background:rgba(245,166,35,.06);}
+.goal-check{width:18px;height:18px;border:2px solid var(--border2);border-radius:4px;flex-shrink:0;margin-top:1px;display:flex;align-items:center;justify-content:center;transition:all .15s;}
+.goal-item.selected .goal-check{background:var(--gold);border-color:var(--gold);}
+.goal-check::after{content:'✓';font-size:.65rem;color:#000;opacity:0;}
+.goal-item.selected .goal-check::after{opacity:1;}
+.goal-text strong{display:block;font-size:.82rem;color:var(--text);margin-bottom:.15rem;}
+.goal-text span{font-family:var(--mono);font-size:.57rem;color:var(--muted);line-height:1.6;}
+
+/* ── HEADER ── */
+header{border-bottom:1px solid var(--border);padding:0 1.5rem;display:flex;align-items:center;gap:1rem;height:56px;position:sticky;top:0;background:rgba(14,14,15,.97);backdrop-filter:blur(14px);z-index:300;}
+.vinyl-icon{width:30px;height:30px;border-radius:50%;background:radial-gradient(circle at 50%,#111 18%,#2a2a2a 19%,#1a1a1a 35%,#2a2a2a 36%,#1a1a1a 52%,#2a2a2a 53%,#1a1a1a 70%,#2a2a2a 71%,#0e0e0f 100%);border:1px solid #333;position:relative;animation:spin 4s linear infinite paused;flex-shrink:0;}
+.vinyl-icon.spinning{animation-play-state:running;}
+.vinyl-icon::after{content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:7px;height:7px;border-radius:50%;background:var(--gold);}
+@keyframes spin{to{transform:rotate(360deg);}}
+.header-titles{display:flex;flex-direction:column;gap:0;}
+header h1{font-family:var(--display);font-size:1.55rem;letter-spacing:2px;color:var(--gold);line-height:1;}
+.header-sub{font-family:var(--mono);font-size:.48rem;color:var(--muted);letter-spacing:1px;}
+.header-credit{font-family:var(--mono);font-size:.45rem;color:var(--muted2);letter-spacing:.3px;}
+.header-credit a{color:var(--gold-dim);text-decoration:none;}
+.header-credit a:hover{color:var(--gold);}
+.header-right{margin-left:auto;display:flex;align-items:center;gap:1rem;}
+.conn-indicators{display:flex;align-items:center;gap:.5rem;}
+.conn-dot-wrap{display:flex;align-items:center;gap:.25rem;font-family:var(--mono);font-size:.5rem;color:var(--muted);}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--muted2);flex-shrink:0;transition:background .4s,box-shadow .4s;}
+.dot.ok{background:var(--green);box-shadow:0 0 8px var(--green);}
+.dot.error{background:var(--red);box-shadow:0 0 8px var(--red);}
+.dot.warn{background:var(--amber);box-shadow:0 0 8px var(--amber);}
+.dot.spin{background:var(--gold);animation:dotPulse .8s ease infinite;}
+@keyframes dotPulse{0%,100%{opacity:1}50%{opacity:.3}}
+.user-badge{font-family:var(--mono);font-size:.6rem;color:var(--muted);border:1px solid var(--border);padding:.2rem .55rem;border-radius:4px;cursor:pointer;transition:all .15s;}
+.user-badge:hover{border-color:var(--red);color:var(--red);}
+
+/* ── APP SHELL ── */
+.app-shell{display:flex;height:calc(100vh - 56px);}
+nav.sidebar{width:220px;flex-shrink:0;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:1rem 0;overflow-y:auto;position:sticky;top:56px;height:calc(100vh - 56px);}
+.nav-label{font-family:var(--mono);font-size:.48rem;color:var(--muted2);letter-spacing:3px;text-transform:uppercase;padding:0 1rem;margin-bottom:.4rem;margin-top:.5rem;}
+.nav-item{display:flex;align-items:flex-start;gap:.6rem;padding:.6rem 1rem;cursor:pointer;transition:all .15s;border-left:2px solid transparent;user-select:none;position:relative;}
+.nav-item:hover{background:var(--surface2);}
+.nav-item.active{border-left-color:var(--tab-color,var(--gold));background:rgba(255,255,255,.03);}
+.nav-icon{font-size:.9rem;width:1.1rem;text-align:center;flex-shrink:0;margin-top:1px;}
+.nav-text{display:flex;flex-direction:column;gap:.1rem;flex:1;}
+.nav-name{font-family:var(--display);font-size:.9rem;letter-spacing:1.5px;color:var(--muted);transition:color .15s;line-height:1.1;}
+.nav-item:hover .nav-name,.nav-item.active .nav-name{color:var(--tab-color,var(--gold));}
+.nav-desc{font-family:var(--mono);font-size:.47rem;color:var(--muted2);line-height:1.4;}
+.nav-conn-dot{width:5px;height:5px;border-radius:50%;background:var(--muted2);margin-top:5px;flex-shrink:0;transition:background .4s;}
+.nav-conn-dot.ok{background:var(--green);box-shadow:0 0 5px var(--green);}
+.nav-spacer{flex:1;}
+.nav-heartbeat{font-family:var(--mono);font-size:.48rem;color:var(--muted2);padding:.3rem 1rem;}
+.nav-version{font-family:var(--mono);font-size:.48rem;color:var(--muted2);padding:.3rem 1rem;letter-spacing:.5px;}
+
+/* ── CONTENT ── */
+.content-area{flex:1;overflow-y:auto;display:flex;flex-direction:column;}
+.tab-panel{display:none;flex:1;}
+.tab-panel.active{display:flex;flex-direction:column;}
+.pane{display:grid;grid-template-columns:330px 1fr;flex:1;min-height:0;}
+.pane-aside{border-right:1px solid var(--border);background:var(--surface);padding:1.25rem;overflow-y:auto;display:flex;flex-direction:column;gap:1rem;}
+.pane-main{padding:1.5rem 2rem;overflow-y:auto;display:flex;flex-direction:column;gap:1.25rem;}
+
+/* ── SECTION LABELS ── */
+.section-label{font-family:var(--mono);font-size:.52rem;letter-spacing:3px;text-transform:uppercase;margin-bottom:.6rem;display:flex;align-items:center;gap:.5rem;}
+.section-label::after{content:'';flex:1;height:1px;background:var(--border);}
+.sl-purple{color:var(--purple);}
+.sl-teal{color:var(--teal);}
+.sl-gold{color:var(--gold);}
+.sl-green{color:var(--green);}
+
+/* ── CARDS ── */
+.card{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:1rem;}
+.card-divider{height:1px;background:var(--border);margin:.65rem -1rem;}
+
+/* ── FORMS ── */
+label{font-size:.7rem;color:var(--muted);display:block;margin-bottom:.25rem;font-weight:500;}
+.label-row{display:flex;align-items:center;gap:.4rem;margin-bottom:.25rem;}
+.label-row label{margin-bottom:0;}
+input[type="text"],input[type="password"],input[type="url"],input[type="number"],select{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:.7rem;padding:.5rem .65rem;outline:none;transition:border-color .2s;margin-bottom:.6rem;}
+input:focus,select:focus{border-color:var(--gold);}
+input[readonly]{color:var(--muted);cursor:not-allowed;}
+
+/* ── BUTTONS ── */
+.btn{width:100%;padding:.55rem 1rem;border-radius:6px;font-family:var(--display);font-size:.9rem;letter-spacing:1.5px;cursor:pointer;border:none;transition:all .2s;}
+.btn:disabled{opacity:.35;cursor:not-allowed;}
+.btn-purple{background:var(--purple);color:#000;}
+.btn-purple:hover:not(:disabled){background:#d8b4fe;box-shadow:0 0 18px rgba(192,132,252,.4);}
+.btn-teal{background:var(--teal);color:#000;}
+.btn-teal:hover:not(:disabled){background:#5eead4;box-shadow:0 0 18px rgba(45,212,191,.4);}
+.btn-gold{background:var(--gold);color:#000;}
+.btn-gold:hover:not(:disabled){background:var(--amber);box-shadow:0 0 18px rgba(245,166,35,.4);}
+.btn-green{background:var(--green);color:#000;}
+.btn-green:hover:not(:disabled){background:#86efac;box-shadow:0 0 18px rgba(74,222,128,.4);}
+.btn-red{background:var(--red);color:#000;}
+.btn-red:hover:not(:disabled){background:#fca5a5;box-shadow:0 0 18px rgba(248,113,113,.4);}
+.btn-outline{background:transparent;border:1px solid var(--border);color:var(--text);font-size:.75rem;font-family:var(--body);letter-spacing:.5px;}
+.btn-outline:hover{border-color:var(--muted2);}
+.btn-sm{padding:.32rem .65rem;font-size:.78rem;width:auto;}
+.btn-xs{padding:.22rem .5rem;font-size:.65rem;width:auto;letter-spacing:.5px;}
+
+/* ── FEATURE UNAVAILABLE BANNER ── */
+.feature-banner{display:flex;align-items:center;gap:.6rem;padding:.55rem 1rem;border-radius:6px;font-family:var(--mono);font-size:.6rem;margin-bottom:.5rem;line-height:1.6;}
+.feature-banner.info{background:rgba(96,165,250,.08);border:1px solid rgba(96,165,250,.25);color:var(--blue);}
+.feature-banner.warn{background:rgba(255,204,85,.08);border:1px solid rgba(255,204,85,.25);color:var(--amber);}
+
+/* ── CONNECTION CARDS ── */
+.conn-card{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:1rem 1.1rem;display:flex;flex-direction:column;transition:border-color .3s;}
+.conn-card.connected{border-color:rgba(74,222,128,.3);}
+.conn-card.failed{border-color:rgba(248,113,113,.3);}
+.conn-card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:.85rem;}
+.conn-card-title{font-family:var(--display);font-size:1rem;letter-spacing:1.5px;display:flex;align-items:center;gap:.5rem;}
+.conn-card-dot{width:8px;height:8px;border-radius:50%;background:var(--muted2);flex-shrink:0;transition:background .4s,box-shadow .4s;}
+.conn-card-dot.ok{background:var(--green);box-shadow:0 0 8px var(--green);}
+.conn-card-dot.error{background:var(--red);box-shadow:0 0 8px var(--red);}
+.conn-card-dot.spin{background:var(--gold);animation:dotPulse .8s ease infinite;}
+.conn-verified{font-family:var(--mono);font-size:.52rem;color:var(--muted);}
+.conn-verified.ok{color:var(--green);}
+.conn-verified.error{color:var(--red);}
+.conn-btn-row{display:flex;gap:.4rem;margin-top:.3rem;}
+.conn-btn-row .btn{flex:1;}
+.conn-feedback{font-family:var(--mono);font-size:.58rem;color:var(--muted);margin-top:.45rem;min-height:.9rem;line-height:1.6;}
+.conn-feedback.ok{color:var(--green);}
+.conn-feedback.error{color:var(--red);}
+
+/* ── VAULT PANEL ── */
+.vault-row{display:flex;align-items:center;justify-content:space-between;padding:.38rem 0;border-bottom:1px solid var(--border);}
+.vault-row:last-child{border-bottom:none;}
+.vault-row-label{font-family:var(--mono);font-size:.58rem;color:var(--muted);display:flex;align-items:center;gap:.45rem;}
+.vault-row-status{font-family:var(--mono);font-size:.55rem;}
+.vault-row-status.ok{color:var(--green);}
+.vault-row-status.warn{color:var(--amber);}
+
+/* ── PATH TRANSLATOR ── */
+.path-preview{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:.6rem .75rem;font-family:var(--mono);font-size:.58rem;color:var(--teal);margin-top:.5rem;line-height:1.9;word-break:break-all;min-height:3.2rem;}
+.path-arrow{color:var(--muted);}
+
+/* ── PLACEHOLDER PANELS ── */
+.placeholder-panel{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.85rem;padding:4rem;text-align:center;}
+.ph-icon{font-size:2.8rem;line-height:1;}
+.ph-title{font-family:var(--display);font-size:1.5rem;letter-spacing:3px;color:var(--text);}
+.ph-tagline{font-family:var(--mono);font-size:.6rem;color:var(--tab-color,var(--gold));letter-spacing:1px;text-transform:uppercase;}
+.ph-sub{font-family:var(--mono);font-size:.6rem;color:var(--muted);max-width:360px;line-height:1.9;margin-top:.25rem;}
+.ph-coming{font-family:var(--display);font-size:.9rem;letter-spacing:2px;color:var(--muted2);margin-top:.5rem;}
+
+/* ── TOAST ── */
+#toastWrap{position:fixed;bottom:1.5rem;right:1.5rem;display:flex;flex-direction:column-reverse;gap:.5rem;z-index:10000;}
+.toast{font-family:var(--mono);font-size:.62rem;padding:.55rem .9rem;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);max-width:340px;opacity:0;animation:toastIn .2s ease forwards,toastOut .3s ease 3.5s forwards;}
+.toast.ok{border-color:var(--green);color:var(--green);}
+.toast.error{border-color:var(--red);color:var(--red);}
+.toast.warn{border-color:var(--amber);color:var(--amber);}
+@keyframes toastIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes toastOut{to{opacity:0}}
+
+::-webkit-scrollbar{width:5px;height:5px;}
+::-webkit-scrollbar-track{background:var(--bg);}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px;}
+::-webkit-scrollbar-thumb:hover{background:var(--muted2);}
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════
+     LOGIN SCREEN
+══════════════════════════════════════ -->
+<div id="loginScreen">
+  <div class="login-card">
+    <div class="login-logo"><div class="login-logo-icon"></div><h1>CHARTHOUND</h1></div>
+    <div class="login-sub">THE NEW WORLD · v1.0</div>
+    <div class="login-credit">
+      Developed by Colby R. Curtis ·
+      <a href="https://buymeacoffee.com/colbycurtis" target="_blank">☕ Buy Me a Coffee</a> ·
+      Claude.ai code support
+    </div>
+    <label class="login-label" for="loginUser">USERNAME</label>
+    <input class="login-input" type="text" id="loginUser" placeholder="your username" autocomplete="username">
+    <label class="login-label" for="loginPass">PASSWORD</label>
+    <input class="login-input" type="password" id="loginPass" placeholder="••••••••" autocomplete="current-password">
+    <button class="login-btn" id="loginBtn" onclick="doLogin()">ENTER THE KENNEL</button>
+    <div class="login-err" id="loginErr"></div>
+    <div class="login-toggle hidden" id="registerToggle" onclick="toggleAuthMode()">↓ CREATE ACCOUNT</div>
+    <div class="login-donate">
+      <a href="https://buymeacoffee.com/colbycurtis" target="_blank">☕ buymeacoffee.com/colbycurtis</a>
+      <!-- CRYPTO: <span style="color:var(--muted2)">· BTC: YOUR_WALLET_HERE</span> -->
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     FIRST RUN WIZARD
+══════════════════════════════════════ -->
+<div id="wizardOverlay" class="hidden">
+  <div class="wizard-card">
+    <div class="wizard-header">
+      <h2>🐕 WELCOME TO CHARTHOUND</h2>
+      <p>Let's get you set up in just a few steps. You can skip anything you don't need and set it up later in The Kennel.</p>
+    </div>
+    <!-- Step dots -->
+    <div class="wizard-steps" id="wizardSteps">
+      <div class="wizard-step-dot"><div class="wizard-step-num active" id="wDot1">1</div><div class="wizard-step-label">What do<br>you want?</div></div>
+      <div class="wizard-step-dot"><div class="wizard-step-num" id="wDot2">2</div><div class="wizard-step-label">Secret<br>Key</div></div>
+      <div class="wizard-step-dot"><div class="wizard-step-num" id="wDot3">3</div><div class="wizard-step-label">Media<br>Server</div></div>
+      <div class="wizard-step-dot"><div class="wizard-step-num" id="wDot4">4</div><div class="wizard-step-label">Music<br>Path</div></div>
+      <div class="wizard-step-dot"><div class="wizard-step-num" id="wDot5">5</div><div class="wizard-step-label">Optional<br>Services</div></div>
+      <div class="wizard-step-dot"><div class="wizard-step-num" id="wDot6">6</div><div class="wizard-step-label">Ready!</div></div>
+    </div>
+
+    <div class="wizard-body">
+
+      <!-- PANEL 1: What do you want to do? -->
+      <div class="wizard-panel active" id="wPanel1">
+        <p style="font-family:var(--mono);font-size:.62rem;color:var(--muted);margin-bottom:.75rem;line-height:1.7">
+          Check everything you plan to use. ChartHound will only show setup steps for what you need. You can always enable more later.
+        </p>
+        <div class="goal-list">
+          <div class="goal-item selected" id="goal-tag" onclick="toggleGoal('tag',this)">
+            <div class="goal-check"></div>
+            <div class="goal-text"><strong>🏷 Tag my music files</strong><span>Clean up Genre, Mood, Year and chart info on your FLAC/MP3 files using The Retriever. No media server required.</span></div>
+          </div>
+          <div class="goal-item" id="goal-media" onclick="toggleGoal('media',this)">
+            <div class="goal-check"></div>
+            <div class="goal-text"><strong>📺 Use a media server (Plex / Emby / Jellyfin)</strong><span>Push playlists, trigger library refreshes after tagging, and browse your library inside ChartHound.</span></div>
+          </div>
+          <div class="goal-item" id="goal-grab" onclick="toggleGoal('grab',this)">
+            <div class="goal-check"></div>
+            <div class="goal-text"><strong>📡 Find and download missing music</strong><span>Use The Sniffer and Bloodhound to find chart hits and artist albums you don't have, then grab them via Prowlarr.</span></div>
+          </div>
+          <div class="goal-item" id="goal-tracker" onclick="toggleGoal('tracker',this)">
+            <div class="goal-check"></div>
+            <div class="goal-text"><strong>🎬 Hunt missing movies & TV (Radarr / Sonarr)</strong><span>Use The Tracker to automatically search for missing content from your Radarr and Sonarr want lists.</span></div>
+          </div>
+          <div class="goal-item" id="goal-youtube" onclick="toggleGoal('youtube',this)">
+            <div class="goal-check"></div>
+            <div class="goal-text"><strong>▶ Create YouTube playlists</strong><span>Use The Scout to build YouTube playlists based on charts, genres, or artists.</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PANEL 2: SECRET KEY -->
+      <div class="wizard-panel" id="wPanel2">
+        <p style="font-family:var(--mono);font-size:.62rem;color:var(--muted);margin-bottom:.85rem;line-height:1.7">
+          ChartHound encrypts all your API tokens and passwords before storing them. To do this it needs a <strong style="color:var(--text)">SECRET_KEY</strong> — a long random password that only you know.<br><br>
+          Open a terminal on your server and run the command for your operating system below. Copy the result and paste it into your <code style="color:var(--teal)">docker-compose.yml</code> file where it says <code style="color:var(--red)">CHANGE_ME_GENERATE_A_STRONG_RANDOM_KEY</code>. Then restart the container.
+        </p>
+        <div class="os-tabs">
+          <div class="os-tab active" onclick="setOS('linux',this)">Linux</div>
+          <div class="os-tab" onclick="setOS('mac',this)">Mac</div>
+          <div class="os-tab" onclick="setOS('winps',this)">Windows (PowerShell)</div>
+          <div class="os-tab" onclick="setOS('wincmd',this)">Windows (CMD)</div>
+          <div class="os-tab" onclick="setOS('synology',this)">Synology</div>
+          <div class="os-tab" onclick="setOS('qnap',this)">QNAP</div>
+          <div class="os-tab" onclick="setOS('unraid',this)">Unraid</div>
+          <div class="os-tab" onclick="setOS('truenas',this)">TrueNAS</div>
+          <div class="os-tab" onclick="setOS('proxmox',this)">Proxmox</div>
+        </div>
+        <div class="os-command">
+          <code id="osCommand">python3 -c "import secrets; print(secrets.token_hex(32))"</code>
+          <button class="copy-btn" id="osCopyBtn" onclick="copyOsCommand()">COPY</button>
+        </div>
+        <div style="background:rgba(248,113,113,.07);border:1px solid rgba(248,113,113,.2);border-radius:6px;padding:.65rem .85rem;font-family:var(--mono);font-size:.58rem;color:var(--red);line-height:1.7;">
+          ⚠ Never share your SECRET_KEY or your docker-compose.yml file. If you believe your key has been compromised, generate a new one and restart the container. Treat it like a master password.
+        </div>
+        <div style="margin-top:.85rem;font-family:var(--mono);font-size:.6rem;color:var(--muted);line-height:1.7;">
+          Once you have updated docker-compose.yml and restarted the container, come back and click Next.
+        </div>
+      </div>
+
+      <!-- PANEL 3: MEDIA SERVER -->
+      <div class="wizard-panel" id="wPanel3">
+        <p style="font-family:var(--mono);font-size:.62rem;color:var(--muted);margin-bottom:.75rem;line-height:1.7">
+          Connect at least one media server. You don't need all three — just the one you use. You can set up the others later in The Kennel.
+        </p>
+        <div style="background:rgba(96,165,250,.07);border:1px solid rgba(96,165,250,.2);border-radius:6px;padding:.65rem .85rem;font-family:var(--mono);font-size:.58rem;color:var(--blue);line-height:1.7;margin-bottom:.85rem;">
+          ℹ You can skip this step entirely if you only want to tag files without a media server. Not all features will be available.
+        </div>
+        <div class="os-tabs" style="margin-bottom:.85rem;">
+          <div class="os-tab active" onclick="setMediaTab('plex',this)">Plex</div>
+          <div class="os-tab" onclick="setMediaTab('emby',this)">Emby</div>
+          <div class="os-tab" onclick="setMediaTab('jellyfin',this)">Jellyfin</div>
+        </div>
+        <!-- Plex -->
+        <div id="wMediaPlex">
+          <div class="label-row"><label>Server URL</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">Usually http://localhost:32400 if Plex is on the same machine as Docker. Replace localhost with your server's IP address if it's on a different machine.</div></div></div>
+          <input type="url" id="wPlexURL" value="http://localhost:32400">
+          <div class="field-hint">Default: http://localhost:32400 — change to your server IP if needed</div>
+          <div class="label-row"><label>X-Plex-Token</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">In Plex, go to Settings → Troubleshooting → click "Show XML" next to any item. Look for X-Plex-Token in the URL bar and copy the value after the = sign.</div></div></div>
+          <input type="password" id="wPlexToken" placeholder="Paste your Plex token here">
+          <button class="btn btn-purple" onclick="wizardSaveConn('plex')" style="margin-top:.25rem">SAVE PLEX CONNECTION</button>
+          <div class="conn-feedback" id="wFeedbackPlex"></div>
+        </div>
+        <!-- Emby -->
+        <div id="wMediaEmby" style="display:none">
+          <div class="label-row"><label>Server URL</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">Usually http://localhost:8096. Replace localhost with your server IP if Emby is on a different machine.</div></div></div>
+          <input type="url" id="wEmbyURL" value="http://localhost:8096">
+          <div class="field-hint">Default: http://localhost:8096</div>
+          <div class="label-row"><label>API Key</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">In Emby, go to Dashboard → API Keys → click the + button to create a new key. Give it a name like "ChartHound".</div></div></div>
+          <input type="password" id="wEmbyToken" placeholder="Paste your Emby API key here">
+          <div class="label-row"><label>User ID</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">In Emby, go to Dashboard → Users → click your username. Look at the browser URL bar — the long string of letters and numbers at the end is your User ID.</div></div></div>
+          <input type="text" id="wEmbyUserID" placeholder="e.g. a1b2c3d4e5f6789012345678">
+          <button class="btn btn-purple" onclick="wizardSaveConn('emby')" style="margin-top:.25rem">SAVE EMBY CONNECTION</button>
+          <div class="conn-feedback" id="wFeedbackEmby"></div>
+        </div>
+        <!-- Jellyfin -->
+        <div id="wMediaJellyfin" style="display:none">
+          <div class="label-row"><label>Server URL</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">Usually http://localhost:8096. Replace localhost with your server IP if Jellyfin is on a different machine.</div></div></div>
+          <input type="url" id="wJFURL" value="http://localhost:8096">
+          <div class="field-hint">Default: http://localhost:8096</div>
+          <div class="label-row"><label>API Key</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">In Jellyfin, go to Dashboard → API Keys → click the + button to create a new key.</div></div></div>
+          <input type="password" id="wJFToken" placeholder="Paste your Jellyfin API key here">
+          <div class="label-row"><label>User ID</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">In Jellyfin, go to Dashboard → Users → click your username. The User ID is shown on that page or in the browser URL bar.</div></div></div>
+          <input type="text" id="wJFUserID" placeholder="e.g. a1b2c3d4e5f6789012345678">
+          <button class="btn btn-purple" onclick="wizardSaveConn('jellyfin')" style="margin-top:.25rem">SAVE JELLYFIN CONNECTION</button>
+          <div class="conn-feedback" id="wFeedbackJellyfin"></div>
+        </div>
+      </div>
+
+      <!-- PANEL 4: MUSIC PATH -->
+      <div class="wizard-panel" id="wPanel4">
+        <p style="font-family:var(--mono);font-size:.62rem;color:var(--muted);margin-bottom:.75rem;line-height:1.7">
+          ChartHound runs inside Docker and needs to know how to find your music files. Your media server uses one path — Docker uses another. This translator bridges the two.
+        </p>
+        <div class="label-row">
+          <label>Media Server Path Prefix</label>
+          <div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">This is the path your media server (Plex/Emby/Jellyfin) uses to find your music. You can find this by looking at any track's file info in your media server and copying everything up to (but not including) the artist folder name.</div></div>
+        </div>
+        <input type="text" id="wPathServer" placeholder="/media/colby/NAS1/MUSIC TAGGED">
+        <div class="field-hint">Example: /media/colby/NAS1/MUSIC TAGGED — everything before the artist folder</div>
+        <div class="label-row">
+          <label>Docker Music Mount</label>
+          <div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">This is the path inside the Docker container where your music is mounted. Unless you changed the docker-compose.yml volume mapping, leave this as /music.</div></div>
+        </div>
+        <input type="text" id="wPathDocker" value="/music">
+        <div class="field-hint">Usually /music — only change if you edited the volume in docker-compose.yml</div>
+        <button class="btn btn-purple" onclick="wizardSavePath()" style="margin-top:.25rem">SAVE PATH TRANSLATION</button>
+        <div class="conn-feedback" id="wFeedbackPath"></div>
+        <div style="margin-top:1rem;">
+          <label style="margin-bottom:.4rem">Test a path (optional)</label>
+          <input type="text" id="wPathTest" placeholder="Paste a full media server file path here to preview" oninput="wizardPreviewPath()">
+          <div class="path-preview" id="wPathPreview">Enter a path above to see the translation.</div>
+        </div>
+      </div>
+
+      <!-- PANEL 5: OPTIONAL SERVICES -->
+      <div class="wizard-panel" id="wPanel5">
+        <p style="font-family:var(--mono);font-size:.62rem;color:var(--muted);margin-bottom:.75rem;line-height:1.7">
+          Set up any additional services you selected. Everything here is optional — click Skip if you want to set these up later in The Kennel.
+        </p>
+        <!-- Last.fm -->
+        <div id="wOptLastfm" style="margin-bottom:1rem;">
+          <div class="section-label sl-gold">LAST.FM — MOOD TAGS</div>
+          <div class="label-row"><label>API Key</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">Last.fm API keys are completely free. Visit last.fm/api/account/create and sign up. No credit card needed. The key will be emailed to you instantly.</div></div></div>
+          <input type="password" id="wLastfmKey" placeholder="Paste your Last.fm API key">
+          <div class="field-hint">Free at <a href="https://www.last.fm/api/account/create" target="_blank">last.fm/api/account/create</a> — no credit card needed</div>
+          <button class="btn btn-gold btn-sm" onclick="wizardSaveConn('lastfm')" style="width:auto;margin-bottom:.5rem">SAVE LAST.FM</button>
+          <div class="conn-feedback" id="wFeedbackLastfm"></div>
+        </div>
+        <!-- Prowlarr -->
+        <div id="wOptProwlarr" style="margin-bottom:1rem;">
+          <div class="section-label sl-gold">PROWLARR — INDEXER MANAGER</div>
+          <div class="label-row"><label>Server URL</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">Usually http://localhost:9696 if Prowlarr is on the same machine. Replace localhost with your server IP if it's on a different machine.</div></div></div>
+          <input type="url" id="wProwlarrURL" value="http://localhost:9696">
+          <div class="label-row"><label>API Key</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">In Prowlarr, go to Settings → General. Your API key is shown at the top of the page.</div></div></div>
+          <input type="password" id="wProwlarrKey" placeholder="Paste your Prowlarr API key">
+          <button class="btn btn-gold btn-sm" onclick="wizardSaveConn('prowlarr')" style="width:auto;margin-bottom:.5rem">SAVE PROWLARR</button>
+          <div class="conn-feedback" id="wFeedbackProwlarr"></div>
+        </div>
+        <!-- Radarr / Sonarr -->
+        <div id="wOptTracker" style="margin-bottom:1rem;">
+          <div class="section-label sl-gold">RADARR & SONARR — THE TRACKER</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;">
+            <div>
+              <div class="label-row"><label>Radarr URL</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">Usually http://localhost:7878. Found in Radarr → Settings → General → API Key.</div></div></div>
+              <input type="url" id="wRadarrURL" value="http://localhost:7878">
+              <input type="password" id="wRadarrKey" placeholder="Radarr API key">
+              <button class="btn btn-gold btn-sm" onclick="wizardSaveConn('radarr')" style="width:100%">SAVE RADARR</button>
+              <div class="conn-feedback" id="wFeedbackRadarr"></div>
+            </div>
+            <div>
+              <div class="label-row"><label>Sonarr URL</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">Usually http://localhost:8989. Found in Sonarr → Settings → General → API Key.</div></div></div>
+              <input type="url" id="wSonarrURL" value="http://localhost:8989">
+              <input type="password" id="wSonarrKey" placeholder="Sonarr API key">
+              <button class="btn btn-gold btn-sm" onclick="wizardSaveConn('sonarr')" style="width:100%">SAVE SONARR</button>
+              <div class="conn-feedback" id="wFeedbackSonarr"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PANEL 6: READY -->
+      <div class="wizard-panel" id="wPanel6">
+        <div style="text-align:center;padding:1.5rem 0;">
+          <div style="font-size:3rem;margin-bottom:1rem;">🐕</div>
+          <div style="font-family:var(--display);font-size:2rem;letter-spacing:3px;color:var(--gold);margin-bottom:.5rem;">YOU'RE READY!</div>
+          <div style="font-family:var(--mono);font-size:.62rem;color:var(--muted);line-height:1.9;max-width:380px;margin:0 auto .75rem;">
+            ChartHound is configured and ready to go. You can update any connection at any time from <strong style="color:var(--text)">The Kennel</strong> tab.
+          </div>
+          <div id="wReadySummary" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:1rem;text-align:left;font-family:var(--mono);font-size:.6rem;color:var(--muted);line-height:2;max-width:380px;margin:0 auto 1.5rem;"></div>
+          <button class="btn btn-gold" onclick="closeWizard()" style="max-width:220px;margin:0 auto;">ENTER CHARTHOUND 🐕</button>
+        </div>
+      </div>
+
+    </div><!-- end wizard-body -->
+
+    <div class="wizard-footer">
+      <button class="btn btn-outline btn-sm" id="wBtnBack" onclick="wizardBack()" style="display:none">← BACK</button>
+      <button class="btn btn-outline btn-sm" id="wBtnSkip" onclick="wizardSkip()">SKIP FOR NOW</button>
+      <button class="btn btn-purple btn-sm" id="wBtnNext" onclick="wizardNext()">NEXT →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     HEADER
+══════════════════════════════════════ -->
+<header id="appHeader" style="display:none">
+  <div class="vinyl-icon" id="vinylIcon"></div>
+  <div class="header-titles">
+    <h1>CHARTHOUND</h1>
+    <div class="header-sub">THE NEW WORLD · METADATA ENGINE</div>
+    <div class="header-credit">Developed by Colby R. Curtis · <a href="https://buymeacoffee.com/colbycurtis" target="_blank">☕ Buy Me a Coffee</a> · Claude.ai code support</div>
+  </div>
+  <div class="header-right">
+    <div class="conn-indicators">
+      <div class="conn-dot-wrap"><div class="dot" id="hDotPlex"></div><span>PLEX</span></div>
+      <div class="conn-dot-wrap"><div class="dot" id="hDotEmby"></div><span>EMBY</span></div>
+      <div class="conn-dot-wrap"><div class="dot" id="hDotJellyfin"></div><span>JF</span></div>
+      <div class="conn-dot-wrap"><div class="dot" id="hDotLastfm"></div><span>LFM</span></div>
+      <div class="conn-dot-wrap"><div class="dot" id="hDotProwlarr"></div><span>PWL</span></div>
+    </div>
+    <div class="user-badge" id="userBadge" onclick="doLogout()"></div>
+  </div>
+</header>
+
+<!-- ══════════════════════════════════════
+     APP SHELL
+══════════════════════════════════════ -->
+<div class="app-shell" id="appShell" style="display:none">
+
+  <!-- SIDEBAR -->
+  <nav class="sidebar">
+    <div class="nav-label">NAVIGATION</div>
+    <div class="nav-item active" id="nav-kennel" style="--tab-color:var(--c1)" onclick="switchTab('kennel')">
+      <span class="nav-icon">🔑</span>
+      <div class="nav-text"><div class="nav-name">THE KENNEL</div><div class="nav-desc">Connections & encrypted API vault</div></div>
+      <div class="nav-conn-dot" id="navDotKennel"></div>
+    </div>
+    <div class="nav-item" id="nav-retriever" style="--tab-color:var(--c2)" onclick="switchTab('retriever')">
+      <span class="nav-icon">🏷</span>
+      <div class="nav-text"><div class="nav-name">THE RETRIEVER</div><div class="nav-desc">Write metadata to physical files</div></div>
+    </div>
+    <div class="nav-item" id="nav-sniffer" style="--tab-color:var(--c3)" onclick="switchTab('sniffer')">
+      <span class="nav-icon">📡</span>
+      <div class="nav-text"><div class="nav-name">THE SNIFFER</div><div class="nav-desc">Find missing chart hits & grab them</div></div>
+    </div>
+    <div class="nav-item" id="nav-groomer" style="--tab-color:var(--c4)" onclick="switchTab('groomer')">
+      <span class="nav-icon">✂️</span>
+      <div class="nav-text"><div class="nav-name">THE GROOMER</div><div class="nav-desc">Build playlists from what you own</div></div>
+    </div>
+    <div class="nav-item" id="nav-bloodhound" style="--tab-color:var(--c5)" onclick="switchTab('bloodhound')">
+      <span class="nav-icon">🔍</span>
+      <div class="nav-text"><div class="nav-name">THE BLOODHOUND</div><div class="nav-desc">Hunt every album by any artist</div></div>
+    </div>
+    <div class="nav-item" id="nav-tracker" style="--tab-color:var(--c6)" onclick="switchTab('tracker')">
+      <span class="nav-icon">🎯</span>
+      <div class="nav-text"><div class="nav-name">THE TRACKER</div><div class="nav-desc">Radarr/Sonarr missing & cutoff hunter</div></div>
+    </div>
+    <div class="nav-item" id="nav-scout" style="--tab-color:var(--c7)" onclick="switchTab('scout')">
+      <span class="nav-icon">▶</span>
+      <div class="nav-text"><div class="nav-name">THE SCOUT</div><div class="nav-desc">YouTube playlist creator</div></div>
+    </div>
+    <div class="nav-item" id="nav-lookout" style="--tab-color:var(--c8)" onclick="switchTab('lookout')">
+      <span class="nav-icon">🎬</span>
+      <div class="nav-text"><div class="nav-name">THE LOOKOUT</div><div class="nav-desc">Local music video manager</div></div>
+    </div>
+    <div class="nav-spacer"></div>
+    <div class="nav-heartbeat" id="navHeartbeat">⟳ —</div>
+    <div class="nav-version">v1.0.0 · MILESTONE 3</div>
+  </nav>
+
+  <div class="content-area">
+
+    <!-- ══════════════════════════════
+         TAB 1: THE KENNEL
+    ══════════════════════════════ -->
+    <div class="tab-panel active" id="panel-kennel">
+      <div class="pane">
+        <!-- ASIDE -->
+        <div class="pane-aside">
+          <!-- Vault Status -->
+          <div>
+            <div class="section-label sl-purple">VAULT STATUS</div>
+            <div class="card" style="padding:.7rem 1rem">
+              <div class="vault-row"><div class="vault-row-label"><div class="dot" id="vDotPlex"></div>Plex</div><div class="vault-row-status warn" id="vStatusPlex">NOT VERIFIED</div></div>
+              <div class="vault-row"><div class="vault-row-label"><div class="dot" id="vDotEmby"></div>Emby</div><div class="vault-row-status warn" id="vStatusEmby">NOT VERIFIED</div></div>
+              <div class="vault-row"><div class="vault-row-label"><div class="dot" id="vDotJellyfin"></div>Jellyfin</div><div class="vault-row-status warn" id="vStatusJellyfin">NOT VERIFIED</div></div>
+              <div class="vault-row"><div class="vault-row-label"><div class="dot" id="vDotLastfm"></div>Last.fm</div><div class="vault-row-status warn" id="vStatusLastfm">NOT VERIFIED</div></div>
+              <div class="vault-row"><div class="vault-row-label"><div class="dot" id="vDotProwlarr"></div>Prowlarr</div><div class="vault-row-status warn" id="vStatusProwlarr">NOT VERIFIED</div></div>
+              <div class="vault-row"><div class="vault-row-label"><div class="dot" id="vDotRadarr"></div>Radarr</div><div class="vault-row-status warn" id="vStatusRadarr">NOT VERIFIED</div></div>
+              <div class="vault-row"><div class="vault-row-label"><div class="dot" id="vDotSonarr"></div>Sonarr</div><div class="vault-row-status warn" id="vStatusSonarr">NOT VERIFIED</div></div>
+              <div class="vault-row"><div class="vault-row-label"><div class="dot" id="vDotQbit"></div>Download Client</div><div class="vault-row-status warn" id="vStatusQbit">NOT VERIFIED</div></div>
+            </div>
+          </div>
+
+          <!-- Path Translator -->
+          <div>
+            <div class="section-label sl-purple">PATH TRANSLATOR</div>
+            <div class="card">
+              <div class="label-row">
+                <label>Media Server Path Prefix</label>
+                <div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">The path your media server uses for your music library. Find it by looking at any track's file info in Plex/Emby/JF and copying everything up to the artist folder.</div></div>
+              </div>
+              <input type="text" id="pathServer" placeholder="/media/colby/NAS1/MUSIC TAGGED">
+              <div class="label-row">
+                <label>Docker Music Mount</label>
+                <div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">The path inside Docker where your music is mounted. Unless you changed the docker-compose.yml volume, leave this as /music.</div></div>
+              </div>
+              <input type="text" id="pathDocker" value="/music">
+              <button class="btn btn-purple" onclick="savePath()" style="margin-bottom:.65rem">SAVE TRANSLATION</button>
+              <div class="card-divider"></div>
+              <label style="margin-top:.6rem">Preview a Path</label>
+              <input type="text" id="pathTestInput" placeholder="Paste any media server file path here…" oninput="previewPath()">
+              <div class="path-preview" id="pathPreview">Enter a path above to preview the translation.</div>
+            </div>
+          </div>
+
+          <!-- Security -->
+          <div>
+            <div class="section-label sl-purple">SECURITY</div>
+            <div class="card">
+              <p style="font-family:var(--mono);font-size:.58rem;color:var(--muted);line-height:1.9">
+                🔐 Fernet (AES-128-CBC) encryption before SQLite write.<br>
+                🔒 /register locked after first user.<br>
+                🚫 Tokens never returned to the browser.<br>
+                ⟳ Heartbeat re-checks connections every 60s.<br>
+                🐕 <a href="https://buymeacoffee.com/colbycurtis" target="_blank" style="color:var(--gold-dim);text-decoration:none;">buymeacoffee.com/colbycurtis</a>
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- MAIN: Connection Cards -->
+        <div class="pane-main">
+          <div class="section-label sl-purple">API CONNECTIONS — THE VAULT</div>
+          <p style="font-family:var(--mono);font-size:.58rem;color:var(--muted);margin-top:-.5rem;line-height:1.7">
+            Save credentials first (encrypted immediately on save), then TEST to verify the live connection. Only connect the services you use.
+          </p>
+
+          <!-- PLEX -->
+          <div class="conn-card" id="connCard-plex">
+            <div class="conn-card-header">
+              <div class="conn-card-title"><div class="conn-card-dot" id="cDot-plex"></div>🟧 PLEX MEDIA SERVER</div>
+              <div class="conn-verified" id="cVerified-plex">NOT VERIFIED</div>
+            </div>
+            <div class="label-row"><label>Server URL</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">Usually http://localhost:32400 if Plex is on the same machine as Docker. Replace localhost with your server's IP (e.g. http://192.168.1.100:32400) if it's on a different machine.</div></div></div>
+            <input type="url" id="cURL-plex" value="http://localhost:32400">
+            <div class="field-hint">Default: http://localhost:32400</div>
+            <div class="label-row"><label>X-Plex-Token</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">In Plex, go to Settings → Troubleshooting → click "Show XML" next to any media item. Look at the browser URL bar and copy the value after X-Plex-Token=</div></div></div>
+            <input type="password" id="cToken-plex" placeholder="Stored encrypted · never logged">
+            <div class="field-hint">Find yours: Plex Settings → Troubleshooting → Show XML → copy from URL bar</div>
+            <div class="conn-btn-row">
+              <button class="btn btn-outline btn-sm" onclick="saveConn('plex')">💾 SAVE</button>
+              <button class="btn btn-purple btn-sm" id="testBtn-plex" onclick="testConn('plex')">⚡ TEST</button>
+              <button class="btn btn-red btn-sm" onclick="disconnectConn('plex')">✕ DISCONNECT</button>
+            </div>
+            <div class="conn-feedback" id="cFeedback-plex"></div>
+          </div>
+
+          <!-- EMBY -->
+          <div class="conn-card" id="connCard-emby">
+            <div class="conn-card-header">
+              <div class="conn-card-title"><div class="conn-card-dot" id="cDot-emby"></div>🟩 EMBY</div>
+              <div class="conn-verified" id="cVerified-emby">NOT VERIFIED</div>
+            </div>
+            <div class="label-row"><label>Server URL</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">Usually http://localhost:8096. Replace localhost with your server IP if Emby is on a different machine.</div></div></div>
+            <input type="url" id="cURL-emby" value="http://localhost:8096">
+            <div class="field-hint">Default: http://localhost:8096</div>
+            <div class="label-row"><label>API Key</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">In Emby, go to Dashboard → API Keys → click the + button to create a new key for ChartHound.</div></div></div>
+            <input type="password" id="cToken-emby" placeholder="Stored encrypted · never logged">
+            <div class="field-hint">Find yours: Emby Dashboard → API Keys → create new</div>
+            <div class="label-row"><label>User ID</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">In Emby, go to Dashboard → Users → click your username. The User ID is the long string of letters and numbers shown in the browser URL bar after /users/</div></div></div>
+            <input type="text" id="cUserID-emby" placeholder="e.g. a1b2c3d4e5f6789012345678">
+            <div class="field-hint">Find yours: Emby Dashboard → Users → click your name → copy ID from URL bar</div>
+            <div class="conn-btn-row">
+              <button class="btn btn-outline btn-sm" onclick="saveConn('emby')">💾 SAVE</button>
+              <button class="btn btn-purple btn-sm" id="testBtn-emby" onclick="testConn('emby')">⚡ TEST</button>
+              <button class="btn btn-red btn-sm" onclick="disconnectConn('emby')">✕ DISCONNECT</button>
+            </div>
+            <div class="conn-feedback" id="cFeedback-emby"></div>
+          </div>
+
+          <!-- JELLYFIN -->
+          <div class="conn-card" id="connCard-jellyfin">
+            <div class="conn-card-header">
+              <div class="conn-card-title"><div class="conn-card-dot" id="cDot-jellyfin"></div>🟦 JELLYFIN</div>
+              <div class="conn-verified" id="cVerified-jellyfin">NOT VERIFIED</div>
+            </div>
+            <div class="label-row"><label>Server URL</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">Usually http://localhost:8096. Replace localhost with your server IP if Jellyfin is on a different machine.</div></div></div>
+            <input type="url" id="cURL-jellyfin" value="http://localhost:8096">
+            <div class="field-hint">Default: http://localhost:8096</div>
+            <div class="label-row"><label>API Key</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">In Jellyfin, go to Dashboard → API Keys → click the + button to create a new key for ChartHound.</div></div></div>
+            <input type="password" id="cToken-jellyfin" placeholder="Stored encrypted · never logged">
+            <div class="field-hint">Find yours: Jellyfin Dashboard → API Keys → create new</div>
+            <div class="label-row"><label>User ID</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">In Jellyfin, go to Dashboard → Users → click your username. The User ID is shown on the page or in the browser URL bar.</div></div></div>
+            <input type="text" id="cUserID-jellyfin" placeholder="e.g. a1b2c3d4e5f6789012345678">
+            <div class="field-hint">Find yours: Jellyfin Dashboard → Users → click your name</div>
+            <div class="conn-btn-row">
+              <button class="btn btn-outline btn-sm" onclick="saveConn('jellyfin')">💾 SAVE</button>
+              <button class="btn btn-purple btn-sm" id="testBtn-jellyfin" onclick="testConn('jellyfin')">⚡ TEST</button>
+              <button class="btn btn-red btn-sm" onclick="disconnectConn('jellyfin')">✕ DISCONNECT</button>
+            </div>
+            <div class="conn-feedback" id="cFeedback-jellyfin"></div>
+          </div>
+
+          <!-- LAST.FM -->
+          <div class="conn-card" id="connCard-lastfm">
+            <div class="conn-card-header">
+              <div class="conn-card-title"><div class="conn-card-dot" id="cDot-lastfm"></div>🔴 LAST.FM</div>
+              <div class="conn-verified" id="cVerified-lastfm">NOT VERIFIED</div>
+            </div>
+            <div class="label-row"><label>API Key</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">Last.fm API keys are completely free. No credit card needed. Visit last.fm/api/account/create, sign up with a free account, and your API key will be shown immediately.</div></div></div>
+            <input type="password" id="cToken-lastfm" placeholder="Stored encrypted · never logged">
+            <div class="field-hint">Free at <a href="https://www.last.fm/api/account/create" target="_blank">last.fm/api/account/create</a> — no credit card · no URL needed</div>
+            <p style="font-family:var(--mono);font-size:.57rem;color:var(--muted);line-height:1.7;margin-bottom:.6rem">
+              Tertiary waterfall source — used for crowdsourced mood tags and chart keyword detection only.
+            </p>
+            <div class="conn-btn-row">
+              <button class="btn btn-outline btn-sm" onclick="saveConn('lastfm')">💾 SAVE</button>
+              <button class="btn btn-purple btn-sm" id="testBtn-lastfm" onclick="testConn('lastfm')">⚡ TEST</button>
+              <button class="btn btn-red btn-sm" onclick="disconnectConn('lastfm')">✕ DISCONNECT</button>
+            </div>
+            <div class="conn-feedback" id="cFeedback-lastfm"></div>
+          </div>
+
+          <!-- PROWLARR -->
+          <div class="conn-card" id="connCard-prowlarr">
+            <div class="conn-card-header">
+              <div class="conn-card-title"><div class="conn-card-dot" id="cDot-prowlarr"></div>🟣 PROWLARR</div>
+              <div class="conn-verified" id="cVerified-prowlarr">NOT VERIFIED</div>
+            </div>
+            <div class="label-row"><label>Server URL</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">Usually http://localhost:9696. Replace localhost with your server IP if Prowlarr is on a different machine.</div></div></div>
+            <input type="url" id="cURL-prowlarr" value="http://localhost:9696">
+            <div class="field-hint">Default: http://localhost:9696</div>
+            <div class="label-row"><label>API Key</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">In Prowlarr, go to Settings → General. Your API key is displayed at the top of that page.</div></div></div>
+            <input type="password" id="cToken-prowlarr" placeholder="Stored encrypted · never logged">
+            <div class="field-hint">Find yours: Prowlarr → Settings → General → API Key</div>
+            <div class="conn-btn-row">
+              <button class="btn btn-outline btn-sm" onclick="saveConn('prowlarr')">💾 SAVE</button>
+              <button class="btn btn-purple btn-sm" id="testBtn-prowlarr" onclick="testConn('prowlarr')">⚡ TEST</button>
+              <button class="btn btn-red btn-sm" onclick="disconnectConn('prowlarr')">✕ DISCONNECT</button>
+            </div>
+            <div class="conn-feedback" id="cFeedback-prowlarr"></div>
+          </div>
+
+          <!-- RADARR -->
+          <div class="conn-card" id="connCard-radarr">
+            <div class="conn-card-header">
+              <div class="conn-card-title"><div class="conn-card-dot" id="cDot-radarr"></div>🎬 RADARR</div>
+              <div class="conn-verified" id="cVerified-radarr">NOT VERIFIED</div>
+            </div>
+            <div class="label-row"><label>Server URL</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">Usually http://localhost:7878. Replace localhost with your server IP if Radarr is on a different machine.</div></div></div>
+            <input type="url" id="cURL-radarr" value="http://localhost:7878">
+            <div class="field-hint">Default: http://localhost:7878 — used by The Tracker</div>
+            <div class="label-row"><label>API Key</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">In Radarr, go to Settings → General. Your API key is shown at the top of the page.</div></div></div>
+            <input type="password" id="cToken-radarr" placeholder="Stored encrypted · never logged">
+            <div class="field-hint">Find yours: Radarr → Settings → General → API Key</div>
+            <div class="conn-btn-row">
+              <button class="btn btn-outline btn-sm" onclick="saveConn('radarr')">💾 SAVE</button>
+              <button class="btn btn-purple btn-sm" id="testBtn-radarr" onclick="testConn('radarr')">⚡ TEST</button>
+              <button class="btn btn-red btn-sm" onclick="disconnectConn('radarr')">✕ DISCONNECT</button>
+            </div>
+            <div class="conn-feedback" id="cFeedback-radarr"></div>
+          </div>
+
+          <!-- SONARR -->
+          <div class="conn-card" id="connCard-sonarr">
+            <div class="conn-card-header">
+              <div class="conn-card-title"><div class="conn-card-dot" id="cDot-sonarr"></div>📺 SONARR</div>
+              <div class="conn-verified" id="cVerified-sonarr">NOT VERIFIED</div>
+            </div>
+            <div class="label-row"><label>Server URL</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">Usually http://localhost:8989. Replace localhost with your server IP if Sonarr is on a different machine.</div></div></div>
+            <input type="url" id="cURL-sonarr" value="http://localhost:8989">
+            <div class="field-hint">Default: http://localhost:8989 — used by The Tracker</div>
+            <div class="label-row"><label>API Key</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">In Sonarr, go to Settings → General. Your API key is shown at the top of the page.</div></div></div>
+            <input type="password" id="cToken-sonarr" placeholder="Stored encrypted · never logged">
+            <div class="field-hint">Find yours: Sonarr → Settings → General → API Key</div>
+            <div class="conn-btn-row">
+              <button class="btn btn-outline btn-sm" onclick="saveConn('sonarr')">💾 SAVE</button>
+              <button class="btn btn-purple btn-sm" id="testBtn-sonarr" onclick="testConn('sonarr')">⚡ TEST</button>
+              <button class="btn btn-red btn-sm" onclick="disconnectConn('sonarr')">✕ DISCONNECT</button>
+            </div>
+            <div class="conn-feedback" id="cFeedback-sonarr"></div>
+          </div>
+
+          <!-- DOWNLOAD CLIENT -->
+          <div class="conn-card" id="connCard-qbittorrent">
+            <div class="conn-card-header">
+              <div class="conn-card-title"><div class="conn-card-dot" id="cDot-qbittorrent"></div>⬇ DOWNLOAD CLIENT</div>
+              <div class="conn-verified" id="cVerified-qbittorrent">NOT VERIFIED</div>
+            </div>
+            <p style="font-family:var(--mono);font-size:.57rem;color:var(--muted);line-height:1.7;margin-bottom:.65rem">
+              Used by The Sniffer, Bloodhound and Tracker to push grabs using the <strong style="color:var(--text)">ChartHound-Music</strong> / <strong style="color:var(--text)">ChartHound-Movies</strong> / <strong style="color:var(--text)">ChartHound-TV</strong> categories.
+            </p>
+            <div class="label-row"><label>Client Type</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">Select your torrent client. qBittorrent is the most common. All three work the same way — ChartHound sends grabs using ChartHound category tags so you can set custom download paths per category.</div></div></div>
+            <select id="cClientType" style="margin-bottom:.6rem">
+              <option value="qbittorrent">qBittorrent</option>
+              <option value="deluge">Deluge</option>
+              <option value="transmission">Transmission</option>
+            </select>
+            <div class="label-row"><label>Server URL</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">The web UI address of your torrent client. qBittorrent default is http://localhost:8080, Deluge is http://localhost:8112, Transmission is http://localhost:9091.</div></div></div>
+            <input type="url" id="cURL-qbittorrent" value="http://localhost:8080">
+            <div class="field-hint">qBittorrent: :8080 · Deluge: :8112 · Transmission: :9091</div>
+            <div class="label-row"><label>Username</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">Your torrent client web UI username. qBittorrent default username is "admin".</div></div></div>
+            <input type="text" id="cUser-qbittorrent" value="admin">
+            <div class="label-row"><label>Password</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">Your torrent client web UI password. This is stored encrypted in ChartHound's database.</div></div></div>
+            <input type="password" id="cToken-qbittorrent" placeholder="Stored encrypted · never logged">
+            <div class="conn-btn-row">
+              <button class="btn btn-outline btn-sm" onclick="saveConn('qbittorrent')">💾 SAVE</button>
+              <button class="btn btn-purple btn-sm" id="testBtn-qbittorrent" onclick="testConn('qbittorrent')">⚡ TEST</button>
+              <button class="btn btn-red btn-sm" onclick="disconnectConn('qbittorrent')">✕ DISCONNECT</button>
+            </div>
+            <div class="conn-feedback" id="cFeedback-qbittorrent"></div>
+          </div>
+
+        </div><!-- end pane-main -->
+      </div>
+    </div><!-- end kennel panel -->
+
+    <!-- ══ TAB 2: THE RETRIEVER ══ -->
+    <div class="tab-panel" id="panel-retriever">
+      <div class="placeholder-panel" style="--tab-color:var(--c2)">
+        <div class="ph-icon">🏷</div>
+        <div class="ph-title">THE RETRIEVER</div>
+        <div class="ph-tagline">METADATA FILE WRITER</div>
+        <div class="ph-sub">MusicBrainz → iTunes → Last.fm waterfall engine.<br>Writes Genre · Mood · Year · Peak Chart Comments<br>directly to physical FLAC/MP3 files via Mutagen.<br>Preview mode · Auto-Pilot · Pause/Stop · Subfolder scanning.</div>
+        <div class="ph-coming">MILESTONE 4</div>
+      </div>
+    </div>
+
+    <!-- ══ TAB 3: THE SNIFFER ══ -->
+    <div class="tab-panel" id="panel-sniffer">
+      <div class="placeholder-panel" style="--tab-color:var(--c3)">
+        <div class="ph-icon">📡</div>
+        <div class="ph-title">THE SNIFFER</div>
+        <div class="ph-tagline">CHART-HIT PLAYLIST CREATOR</div>
+        <div class="ph-sub">Scan 15+ charts — Hot 100 · Adult Pop · UK · CCM · Gospel · Rock · R&B.<br>Compare against your library · Find what's missing.<br>Search Prowlarr · Push grabs with ChartHound-Music category.<br>Push playlists to Plex · Emby · Jellyfin.</div>
+        <div class="ph-coming">MILESTONE 5</div>
+      </div>
+    </div>
+
+    <!-- ══ TAB 4: THE GROOMER ══ -->
+    <div class="tab-panel" id="panel-groomer">
+      <div class="placeholder-panel" style="--tab-color:var(--c4)">
+        <div class="ph-icon">✂️</div>
+        <div class="ph-title">THE GROOMER</div>
+        <div class="ph-tagline">PLAYLIST BUILDER</div>
+        <div class="ph-sub">Build playlists from tracks you already own.<br>Filter by chart · genre · era · peak position · mood.<br>Push directly to Plex · Emby · Jellyfin.</div>
+        <div class="ph-coming">MILESTONE 6</div>
+      </div>
+    </div>
+
+    <!-- ══ TAB 5: THE BLOODHOUND ══ -->
+    <div class="tab-panel" id="panel-bloodhound">
+      <div class="placeholder-panel" style="--tab-color:var(--c5)">
+        <div class="ph-icon">🔍</div>
+        <div class="ph-title">THE BLOODHOUND</div>
+        <div class="ph-tagline">ARTIST & ALBUM HUNTER</div>
+        <div class="ph-sub">Search any artist — get every album from MusicBrainz.<br>Select what you want · Search via Prowlarr.<br>Push grabs with ChartHound-Music category.<br>Background monitoring for new releases.</div>
+        <div class="ph-coming">MILESTONE 7</div>
+      </div>
+    </div>
+
+    <!-- ══ TAB 6: THE TRACKER ══ -->
+    <div class="tab-panel" id="panel-tracker">
+      <div class="placeholder-panel" style="--tab-color:var(--c6)">
+        <div class="ph-icon">🎯</div>
+        <div class="ph-title">THE TRACKER</div>
+        <div class="ph-tagline">RADARR / SONARR HUNTER</div>
+        <div class="ph-sub">Automatically hunts missing movies & TV episodes.<br>Reads your Radarr & Sonarr want lists · Searches via Prowlarr.<br>Grabs with ChartHound-Movies & ChartHound-TV categories.<br>Scheduled background hunting — runs while browser is closed.</div>
+        <div class="ph-coming">MILESTONE 8</div>
+      </div>
+    </div>
+
+    <!-- ══ TAB 7: THE SCOUT ══ -->
+    <div class="tab-panel" id="panel-scout">
+      <div class="placeholder-panel" style="--tab-color:var(--c7)">
+        <div class="ph-icon">▶</div>
+        <div class="ph-title">THE SCOUT</div>
+        <div class="ph-tagline">YOUTUBE PLAYLIST CREATOR</div>
+        <div class="ph-sub">Search YouTube by chart · genre · artist · quality.<br>Build YouTube playlists and push to your account.<br>Encrypted YouTube credentials stored in The Kennel.</div>
+        <div class="ph-coming">MILESTONE 9</div>
+      </div>
+    </div>
+
+    <!-- ══ TAB 8: THE LOOKOUT ══ -->
+    <div class="tab-panel" id="panel-lookout">
+      <div class="placeholder-panel" style="--tab-color:var(--c8)">
+        <div class="ph-icon">🎬</div>
+        <div class="ph-title">THE LOOKOUT</div>
+        <div class="ph-tagline">LOCAL MUSIC VIDEO MANAGER</div>
+        <div class="ph-sub">Scan your server's music video collection.<br>Filter by quality · artist · genre · chart.<br>Build MV playlists and push to Plex · Emby · Jellyfin.</div>
+        <div class="ph-coming">MILESTONE 10</div>
+      </div>
+    </div>
+
+  </div><!-- end content-area -->
+</div><!-- end app-shell -->
+
+<div id="toastWrap"></div>
+
+<script>
+'use strict';
+// ═══════════════════════════════════════════════════
+//  CHARTHOUND — THE NEW WORLD  |  Frontend JS  M3
+//  Developed by Colby R. Curtis · Claude.ai support
+// ═══════════════════════════════════════════════════
+
+const API = '';
+let authToken = localStorage.getItem('ch_token') || '';
+let currentUser = localStorage.getItem('ch_user') || '';
+let authMode = 'login';
+let heartbeatTimer = null;
+let wizardStep = 1;
+let wizardGoals = new Set(['tag']);
+const WIZARD_MAX_STEPS = 6;
+
+const SERVICES = ['plex','emby','jellyfin','lastfm','prowlarr','radarr','sonarr','qbittorrent'];
+const connState = Object.fromEntries(SERVICES.map(s => [s, false]));
+
+const OS_COMMANDS = {
+  linux:    'python3 -c "import secrets; print(secrets.token_hex(32))"',
+  mac:      'python3 -c "import secrets; print(secrets.token_hex(32))"',
+  winps:    'python -c "import secrets; print(secrets.token_hex(32))"',
+  wincmd:   'python -c "import secrets; print(secrets.token_hex(32))"',
+  synology: 'docker run --rm python:3.12-slim python3 -c "import secrets; print(secrets.token_hex(32))"',
+  qnap:     'docker run --rm python:3.12-slim python3 -c "import secrets; print(secrets.token_hex(32))"',
+  unraid:   'python3 -c "import secrets; print(secrets.token_hex(32))"',
+  truenas:  'python3 -c "import secrets; print(secrets.token_hex(32))"',
+  proxmox:  'python3 -c "import secrets; print(secrets.token_hex(32))"',
+};
+
+// ── BOOT ──────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', async () => {
+  await checkLockdown();
+  if (authToken) await tryAutoLogin();
+});
+
+async function checkLockdown() {
+  try {
+    const r = await fetch(`${API}/api/auth/status`);
+    const d = await r.json();
+    if (!d.lockdown_active)
+      document.getElementById('registerToggle').classList.remove('hidden');
+  } catch {}
+}
+
+async function tryAutoLogin() {
+  try {
+    const r = await fetch(`${API}/api/health`, { headers: authHdrs() });
+    if (r.ok) { showApp(); return; }
+  } catch {}
+  clearAuth();
+}
+
+// ── AUTH ──────────────────────────────────────────
+function authHdrs() {
+  return { 'Authorization': `Bearer ${authToken}`, 'Content-Type': 'application/json' };
+}
+function clearAuth() {
+  authToken = ''; currentUser = '';
+  localStorage.removeItem('ch_token'); localStorage.removeItem('ch_user');
+}
+function toggleAuthMode() {
+  authMode = authMode === 'login' ? 'register' : 'login';
+  document.getElementById('loginBtn').textContent = authMode === 'register' ? 'CREATE ACCOUNT' : 'ENTER THE KENNEL';
+  document.getElementById('registerToggle').textContent = authMode === 'register' ? '← BACK TO LOGIN' : '↓ CREATE ACCOUNT';
+  document.getElementById('loginErr').textContent = '';
+}
+async function doLogin() {
+  const username = document.getElementById('loginUser').value.trim();
+  const password = document.getElementById('loginPass').value;
+  const errEl = document.getElementById('loginErr');
+  errEl.textContent = '';
+  if (!username || !password) { errEl.textContent = 'Enter username and password.'; return; }
+  const ep = authMode === 'register' ? '/api/auth/register' : '/api/auth/login';
+  try {
+    const r = await fetch(`${API}${ep}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+    const d = await r.json();
+    if (!r.ok) { errEl.textContent = d.detail || 'Authentication failed.'; return; }
+    authToken = d.access_token; currentUser = d.username;
+    localStorage.setItem('ch_token', authToken); localStorage.setItem('ch_user', currentUser);
+    showApp();
+  } catch { errEl.textContent = 'Cannot reach server. Is Docker running?'; }
+}
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !document.getElementById('loginScreen').classList.contains('hidden')) doLogin();
+});
+function doLogout() {
+  clearAuth(); if (heartbeatTimer) clearInterval(heartbeatTimer);
+  document.getElementById('appHeader').style.display = 'none';
+  document.getElementById('appShell').style.display = 'none';
+  document.getElementById('loginScreen').classList.remove('hidden');
+  document.getElementById('loginPass').value = '';
+}
+async function showApp() {
+  document.getElementById('loginScreen').classList.add('hidden');
+  document.getElementById('appHeader').style.display = 'flex';
+  document.getElementById('appShell').style.display = 'flex';
+  document.getElementById('userBadge').textContent = `${currentUser.toUpperCase()} · LOGOUT`;
+  await loadAllStatuses();
+  await loadPathSettings();
+  startHeartbeat();
+  // Show wizard if no connections exist
+  const anyConn = SERVICES.some(s => connState[s]);
+  if (!anyConn) showWizard();
+  else toast(`Welcome back, ${currentUser}.`, 'ok');
+}
+
+// ── TABS ──────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(el => el.classList.remove('active'));
+  document.getElementById(`nav-${name}`).classList.add('active');
+  document.getElementById(`panel-${name}`).classList.add('active');
+  document.getElementById('vinylIcon').classList.toggle('spinning', ['retriever','sniffer','bloodhound','tracker'].includes(name));
+}
+
+// ── WIZARD ────────────────────────────────────────
+function showWizard() {
+  document.getElementById('wizardOverlay').classList.remove('hidden');
+  wizardStep = 1;
+  updateWizardUI();
+}
+function closeWizard() {
+  document.getElementById('wizardOverlay').classList.add('hidden');
+  toast(`Welcome to ChartHound, ${currentUser}! 🐕`, 'ok');
+}
+function toggleGoal(key, el) {
+  el.classList.toggle('selected');
+  if (el.classList.contains('selected')) wizardGoals.add(key);
+  else wizardGoals.delete(key);
+}
+function wizardNext() {
+  if (wizardStep < WIZARD_MAX_STEPS) {
+    wizardStep++;
+    // Skip media server step if not needed
+    if (wizardStep === 3 && !wizardGoals.has('media')) wizardStep++;
+    // Skip optional step if no optional goals
+    if (wizardStep === 5 && !wizardGoals.has('grab') && !wizardGoals.has('tracker') && !wizardGoals.has('youtube')) wizardStep++;
+    updateWizardUI();
+  }
+}
+function wizardBack() {
+  if (wizardStep > 1) {
+    wizardStep--;
+    if (wizardStep === 3 && !wizardGoals.has('media')) wizardStep--;
+    if (wizardStep === 5 && !wizardGoals.has('grab') && !wizardGoals.has('tracker')) wizardStep--;
+    updateWizardUI();
+  }
+}
+function wizardSkip() {
+  if (wizardStep === WIZARD_MAX_STEPS) { closeWizard(); return; }
+  wizardNext();
+}
+function updateWizardUI() {
+  // Panels
+  document.querySelectorAll('.wizard-panel').forEach(p => p.classList.remove('active'));
+  const panel = document.getElementById(`wPanel${wizardStep}`);
+  if (panel) panel.classList.add('active');
+  // Step dots
+  for (let i = 1; i <= WIZARD_MAX_STEPS; i++) {
+    const dot = document.getElementById(`wDot${i}`);
+    if (!dot) continue;
+    dot.className = 'wizard-step-num' + (i < wizardStep ? ' done' : i === wizardStep ? ' active' : '');
+    dot.textContent = i < wizardStep ? '✓' : i;
+  }
+  // Buttons
+  document.getElementById('wBtnBack').style.display = wizardStep > 1 ? 'block' : 'none';
+  document.getElementById('wBtnNext').textContent = wizardStep === WIZARD_MAX_STEPS ? 'FINISH' : 'NEXT →';
+  document.getElementById('wBtnSkip').textContent = wizardStep === WIZARD_MAX_STEPS ? 'CLOSE' : 'SKIP FOR NOW';
+  if (wizardStep === WIZARD_MAX_STEPS) buildWizardSummary();
+}
+function buildWizardSummary() {
+  const lines = [];
+  SERVICES.forEach(s => {
+    if (connState[s]) lines.push(`✓ ${s.charAt(0).toUpperCase()+s.slice(1)} connected`);
+  });
+  if (!lines.length) lines.push('No connections saved yet — set them up in The Kennel anytime.');
+  document.getElementById('wReadySummary').innerHTML = lines.join('<br>');
+}
+function setOS(key, el) {
+  document.querySelectorAll('.os-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('osCommand').textContent = OS_COMMANDS[key] || OS_COMMANDS.linux;
+}
+function copyOsCommand() {
+  const cmd = document.getElementById('osCommand').textContent;
+  navigator.clipboard.writeText(cmd).then(() => {
+    const btn = document.getElementById('osCopyBtn');
+    btn.textContent = 'COPIED!'; btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'COPY'; btn.classList.remove('copied'); }, 2000);
+  });
+}
+function setMediaTab(tab, el) {
+  document.querySelectorAll('#wPanel3 .os-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  ['plex','emby','jellyfin'].forEach(s => {
+    document.getElementById(`wMedia${s.charAt(0).toUpperCase()+s.slice(1)}`).style.display = s === tab ? 'block' : 'none';
+  });
+}
+async function wizardSaveConn(service) {
+  const urlEl = document.getElementById(`w${service.charAt(0).toUpperCase()+service.slice(1)}URL`) ||
+                document.getElementById(`w${service.charAt(0).toUpperCase()+service.slice(1)}URL`);
+  const tokenEl = document.getElementById(`w${service.charAt(0).toUpperCase()+service.slice(1)}Token`) ||
+                  document.getElementById(`w${service.charAt(0).toUpperCase()+service.slice(1)}Key`);
+  const token = tokenEl ? tokenEl.value.trim() : '';
+  if (!token) { setWizFeedback(service, 'Enter your API key / token first.', 'error'); return; }
+  const base_url = urlEl ? urlEl.value.trim() : null;
+  setWizFeedback(service, 'Saving…', '');
+  try {
+    const r = await fetch(`${API}/api/kennel/save`, {
+      method: 'POST', headers: authHdrs(),
+      body: JSON.stringify({ service, base_url, token })
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || 'Save failed');
+    setWizFeedback(service, '✓ Saved and encrypted.', 'ok');
+    connState[service] = false; // not verified yet
+    if (tokenEl) { tokenEl.value = ''; tokenEl.placeholder = '●●●●●●●● (stored encrypted)'; }
+  } catch (e) { setWizFeedback(service, `✗ ${e.message}`, 'error'); }
+}
+function setWizFeedback(service, msg, type) {
+  const map = { plex:'wFeedbackPlex', emby:'wFeedbackEmby', jellyfin:'wFeedbackJellyfin',
+    lastfm:'wFeedbackLastfm', prowlarr:'wFeedbackProwlarr',
+    radarr:'wFeedbackRadarr', sonarr:'wFeedbackSonarr' };
+  const el = document.getElementById(map[service]);
+  if (el) { el.textContent = msg; el.className = `conn-feedback${type ? ' '+type : ''}`; }
+}
+async function wizardSavePath() {
+  const sp = document.getElementById('wPathServer').value.trim();
+  const dp = document.getElementById('wPathDocker').value.trim() || '/music';
+  if (!sp) { document.getElementById('wFeedbackPath').textContent = 'Enter your media server path prefix first.'; return; }
+  try {
+    const r = await fetch(`${API}/api/kennel/save-path`, {
+      method: 'POST', headers: authHdrs(),
+      body: JSON.stringify({ server_prefix: sp, docker_prefix: dp })
+    });
+    const fb = document.getElementById('wFeedbackPath');
+    if (r.ok) { fb.textContent = '✓ Path saved.'; fb.className = 'conn-feedback ok'; }
+    else { fb.textContent = '✗ Failed to save.'; fb.className = 'conn-feedback error'; }
+  } catch { document.getElementById('wFeedbackPath').textContent = '✗ Server error.'; }
+}
+function wizardPreviewPath() {
+  const input = document.getElementById('wPathTest').value;
+  const sp = document.getElementById('wPathServer').value.trim();
+  const dp = document.getElementById('wPathDocker').value.trim() || '/music';
+  const el = document.getElementById('wPathPreview');
+  if (!input) { el.textContent = 'Enter a path above to see the translation.'; return; }
+  const translated = (sp && input.startsWith(sp)) ? dp + input.slice(sp.length) : input;
+  el.innerHTML = `<span class="path-arrow">SERVER ▶</span> ${esc(input)}<br><span class="path-arrow">DOCKER ▶</span> <span style="color:var(--teal)">${esc(translated)}</span>`;
+}
+
+// ── CONNECTIONS ───────────────────────────────────
+async function saveConn(service) {
+  const urlEl   = document.getElementById(`cURL-${service}`);
+  const tokenEl = document.getElementById(`cToken-${service}`);
+  const userEl  = document.getElementById(`cUserID-${service}`);
+  const clientUserEl = document.getElementById(`cUser-${service}`);
+  const token = tokenEl ? tokenEl.value.trim() : '';
+  if (!token) { setFeedback(service, 'Enter a token / API key first.', 'error'); return; }
+  const extra = {};
+  if (userEl && userEl.value.trim()) extra.user_id = userEl.value.trim();
+  if (clientUserEl && clientUserEl.value.trim()) extra.username = clientUserEl.value.trim();
+  setFeedback(service, 'Saving…', '');
+  try {
+    const r = await fetch(`${API}/api/kennel/save`, {
+      method: 'POST', headers: authHdrs(),
+      body: JSON.stringify({
+        service,
+        base_url: urlEl ? urlEl.value.trim() : null,
+        token,
+        username: clientUserEl ? clientUserEl.value.trim() : null,
+        extra_json: Object.keys(extra).length ? extra : null
+      })
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || 'Save failed');
+    setFeedback(service, '✓ Saved and encrypted. Click TEST to verify.', 'ok');
+    if (tokenEl) { tokenEl.value = ''; tokenEl.placeholder = '●●●●●●●● (stored encrypted)'; }
+    toast(`${service} credentials saved.`, 'ok');
+  } catch (e) { setFeedback(service, `✗ ${e.message}`, 'error'); }
+}
+
+async function testConn(service) {
+  const btn = document.getElementById(`testBtn-${service}`);
+  btn.disabled = true;
+  setCardDot(service, 'spin');
+  setFeedback(service, 'Testing live connection…', '');
+  try {
+    const r = await fetch(`${API}/api/kennel/test/${service}`, {
+      method: 'POST', headers: authHdrs()
+    });
+    const d = await r.json();
+    if (r.ok && d.ok) {
+      setCardDot(service, 'ok');
+      setFeedback(service, `✓ ${d.detail}`, 'ok');
+      setVerified(service, d.verified_at, true);
+      connState[service] = true;
+      document.getElementById(`connCard-${service}`).className = 'conn-card connected';
+      toast(`${service} connected!`, 'ok');
+    } else throw new Error(d.error || d.detail || 'Connection failed');
+  } catch (e) {
+    setCardDot(service, 'error');
+    setFeedback(service, `✗ ${e.message}`, 'error');
+    setVerified(service, null, false);
+    connState[service] = false;
+    document.getElementById(`connCard-${service}`).className = 'conn-card failed';
+  }
+  btn.disabled = false;
+  refreshAllDots();
+}
+
+async function disconnectConn(service) {
+  if (!confirm(`Remove saved ${service} credentials from ChartHound? You will need to re-enter them to reconnect.`)) return;
+  try {
+    const r = await fetch(`${API}/api/kennel/disconnect/${service}`, {
+      method: 'DELETE', headers: authHdrs()
+    });
+    if (r.ok) {
+      connState[service] = false;
+      setCardDot(service, '');
+      setVerified(service, null, false);
+      setFeedback(service, '✓ Disconnected. Credentials removed.', 'ok');
+      document.getElementById(`connCard-${service}`).className = 'conn-card';
+      const tokenEl = document.getElementById(`cToken-${service}`);
+      if (tokenEl) { tokenEl.value = ''; tokenEl.placeholder = 'Stored encrypted · never logged'; }
+      const urlEl = document.getElementById(`cURL-${service}`);
+      // Restore default URL
+      const defaults = { plex:'http://localhost:32400', emby:'http://localhost:8096',
+        jellyfin:'http://localhost:8096', prowlarr:'http://localhost:9696',
+        radarr:'http://localhost:7878', sonarr:'http://localhost:8989',
+        qbittorrent:'http://localhost:8080' };
+      if (urlEl && defaults[service]) urlEl.value = defaults[service];
+      refreshAllDots();
+      toast(`${service} disconnected.`, 'warn');
+    }
+  } catch (e) { setFeedback(service, `✗ ${e.message}`, 'error'); }
+}
+
+async function loadAllStatuses() {
+  try {
+    const r = await fetch(`${API}/api/kennel/status`, { headers: authHdrs() });
+    if (!r.ok) return;
+    const statuses = await r.json();
+    for (const s of statuses) {
+      connState[s.service] = s.connected;
+      setCardDot(s.service, s.connected ? 'ok' : (s.has_token ? 'warn' : ''));
+      setVerified(s.service, s.verified_at, s.connected);
+      if (s.base_url) {
+        const el = document.getElementById(`cURL-${s.service}`);
+        if (el) el.value = s.base_url;
+      }
+      if (s.has_token) {
+        const el = document.getElementById(`cToken-${s.service}`);
+        if (el) el.placeholder = '●●●●●●●● (stored encrypted)';
+      }
+      if (s.connected) document.getElementById(`connCard-${s.service}`) && (document.getElementById(`connCard-${s.service}`).className = 'conn-card connected');
+    }
+    refreshAllDots();
+  } catch {}
+}
+
+// ── PATH TRANSLATOR ───────────────────────────────
+async function loadPathSettings() {
+  try {
+    const r = await fetch(`${API}/api/kennel/path-settings`, { headers: authHdrs() });
+    if (!r.ok) return;
+    const d = await r.json();
+    // Use value property directly to fix the pre-fill bug
+    const serverEl = document.getElementById('pathServer');
+    const dockerEl = document.getElementById('pathDocker');
+    if (serverEl && d.server_prefix) {
+      serverEl.value = d.server_prefix;
+      serverEl.dispatchEvent(new Event('input'));
+    }
+    if (dockerEl && d.docker_prefix) {
+      dockerEl.value = d.docker_prefix;
+      dockerEl.dispatchEvent(new Event('input'));
+    }
+  } catch {}
+}
+
+async function savePath() {
+  const sp = document.getElementById('pathServer').value.trim();
+  const dp = document.getElementById('pathDocker').value.trim() || '/music';
+  if (!sp) { toast('Enter a media server path prefix first.', 'warn'); return; }
+  try {
+    const r = await fetch(`${API}/api/kennel/save-path`, {
+      method: 'POST', headers: authHdrs(),
+      body: JSON.stringify({ server_prefix: sp, docker_prefix: dp })
+    });
+    if (r.ok) toast('Path translation saved.', 'ok');
+    else toast('Failed to save path.', 'error');
+  } catch { toast('Server error.', 'error'); }
+}
+
+function previewPath() {
+  const input = document.getElementById('pathTestInput').value;
+  const sp = document.getElementById('pathServer').value.trim();
+  const dp = document.getElementById('pathDocker').value.trim() || '/music';
+  const el = document.getElementById('pathPreview');
+  if (!input) { el.textContent = 'Enter a path above to preview the translation.'; return; }
+  const translated = (sp && input.startsWith(sp)) ? dp + input.slice(sp.length) : input;
+  el.innerHTML = `<span class="path-arrow">SERVER ▶</span> ${esc(input)}<br><span class="path-arrow">DOCKER ▶</span> <span style="color:var(--teal)">${esc(translated)}</span>`;
+}
+
+// ── HEARTBEAT ─────────────────────────────────────
+function startHeartbeat() {
+  if (heartbeatTimer) clearInterval(heartbeatTimer);
+  heartbeatTimer = setInterval(async () => {
+    await loadAllStatuses();
+    const t = new Date().toLocaleTimeString();
+    const el = document.getElementById('navHeartbeat');
+    if (el) el.textContent = `⟳ ${t}`;
+  }, 60000);
+}
+
+// ── DOT HELPERS ───────────────────────────────────
+function setCardDot(service, cls) {
+  const el = document.getElementById(`cDot-${service}`);
+  if (el) el.className = `conn-card-dot${cls ? ' '+cls : ''}`;
+}
+function setVerified(service, ts, ok) {
+  const el = document.getElementById(`cVerified-${service}`);
+  if (!el) return;
+  if (ok && ts) {
+    const d = new Date(ts);
+    el.className = 'conn-verified ok';
+    el.textContent = `✓ ${d.toLocaleDateString()} ${d.toLocaleTimeString()}`;
+  } else {
+    el.className = 'conn-verified error';
+    el.textContent = 'NOT VERIFIED';
+  }
+}
+function setFeedback(service, msg, type) {
+  const el = document.getElementById(`cFeedback-${service}`);
+  if (el) { el.textContent = msg; el.className = `conn-feedback${type ? ' '+type : ''}`; }
+}
+function refreshAllDots() {
+  const hmap = { plex:'Plex', emby:'Emby', jellyfin:'Jellyfin', lastfm:'Lastfm', prowlarr:'Prowlarr' };
+  for (const [svc, key] of Object.entries(hmap)) {
+    const el = document.getElementById(`hDot${key}`);
+    if (el) el.className = `dot${connState[svc] ? ' ok' : ''}`;
+  }
+  const vmap = {
+    plex:'Plex', emby:'Emby', jellyfin:'Jellyfin', lastfm:'Lastfm',
+    prowlarr:'Prowlarr', radarr:'Radarr', sonarr:'Sonarr', qbittorrent:'Qbit'
+  };
+  for (const [svc, key] of Object.entries(vmap)) {
+    const dot = document.getElementById(`vDot${key}`);
+    const status = document.getElementById(`vStatus${key}`);
+    if (!dot || !status) continue;
+    dot.className = connState[svc] ? 'dot ok' : 'dot';
+    status.className = connState[svc] ? 'vault-row-status ok' : 'vault-row-status warn';
+    status.textContent = connState[svc] ? 'CONNECTED' : 'NOT VERIFIED';
+  }
+  const anyMedia = connState.plex || connState.emby || connState.jellyfin;
+  const navDot = document.getElementById('navDotKennel');
+  if (navDot) navDot.className = `nav-conn-dot${anyMedia ? ' ok' : ''}`;
+}
+
+// ── TOAST ─────────────────────────────────────────
+function toast(msg, type = '') {
+  const el = document.createElement('div');
+  el.className = `toast ${type}`; el.textContent = msg;
+  document.getElementById('toastWrap').appendChild(el);
+  setTimeout(() => el.remove(), 4200);
+}
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+</script>
+</body>
+</html>

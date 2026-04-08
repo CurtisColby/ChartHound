@@ -1,0 +1,81 @@
+version: "3.9"
+
+# ══════════════════════════════════════════════════════════════════
+#  ChartHound — Docker Compose Example
+#  Developed by Colby R. Curtis · buymeacoffee.com/colbycurtis
+# ══════════════════════════════════════════════════════════════════
+#
+#  SETUP INSTRUCTIONS:
+#  1. Copy this file and rename it to: docker-compose.yml
+#  2. Fill in all values marked with CHANGE_ME below
+#  3. Run: docker compose up --build -d
+#  4. Open http://YOUR-SERVER-IP:8585 in your browser
+#  5. The First Run Wizard will guide you through the rest
+#
+# ══════════════════════════════════════════════════════════════════
+
+services:
+  charthound:
+    build: .
+    container_name: charthound
+    restart: unless-stopped
+    ports:
+      # Left side = port on your server (change if 8585 is taken)
+      # Right side = port inside Docker (do not change)
+      - "8585:8000"
+    volumes:
+      # CHANGE_ME: Replace with the full path to your music library
+      # This is READ ONLY — ChartHound will NEVER move or rename your files
+      # Example Linux:   /mnt/nas1/MUSIC:/music:ro
+      # Example Windows: /c/Users/YourName/Music:/music:ro
+      # Example Mac:     /Users/YourName/Music:/music:ro
+      - "CHANGE_ME_PATH_TO_YOUR_MUSIC:/music:ro"
+
+      # Persistent database storage — do not change
+      - charthound_data:/data
+
+    environment:
+      # ── REQUIRED ────────────────────────────────────────────────
+      #
+      # SECRET_KEY: Generate a random key by running this command
+      # in a terminal on your server:
+      #
+      #   Linux/Mac:  python3 -c "import secrets; print(secrets.token_hex(32))"
+      #   Windows:    python -c "import secrets; print(secrets.token_hex(32))"
+      #   Synology/QNAP/NAS:
+      #               docker run --rm python:3.12-slim python3 -c "import secrets; print(secrets.token_hex(32))"
+      #
+      # Copy the result and paste it below. Keep this secret!
+      # Never share this file after filling it in.
+      #
+      - SECRET_KEY=CHANGE_ME_GENERATE_A_STRONG_RANDOM_KEY
+
+      # ── REGISTRATION LOCK ────────────────────────────────────────
+      # Default: false (Lockdown Mode — registration disabled)
+      # The app allows ONE registration on first run automatically.
+      # After your account is created, registration locks itself.
+      # Only set to "true" temporarily if you need to add a new user.
+      - CH_OPEN_REGISTRATION=false
+
+      # ── DATABASE ─────────────────────────────────────────────────
+      # Do not change this
+      - DATABASE_URL=/data/charthound.db
+
+      # ── PATH TRANSLATION ─────────────────────────────────────────
+      # This tells ChartHound how to translate media server file paths
+      # to Docker paths so it can find and tag your physical files.
+      #
+      # MEDIA_SERVER_MUSIC_PREFIX: The path your Plex/Emby/Jellyfin
+      # server uses to find your music. Look at any track's file info
+      # in your media server and copy everything up to the artist folder.
+      # Example: /media/colby/NAS1/MUSIC TAGGED
+      #
+      # DOCKER_MUSIC_PREFIX: Leave as /music unless you changed the
+      # volume mapping above.
+      #
+      - MEDIA_SERVER_MUSIC_PREFIX=CHANGE_ME_YOUR_MEDIA_SERVER_MUSIC_PATH
+      - DOCKER_MUSIC_PREFIX=/music
+
+volumes:
+  charthound_data:
+    driver: local
