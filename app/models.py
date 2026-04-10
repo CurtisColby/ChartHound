@@ -112,3 +112,4 @@ class HealthResponse(BaseModel):
     version: str = "1.0.0"
     db_path: str
     lockdown_active: bool
+    secret_key_placeholder: bool = False

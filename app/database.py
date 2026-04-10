@@ -215,6 +215,7 @@ async def init_db():
     """
     Run on application startup.
     Creates all tables if they do not exist. Safe to call repeatedly.
+    Runs column migrations for M4 additions.
     """
     log.info(f"Initializing database at {settings.database_url}")
     async with aiosqlite.connect(settings.database_url) as db:
@@ -222,6 +223,21 @@ async def init_db():
         await db.execute("PRAGMA foreign_keys=ON")
         await db.executescript(SCHEMA)
         await db.commit()
+
+        # M4 migrations — ADD COLUMN is safe to run repeatedly (silently fails if exists)
+        migrations = [
+            "ALTER TABLE tracks ADD COLUMN tag_artist TEXT",
+            "ALTER TABLE tracks ADD COLUMN tag_album  TEXT",
+            "ALTER TABLE tracks ADD COLUMN confidence TEXT DEFAULT 'low'",
+            "ALTER TABLE scan_jobs ADD COLUMN paused_at TEXT",
+        ]
+        for sql in migrations:
+            try:
+                await db.execute(sql)
+                await db.commit()
+            except Exception:
+                pass  # Column already exists — safe to ignore
+
     log.info("Database ready.")
 
 

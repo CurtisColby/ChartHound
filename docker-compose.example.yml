@@ -84,6 +84,15 @@ services:
       # ══════════════════════════════════════════════════════════
       - "CHANGE_ME_PATH_TO_YOUR_MUSIC:/music"
 
+      # ══════════════════════════════════════════════════════════
+      # SECOND VOLUME MOUNT (REQUIRED for FLAC tag writing)
+      # ══════════════════════════════════════════════════════════
+      # Copy the same path from above and mount it at itself.
+      # This gives ChartHound direct write access for FLAC files.
+      # Example: if your music path is /media/colby/NAS1/MUSIC TAGGED
+      # then add: - "/media/colby/NAS1/MUSIC TAGGED:/media/colby/NAS1/MUSIC TAGGED"
+      - "CHANGE_ME_PATH_TO_YOUR_MUSIC:CHANGE_ME_PATH_TO_YOUR_MUSIC"
+
       # Persistent database — stores connections, cached metadata,
       # and scan history. Do not change this line.
       - charthound_data:/data

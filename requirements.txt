@@ -10,11 +10,14 @@ bcrypt==4.0.1
 python-jose[cryptography]==3.3.0
 cryptography==42.0.8
 
-# Music file tagging (File-First standard)
+# Music file tagging (File-First standard — Constitution §2)
 mutagen==1.47.0
 
-# HTTP client for API Waterfall (MusicBrainz > iTunes > Last.fm)
+# HTTP client for Waterfall (MusicBrainz > iTunes > Last.fm)
 httpx==0.27.0
+
+# Background task scheduler (The Bloodhound + The Tracker)
+apscheduler==3.10.4
 
 # Pydantic for data validation
 pydantic==2.7.1
