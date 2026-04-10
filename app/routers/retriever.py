@@ -245,32 +245,36 @@ async def fetch_musicbrainz(artist: str, title: str, album: str = "") -> dict:
         if not recordings:
             return result
 
-        # Find best match — prefer recordings that match artist name AND have tags
+        # Find best match — MUST match artist name, then prefer most tags
         best_rec = None
         best_tags = []
+        artist_lower = artist.lower()
+
         for rec in recordings:
-            # Check if artist matches
-            rec_artists = [a.get("name", "").lower() for a in rec.get("artist-credit", []) 
+            # Strict artist check — skip if artist doesn't match
+            rec_artists = [a.get("name", "").lower() for a in rec.get("artist-credit", [])
                           if isinstance(a, dict)]
-            artist_match = any(artist.lower() in a or a in artist.lower() 
-                             for a in rec_artists) if rec_artists else True
+            if not rec_artists:
+                continue
+            artist_match = any(
+                artist_lower in a or a in artist_lower or
+                # Handle "The X" vs "X" variations
+                artist_lower.lstrip("the ") in a or a in artist_lower.lstrip("the ")
+                for a in rec_artists
+            )
+            if not artist_match:
+                continue
             tags = rec.get("tags", [])
-            if artist_match and tags and len(tags) > len(best_tags):
+            # Prefer recordings with tags, but accept any artist match
+            if best_rec is None or len(tags) > len(best_tags):
                 best_tags = tags
                 best_rec = rec
 
-        # Fall back to first result with tags if no artist match found
-        if not best_rec:
-            for rec in recordings:
-                tags = rec.get("tags", [])
-                if tags and len(tags) > len(best_tags):
-                    best_tags = tags
-                    best_rec = rec
-
-        # Final fallback to first result
+        # If no artist match at all, use first result but don't trust its tags
         if not best_rec:
             best_rec = recordings[0]
-            best_tags = best_rec.get("tags", [])
+            best_tags = []  # Don't use tags from wrong artist
+            log.debug(f"No artist match for {artist} - {title}, using first result without tags")
 
         # Phase 2: Direct lookup with genres included (Gemini recommendation)
         # Release Group level has better genre coverage than Recording level
@@ -531,10 +535,18 @@ async def fetch_deezer(artist: str, title: str) -> dict:
 
 def merge_genres(sources: List[List[str]], top_n: int = 3) -> List[str]:
     BROAD = {
-        "rock","pop","country","hip hop","r&b","jazz","classical","electronic",
+        "rock","pop","country","r&b","jazz","classical","electronic",
         "dance","folk","blues","soul","reggae","metal","alternative","indie",
         "punk","gospel","christian","worship","hard rock","soft rock",
         "adult contemporary","ccm",
+    }
+    # Genres that are suspicious when mixed with clearly different genres
+    # e.g. Hip Hop appearing on a Soft Rock track
+    SUSPICIOUS_CROSS = {
+        "hip hop": {"rock", "soft rock", "folk rock", "country", "classical"},
+        "rap": {"rock", "soft rock", "folk rock", "country", "classical"},
+        "metal": {"pop", "country", "r&b", "soul", "gospel"},
+        "classical": {"hip hop", "rap", "metal", "punk"},
     }
     votes = {}
     for src_idx, source_genres in enumerate(sources):
@@ -546,27 +558,41 @@ def merge_genres(sources: List[List[str]], top_n: int = 3) -> List[str]:
                 votes[norm] = {"display": genre, "count": 0,
                                "first_src": src_idx, "broad": norm in BROAD}
             votes[norm]["count"] += 1
+
+    # Filter out suspicious cross-genre tags
+    all_norms = set(votes.keys())
+    filtered = {}
+    for norm, v in votes.items():
+        suspicious = False
+        if norm in SUSPICIOUS_CROSS:
+            conflicting = SUSPICIOUS_CROSS[norm]
+            if any(c in all_norms for c in conflicting) and v["count"] == 1:
+                suspicious = True
+        if not suspicious:
+            filtered[norm] = v
+
     sorted_genres = sorted(
-        votes.values(),
+        filtered.values(),
         key=lambda v: (0 if v["broad"] else 1, -v["count"], v["first_src"])
     )
     return [v["display"] for v in sorted_genres[:top_n]]
 
 
-
 def get_ccm_moods(genres: List[str]) -> List[str]:
+    """Return mood tags for Christian/Gospel/Worship genres."""
     CCM_MOOD_MAP = {
-        'worship': ['Reverent', 'Peaceful', 'Uplifting'],
-        'gospel': ['Joyful', 'Uplifting', 'Soulful'],
-        'christian': ['Uplifting', 'Peaceful'],
-        'ccm': ['Uplifting', 'Joyful'],
-        'praise': ['Joyful', 'Reverent', 'Uplifting'],
+        "worship":   ["Reverent", "Peaceful", "Uplifting"],
+        "gospel":    ["Joyful", "Uplifting", "Soulful"],
+        "christian": ["Uplifting", "Peaceful"],
+        "ccm":       ["Uplifting", "Joyful"],
+        "praise":    ["Joyful", "Reverent", "Uplifting"],
     }
     for genre in genres:
         for keyword, moods in CCM_MOOD_MAP.items():
             if keyword in genre.lower():
                 return moods[:3]
     return []
+
 
 def format_chart_comment(chart_entries: List[dict]) -> str:
     if not chart_entries:
@@ -897,7 +923,6 @@ async def get_preview(job_id: int, offset: int = 0, limit: int = 50,
     """Get preview results — only tracks from the current scan job."""
     async with aiosqlite.connect(settings.database_url) as db:
         db.row_factory = aiosqlite.Row
-        # Get the job's start time to filter tracks scanned in this job
         cursor = await db.execute(
             "SELECT started_at FROM scan_jobs WHERE job_id=?", (job_id,)
         )
@@ -905,8 +930,6 @@ async def get_preview(job_id: int, offset: int = 0, limit: int = 50,
         if not job:
             return []
         started_at = job["started_at"]
-
-        # Only return tracks scanned at or after this job started
         cursor = await db.execute(
             """SELECT t.track_id, t.file_path, t.title, t.year,
                       t.genre_1, t.genre_2, t.genre_3,
@@ -920,7 +943,18 @@ async def get_preview(job_id: int, offset: int = 0, limit: int = 50,
             (started_at, limit, offset)
         )
         rows = await cursor.fetchall()
-    return [dict(r) for r in rows]
+
+    # Add current file genre for old vs new comparison
+    result = []
+    for r in rows:
+        d = dict(r)
+        try:
+            file_tags = read_tags_from_file(r["file_path"])
+            d["current_genre"] = file_tags.get("genre", "") or "—"
+        except Exception:
+            d["current_genre"] = "—"
+        result.append(d)
+    return result
 
 
 @router.post("/write")
@@ -1211,8 +1245,14 @@ async def process_single_file(filepath: str, job_id: int, lastfm_key: str, mode:
 
     # ── Step 7: Autopilot — write immediately ──────────────────────────────────
     if mode == "autopilot":
+        import concurrent.futures
         star = peak_to_stars(lfm_data.get("peak"))
-        success = write_tags(filepath, all_genres, moods, year, comment, star)
+        loop = asyncio.get_event_loop()
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        success = await loop.run_in_executor(
+            executor, write_tags, filepath, all_genres, moods, year, comment, star
+        )
+        executor.shutdown(wait=False)
         async with aiosqlite.connect(settings.database_url) as db:
             await db.execute(
                 "INSERT INTO write_log (track_id, file_path, field_changed, new_value, write_status, written_at) "
@@ -1238,7 +1278,11 @@ async def write_from_cache(track_id: int, filepath: str):
     chart_list = [dict(c) for c in charts]
     comment = format_chart_comment(chart_list)
     star = max((peak_to_stars(c.get("peak_position")) for c in chart_list), default=0)
-    write_tags(filepath, genres, moods, track["year"], comment, star)
+    import concurrent.futures
+    loop = asyncio.get_event_loop()
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    await loop.run_in_executor(executor, write_tags, filepath, genres, moods, track["year"], comment, star)
+    executor.shutdown(wait=False)
 
 
 async def write_approved_tracks(job_id: int, track_ids: List[int], write_art: bool):
