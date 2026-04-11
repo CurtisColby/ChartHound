@@ -751,24 +751,6 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
             <div class="conn-feedback" id="cFeedback-discogs"></div>
           </div>
 
-          <!-- FILE WRITER -->
-          <div class="conn-card" id="connCard-file_writer">
-            <div class="conn-card-header">
-              <div class="conn-card-title"><div class="conn-card-dot" id="cDot-file_writer"></div>✍️ FILE WRITER</div>
-              <div class="conn-verified" id="cVerified-file_writer">NOT VERIFIED</div>
-            </div>
-            <p style="font-family:var(--mono);font-size:.57rem;color:var(--muted);line-height:1.7;margin-bottom:.65rem">Required for reliable FLAC tag writing. Runs on your host server outside Docker using metaflac. Without it, some FLAC files may not write correctly.</p>
-            <div class="label-row"><label>File Writer URL</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">Run file-sync-server.py on your host server, then enter its URL here. Default: http://YOUR-SERVER-IP:4321</div></div></div>
-            <input type="text" id="cURL-file_writer" placeholder="http://192.168.50.42:4321">
-            <div class="field-hint">Start with: python3 file-sync-server.py — then enter the URL above</div>
-            <div class="conn-btn-row">
-              <button class="btn btn-outline btn-sm" onclick="saveConn('file_writer')">💾 SAVE</button>
-              <button class="btn btn-purple btn-sm" id="testBtn-file_writer" onclick="testConn('file_writer')">⚡ TEST</button>
-              <button class="btn btn-red btn-sm" onclick="disconnectConn('file_writer')">✕ DISCONNECT</button>
-            </div>
-            <div class="conn-feedback" id="cFeedback-file_writer"></div>
-          </div>
-
 
         </div>
       </div>
@@ -971,7 +953,7 @@ let selectedTrackIds = new Set();
 let scanPaused = false;
 let browseCurrentPath = '';
 
-const SERVICES = ['plex','emby','jellyfin','lastfm','prowlarr','radarr','sonarr','qbittorrent','youtube','discogs','file_writer'];
+const SERVICES = ['plex','emby','jellyfin','lastfm','prowlarr','radarr','sonarr','qbittorrent','youtube','discogs'];
 const connState = Object.fromEntries(SERVICES.map(s => [s, false]));
 
 const OS_COMMANDS = {

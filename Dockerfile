@@ -7,6 +7,7 @@ LABEL description="ChartHound — Dockerized Music Metadata Engine"
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libffi-dev \
+    flac \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
