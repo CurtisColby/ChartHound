@@ -34,7 +34,7 @@ class Settings(BaseSettings):
 
     # ── JWT Session Tokens ────────────────────────────────────────
     jwt_algorithm: str = "HS256"
-    jwt_expire_minutes: int = 1440  # 24 hours
+    jwt_expire_minutes: int = 10080  # 7 days
 
     class Config:
         env_file = ".env"
