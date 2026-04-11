@@ -32,7 +32,7 @@ settings = get_settings()
 VALID_SERVICES = {
     "plex", "emby", "jellyfin", "lastfm", "prowlarr",
     "radarr", "sonarr", "qbittorrent", "deluge", "transmission",
-    "youtube", "discogs"
+    "youtube", "discogs", "file_writer"
 }
 
 # Default URLs per service
@@ -381,6 +381,16 @@ async def _run_test(service: str, base_url: str, token: str, extra: dict = {}) -
             username = data.get("username", "unknown")
             return f"Discogs connected as '{username}'"
         raise ValueError(f"Discogs returned status {r.status_code}")
+
+    elif service == "file_writer":
+        if not base_url:
+            raise ValueError("No File Writer URL configured. Enter http://YOUR-SERVER-IP:4321")
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            r = await client.get(f"{base_url.rstrip('/')}/ping")
+        if r.is_success:
+            data = r.json()
+            return f"File Writer connected — version {data.get('version', '?')}"
+        raise ValueError(f"File Writer returned status {r.status_code}")
 
     raise ValueError(f"No test defined for '{service}'")
 

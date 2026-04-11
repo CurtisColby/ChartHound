@@ -680,44 +680,30 @@ def write_tags(filepath: str, genres: List[str], moods: List[str],
             os.sync()
 
         elif ext == ".flac":
-            from mutagen.flac import FLAC
-            import shutil, tempfile
-            f = FLAC(filepath)
-            # Save all existing tags we want to KEEP
-            keep = {}
-            KEEP_KEYS = {"title","artist","albumartist","album","tracknumber",
-                         "tracktotal","totaltracks","discnumber","disctotal",
-                         "totaldiscs","label","copyright","isrc","musicbrainz_trackid",
-                         "musicbrainz_albumid","musicbrainz_artistid","musicbrainz_albumartistid",
-                         "musicbrainz_releasegroupid","musicbrainz_releasetrackid",
-                         "musicbrainz_albumstatus","musicbrainz_albumtype",
-                         "releasecountry","releasestatus","releasetype",
-                         "originaldate","originalyear","media","catalognumber",
-                         "barcode","albumsort","artistsort","titlesort"}
-            for key in f.keys():
-                if key.lower() in KEEP_KEYS:
-                    keep[key] = f[key]
-            # Translate Docker /music path to real server path (now mounted at same path)
+            import subprocess
+            # Translate Docker path to real server path
             real_path = filepath
             if settings.media_server_music_prefix and settings.docker_music_prefix:
                 if filepath.startswith(settings.docker_music_prefix):
                     real_path = settings.media_server_music_prefix + \
                                 filepath[len(settings.docker_music_prefix):]
-            # Use /tmp for editing then copy to real path
-            tmp_path = tempfile.mktemp(suffix=".flac", dir="/tmp")
-            shutil.copy2(real_path, tmp_path)
-            f2 = FLAC(tmp_path)
-            f2.clear()
-            for key, val in keep.items():
-                f2[key] = val
-            if genres:  f2["genre"]   = genres
-            if moods:   f2["mood"]    = moods
-            if year:    f2["date"]    = [str(year)]
-            if comment: f2["comment"] = [comment]
-            f2.save()
-            shutil.copy2(tmp_path, real_path)
-            os.unlink(tmp_path)
-            os.sync()
+            # Use metaflac — the official FLAC tool, handles all FLAC versions reliably
+            cmd = ["metaflac"]
+            # Remove tags we're going to set
+            if genres:  cmd += ["--remove-tag=GENRE"]
+            if moods:   cmd += ["--remove-tag=MOOD"]
+            if year:    cmd += ["--remove-tag=DATE"]
+            if comment: cmd += ["--remove-tag=COMMENT"]
+            # Set new values
+            for g in (genres or []):   cmd += [f"--set-tag=GENRE={g}"]
+            for m in (moods or []):    cmd += [f"--set-tag=MOOD={m}"]
+            if year:    cmd += [f"--set-tag=DATE={year}"]
+            if comment: cmd += [f"--set-tag=COMMENT={comment}"]
+            cmd += [real_path]
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                log.error(f"metaflac error for {real_path}: {result.stderr}")
+                return False
 
         elif ext in (".m4a", ".aac", ".mp4"):
             from mutagen.mp4 import MP4
@@ -1000,6 +986,9 @@ async def get_write_log(limit: int = 50, user: dict = Depends(require_auth)):
 async def run_scan_job(job_id: int, scan_path: str, mode: str, chunk_size: int):
     log.info(f"[Job {job_id}] Starting scan: {scan_path} | mode={mode}")
 
+    # Capture start time for autopilot post-scan write
+    started_at = datetime.now(timezone.utc).isoformat()
+
     # Get Last.fm key
     lastfm_key = ""
     try:
@@ -1036,6 +1025,7 @@ async def run_scan_job(job_id: int, scan_path: str, mode: str, chunk_size: int):
     processed = 0
     failed = 0
     chunks = [file_list[i:i+chunk_size] for i in range(0, len(file_list), chunk_size)]
+    chunk_start_time = started_at
 
     for chunk in chunks:
         # Check pause/stop
@@ -1046,6 +1036,8 @@ async def run_scan_job(job_id: int, scan_path: str, mode: str, chunk_size: int):
             if job and job["status"] in ("paused", "stopped"):
                 log.info(f"[Job {job_id}] Scan {job['status']} by user.")
                 return
+
+        chunk_scan_start = datetime.now(timezone.utc).isoformat()
 
         for filepath in chunk:
             try:
@@ -1062,6 +1054,21 @@ async def run_scan_job(job_id: int, scan_path: str, mode: str, chunk_size: int):
                 (processed, failed, job_id)
             )
             await db.commit()
+
+        # Autopilot: write this chunk's tracks immediately after scanning
+        # Writing per-chunk means at most chunk_size tracks lost if crash occurs
+        if mode == "autopilot":
+            async with aiosqlite.connect(settings.database_url) as db:
+                db.row_factory = aiosqlite.Row
+                cursor = await db.execute(
+                    "SELECT track_id FROM tracks WHERE last_scanned >= ? ORDER BY track_id ASC",
+                    (chunk_scan_start,)
+                )
+                rows = await cursor.fetchall()
+            chunk_track_ids = [r["track_id"] for r in rows]
+            if chunk_track_ids:
+                results = await write_approved_tracks(job_id, chunk_track_ids, True)
+                log.info(f"[Job {job_id}] Chunk written: {results['success']} ok, {results['failed']} failed")
 
         await asyncio.sleep(0.3)
 
@@ -1135,12 +1142,29 @@ async def process_single_file(filepath: str, job_id: int, lastfm_key: str, mode:
     except Exception:
         pass
 
-    # ── Step 5: Waterfall API calls ────────────────────────────────────────────
-    mb_data      = await fetch_musicbrainz(artist, title, album)
-    itunes_data  = await fetch_itunes(artist, title, album)
-    lfm_data     = await fetch_lastfm(artist, title, lastfm_key)
-    discogs_data = await fetch_discogs(artist, title, discogs_token)
-    deezer_data  = await fetch_deezer(artist, title)
+    # ── Step 5: True Waterfall API calls ──────────────────────────────────────
+    # MusicBrainz first — if it has genres, skip the slow sources
+    mb_data  = await fetch_musicbrainz(artist, title, album)
+    lfm_data = await fetch_lastfm(artist, title, lastfm_key)  # Always call for moods/charts
+
+    if mb_data.get("genres"):
+        # MusicBrainz has genres — skip Deezer, Discogs, iTunes
+        log.debug(f"MB has genres — skipping Deezer/Discogs/iTunes for {title}")
+        deezer_data  = {"year": None, "genres": []}
+        discogs_data = {"year": None, "genres": [], "styles": []}
+        itunes_data  = {"year": None, "genres": [], "art_url": None}
+    else:
+        # MB has no genres — try Deezer and Discogs
+        deezer_data  = await fetch_deezer(artist, title)
+        discogs_data = await fetch_discogs(artist, title, discogs_token)
+
+        # Only call iTunes if still no genres found
+        if deezer_data.get("genres") or discogs_data.get("genres") or discogs_data.get("styles"):
+            log.debug(f"Deezer/Discogs has genres — skipping iTunes for {title}")
+            itunes_data = {"year": None, "genres": [], "art_url": None}
+        else:
+            log.debug(f"No genres found — calling iTunes as last resort for {title}")
+            itunes_data = await fetch_itunes(artist, title, album)
 
     # ── Step 5: Merge metadata ─────────────────────────────────────────────────
     # Year priority: file's originalyear → MusicBrainz → Discogs → file date → Deezer → iTunes
@@ -1243,25 +1267,8 @@ async def process_single_file(filepath: str, job_id: int, lastfm_key: str, mode:
             )
         await db.commit()
 
-    # ── Step 7: Autopilot — write immediately ──────────────────────────────────
-    if mode == "autopilot":
-        import concurrent.futures
-        star = peak_to_stars(lfm_data.get("peak"))
-        loop = asyncio.get_event_loop()
-        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-        success = await loop.run_in_executor(
-            executor, write_tags, filepath, all_genres, moods, year, comment, star
-        )
-        executor.shutdown(wait=False)
-        async with aiosqlite.connect(settings.database_url) as db:
-            await db.execute(
-                "INSERT INTO write_log (track_id, file_path, field_changed, new_value, write_status, written_at) "
-                "VALUES (?,?,'all',?,?,?)",
-                (track_id, filepath,
-                 json.dumps({"genres": all_genres, "moods": moods, "year": year}),
-                 "success" if success else "failed", now)
-            )
-            await db.commit()
+    # Autopilot write is now handled by run_scan_job after all tracks are scanned
+    # This uses write_approved_tracks which is more reliable than per-track writes
 
 
 async def write_from_cache(track_id: int, filepath: str):
@@ -1287,12 +1294,25 @@ async def write_from_cache(track_id: int, filepath: str):
 
 async def write_approved_tracks(job_id: int, track_ids: List[int], write_art: bool):
     import concurrent.futures
+
+    # Check if file-sync-server is configured
+    file_writer_url = ""
+    try:
+        async with aiosqlite.connect(settings.database_url) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                "SELECT base_url FROM connections WHERE service='file_writer'"
+            )
+            row = await cursor.fetchone()
+            if row and row["base_url"]:
+                file_writer_url = row["base_url"].rstrip("/")
+    except Exception:
+        pass
+
     loop = asyncio.get_event_loop()
-    executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
     success_count = 0
     fail_count = 0
-
-    futures = []
     track_data = []
 
     # Fetch all track data first
@@ -1314,18 +1334,60 @@ async def write_approved_tracks(job_id: int, track_ids: List[int], write_art: bo
         track_data.append((track_id, track["file_path"], genres, moods,
                           track["year"], comment, star))
 
-    # Submit all writes to thread pool
-    future_map = {}
-    for (track_id, file_path, genres, moods, year, comment, star) in track_data:
-        future = loop.run_in_executor(executor, write_tags,
-                                      file_path, genres, moods, year, comment, star)
-        future_map[future] = (track_id, file_path, genres, moods, year)
-
-    # Collect results
-    now = datetime.now(timezone.utc).isoformat()
-    for future, (track_id, file_path, genres, moods, year) in future_map.items():
+    # Use file-sync-server if configured — writes from host using metaflac
+    if file_writer_url and track_data:
         try:
-            success = await future
+            limits = httpx.Limits(max_connections=1, max_keepalive_connections=1)
+            now = datetime.now(timezone.utc).isoformat()
+
+            async with httpx.AsyncClient(timeout=120.0, limits=limits) as client:
+                for (track_id, file_path, genres, moods, year, comment, star) in track_data:
+                    real_path = file_path
+                    if settings.media_server_music_prefix and settings.docker_music_prefix:
+                        if file_path.startswith(settings.docker_music_prefix):
+                            real_path = settings.media_server_music_prefix + \
+                                        file_path[len(settings.docker_music_prefix):]
+                    try:
+                        r = await client.post(f"{file_writer_url}/write",
+                                             json={"matches": [{
+                                                 "filepath": real_path,
+                                                 "genres": genres,
+                                                 "moods": moods,
+                                                 "year": year,
+                                                 "replace": True
+                                             }]})
+                        if r.is_success and r.json().get("written", 0) > 0:
+                            success_count += 1
+                        else:
+                            fail_count += 1
+                    except Exception as e:
+                        fail_count += 1
+                        log.error(f"File-sync-server write failed for {file_path}: {e}")
+
+                    async with aiosqlite.connect(settings.database_url) as db:
+                        await db.execute(
+                            "INSERT INTO write_log (track_id, file_path, field_changed, new_value, write_status, written_at) "
+                            "VALUES (?,?,'all',?,?,?)",
+                            (track_id, file_path,
+                             json.dumps({"genres": genres, "moods": moods, "year": year}),
+                             "success" if success_count > 0 else "failed", now)
+                        )
+                        await db.commit()
+
+            log.info(f"File-sync-server wrote {success_count} files, {fail_count} failed")
+            executor.shutdown(wait=False)
+            return {"success": success_count, "failed": fail_count}
+
+        except Exception as e:
+            log.error(f"File-sync-server failed: {e} — falling back to direct write")
+
+    # Direct write fallback
+    now = datetime.now(timezone.utc).isoformat()
+    for (track_id, file_path, genres, moods, year, comment, star) in track_data:
+        try:
+            success = await loop.run_in_executor(
+                executor, write_tags, file_path, genres, moods, year, comment, star
+            )
         except Exception as e:
             log.error(f"Write error for {file_path}: {e}")
             success = False
@@ -1344,7 +1406,7 @@ async def write_approved_tracks(job_id: int, track_ids: List[int], write_art: bo
                  "success" if success else "failed", now)
             )
             await db.commit()
-        log.info(f"Written: {file_path} — {'OK' if success else 'FAILED'}")
 
     executor.shutdown(wait=False)
+    return {"success": success_count, "failed": fail_count}
     return {"success": success_count, "failed": fail_count}
