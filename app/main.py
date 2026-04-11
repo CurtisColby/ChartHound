@@ -19,7 +19,7 @@ from app.config import get_settings
 from app.database import init_db, get_user_count
 from app.security import lockdown_status
 from app.models import HealthResponse
-from app.routers import auth, kennel, retriever
+from app.routers import auth, kennel, retriever, groomer
 
 logging.basicConfig(
     level=logging.INFO,
@@ -88,8 +88,8 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/api")
 app.include_router(kennel.router)
 app.include_router(retriever.router)
+app.include_router(groomer.router)
 # app.include_router(sniffer.router)    # M5
-# app.include_router(groomer.router)    # M6
 # app.include_router(bloodhound.router) # M7
 # app.include_router(tracker.router)    # M8
 # app.include_router(scout.router)      # M9

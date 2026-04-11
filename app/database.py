@@ -2,6 +2,10 @@
 ChartHound — Database Layer
 SQLite schema: Artists > Albums > Tracks (relational, under 200MB target).
 Image paths stored — never blobs. MBIDs and file hashes included (Suggestions.txt spec).
+
+M5 Addition: chart_reference table — local Billboard/UK chart history database.
+             Loaded once from free CSV/GitHub sources. No API key needed.
+             Used by The Groomer for real chart lookups instead of Last.fm guessing.
 """
 
 import aiosqlite
@@ -143,9 +147,9 @@ CREATE TABLE IF NOT EXISTS chart_data (
     star_rating     INTEGER,
 
     -- Source confidence
-    -- 'high'   = direct chart tag hit from Last.fm
-    -- 'medium' = inferred from listener counts / keyword matching
-    -- 'low'    = estimated
+    -- 'high'  = direct match from chart_reference DB (real Billboard data)
+    -- 'medium' = fuzzy match from chart_reference DB
+    -- 'low'   = estimated from Last.fm listener counts
     confidence      TEXT    DEFAULT 'low',
     listener_count  INTEGER DEFAULT 0,
 
@@ -159,6 +163,96 @@ CREATE TABLE IF NOT EXISTS chart_data (
 );
 CREATE INDEX IF NOT EXISTS idx_chart_track ON chart_data(track_id);
 CREATE INDEX IF NOT EXISTS idx_chart_name  ON chart_data(chart_name);
+
+-- ── CHART REFERENCE (Local Billboard/UK chart history — The Groomer's source of truth)
+-- ─────────────────────────────────────────────────────────────────────────────────────
+-- Loaded once from free public datasets. Updated via "Refresh Chart Data" button.
+-- One row per chart entry (a song can appear on multiple charts = multiple rows).
+-- This table is read-only during scans — never modified by scan logic.
+--
+-- Chart name codes match chart_data.chart_name:
+--   hot100    = Billboard Hot 100 (1958–present)
+--   adultpop  = Billboard Adult Pop / Top 40
+--   ac        = Billboard Adult Contemporary
+--   country   = Billboard Hot Country Songs
+--   rnb       = Billboard R&B / Hip-Hop Songs
+--   rock      = Billboard Mainstream Rock
+--   dance     = Billboard Dance/Electronic Songs
+--   uk        = UK Official Singles Chart
+--   ccm       = Billboard Christian Songs (CCM, 1996–present)
+--   gospel    = Billboard Gospel Songs
+--   ccm-ac    = Billboard Christian AC
+--   ccm-rock  = Billboard Christian Rock
+--
+CREATE TABLE IF NOT EXISTS chart_reference (
+    ref_id          INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    -- Chart identification
+    chart_name      TEXT    NOT NULL,   -- 'hot100', 'ac', 'uk', 'ccm', etc.
+
+    -- Song identity — stored exactly as it appears in the source data
+    artist          TEXT    NOT NULL,
+    title           TEXT    NOT NULL,
+
+    -- Normalised lowercase versions for fast fuzzy matching
+    -- Pre-computed on insert so we don't lowercase on every lookup
+    artist_norm     TEXT    NOT NULL,
+    title_norm      TEXT    NOT NULL,
+
+    -- Chart performance — REAL data from Billboard/Official Charts
+    peak_position   INTEGER NOT NULL,   -- best position achieved, 1 = #1
+    weeks_on_chart  INTEGER NOT NULL DEFAULT 1,
+    chart_year      INTEGER,            -- year the song first charted
+
+    -- Source tracking
+    -- 'hot100_csv'  = loaded from GitHub Hot 100 CSV dataset
+    -- 'billboard_scrape' = loaded via billboard-charts Python library
+    -- 'uk_csv'      = loaded from Official UK Charts CSV
+    -- 'manual'      = manually added
+    data_source     TEXT    NOT NULL DEFAULT 'unknown',
+    loaded_at       TEXT    NOT NULL DEFAULT (datetime('now')),
+
+    -- Prevent exact duplicates (same song on same chart)
+    UNIQUE(chart_name, artist_norm, title_norm)
+);
+
+-- Indexes for fast fuzzy lookups during Groomer scan
+CREATE INDEX IF NOT EXISTS idx_ref_chart       ON chart_reference(chart_name);
+CREATE INDEX IF NOT EXISTS idx_ref_artist_norm ON chart_reference(artist_norm);
+CREATE INDEX IF NOT EXISTS idx_ref_title_norm  ON chart_reference(title_norm);
+CREATE INDEX IF NOT EXISTS idx_ref_year        ON chart_reference(chart_year);
+-- Composite index — the primary lookup pattern is chart + artist + title
+CREATE INDEX IF NOT EXISTS idx_ref_lookup      ON chart_reference(chart_name, artist_norm, title_norm);
+
+-- ── CHART REFERENCE META (Tracks which charts have been loaded and when) ───
+-- One row per chart source. Used by the UI to show "Hot 100: 340,000 entries
+-- last updated April 11 2026" and to know which charts need updating.
+CREATE TABLE IF NOT EXISTS chart_reference_meta (
+    chart_name      TEXT    PRIMARY KEY,
+    display_name    TEXT    NOT NULL,
+    entry_count     INTEGER DEFAULT 0,
+    first_year      INTEGER,            -- earliest chart year in dataset
+    last_year       INTEGER,            -- most recent chart year in dataset
+    last_updated    TEXT,               -- ISO datetime of last successful load
+    data_source     TEXT,               -- URL or source description
+    status          TEXT    DEFAULT 'not_loaded'  -- 'not_loaded'|'loading'|'loaded'|'error'
+);
+
+-- Pre-populate with the charts we support so UI can show them even before loading
+INSERT OR IGNORE INTO chart_reference_meta
+    (chart_name, display_name, data_source, status) VALUES
+    ('hot100',   'Billboard Hot 100',              'GitHub: mhollingshead/billboard-hot-100', 'not_loaded'),
+    ('ac',       'Billboard Adult Contemporary',    'billboard-charts Python library',          'not_loaded'),
+    ('adultpop', 'Billboard Adult Pop / Top 40',   'billboard-charts Python library',          'not_loaded'),
+    ('country',  'Billboard Hot Country Songs',    'billboard-charts Python library',          'not_loaded'),
+    ('rnb',      'Billboard R&B/Hip-Hop Songs',    'billboard-charts Python library',          'not_loaded'),
+    ('rock',     'Billboard Mainstream Rock',      'billboard-charts Python library',          'not_loaded'),
+    ('dance',    'Billboard Dance/Electronic',     'billboard-charts Python library',          'not_loaded'),
+    ('uk',       'UK Official Singles Chart',      'Official Charts Company CSV',              'not_loaded'),
+    ('ccm',      'Billboard Christian Songs',      'billboard-charts Python library',          'not_loaded'),
+    ('gospel',   'Billboard Gospel Songs',         'billboard-charts Python library',          'not_loaded'),
+    ('ccm-ac',   'Billboard Christian AC',         'billboard-charts Python library',          'not_loaded'),
+    ('ccm-rock', 'Billboard Christian Rock',       'billboard-charts Python library',          'not_loaded');
 
 -- ── WRITE LOG (Audit trail for every file tag write) ──────────────────────
 -- Lets the user review exactly what was changed and when.
@@ -177,12 +271,15 @@ CREATE TABLE IF NOT EXISTS write_log (
 -- ── SCAN JOBS (For pause/resume on 33k track scans) ───────────────────────
 CREATE TABLE IF NOT EXISTS scan_jobs (
     job_id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    job_type        TEXT    NOT NULL,   -- 'retriever', 'sniffer', 'index'
-    status          TEXT    NOT NULL DEFAULT 'pending',  -- pending|running|paused|done|failed
+    job_type        TEXT    NOT NULL,   -- 'retriever', 'groomer', 'sniffer', 'index'
+    status          TEXT    NOT NULL DEFAULT 'pending',  -- pending|running|paused|done|failed|stopped
+    scope           TEXT,               -- 'plex'|'emby'|'jellyfin'|'local' for groomer
+    mode            TEXT,               -- 'preview'|'autopilot'|'hybrid'
     total_tracks    INTEGER DEFAULT 0,
     processed       INTEGER DEFAULT 0,
     matched         INTEGER DEFAULT 0,
     failed          INTEGER DEFAULT 0,
+    cached          INTEGER DEFAULT 0,
     started_at      TEXT,
     paused_at       TEXT,
     completed_at    TEXT,
@@ -215,7 +312,7 @@ async def init_db():
     """
     Run on application startup.
     Creates all tables if they do not exist. Safe to call repeatedly.
-    Runs column migrations for M4 additions.
+    Runs column migrations for all milestones.
     """
     log.info(f"Initializing database at {settings.database_url}")
     async with aiosqlite.connect(settings.database_url) as db:
@@ -224,12 +321,17 @@ async def init_db():
         await db.executescript(SCHEMA)
         await db.commit()
 
-        # M4 migrations — ADD COLUMN is safe to run repeatedly (silently fails if exists)
+        # Migrations — ADD COLUMN is safe to run repeatedly (silently fails if exists)
         migrations = [
+            # M4 additions
             "ALTER TABLE tracks ADD COLUMN tag_artist TEXT",
             "ALTER TABLE tracks ADD COLUMN tag_album  TEXT",
             "ALTER TABLE tracks ADD COLUMN confidence TEXT DEFAULT 'low'",
             "ALTER TABLE scan_jobs ADD COLUMN paused_at TEXT",
+            # M5 additions — Groomer hybrid scan columns
+            "ALTER TABLE scan_jobs ADD COLUMN scope TEXT",
+            "ALTER TABLE scan_jobs ADD COLUMN mode TEXT",
+            "ALTER TABLE scan_jobs ADD COLUMN cached INTEGER DEFAULT 0",
         ]
         for sql in migrations:
             try:
