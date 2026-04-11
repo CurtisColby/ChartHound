@@ -896,7 +896,7 @@ async def db_stats(user: dict = Depends(require_auth)):
 @router.get("/results")
 async def groomer_results(
     charts: str = "", peak_max: int = 100, weeks_min: int = 1,
-    moods: str = "", limit: int = 500,
+    moods: str = "", limit: int = 5000,
     user: dict = Depends(require_auth),
 ):
     req_charts = [c.strip() for c in charts.split(",")

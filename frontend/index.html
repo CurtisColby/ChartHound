@@ -2142,7 +2142,7 @@ async function grmSearch() {
   const moods    = grmGetSelectedMoods();
   const params   = new URLSearchParams({
     charts:charts.join(','), peak_max:peakMax,
-    weeks_min:weeksMin, moods:moods.join(','), limit:500,
+    weeks_min:weeksMin, moods:moods.join(','), limit:5000,
   });
   try {
     const r = await fetch(`${API}/api/groomer/results?${params}`, {headers:authHdrs()});
