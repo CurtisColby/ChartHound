@@ -12,6 +12,7 @@ M4 Polish Fixes:
 """
 
 import asyncio
+import difflib
 import hashlib
 import json
 import logging
@@ -83,6 +84,99 @@ FILTER_TAGS = {
 }
 
 AUDIO_EXTS = {".mp3",".flac",".m4a",".aac",".ogg",".opus",".wma",".wav",".aiff",".ape",".wv"}
+
+# ── Fix B: Hard genre blacklist — these NEVER get written to music files ──────
+# These genres are valid on MusicBrainz/Discogs but wrong for 99% of music libraries.
+GENRE_BLACKLIST = {
+    "musical", "stage & screen", "soundtrack", "children's", "children",
+    "holiday", "comedy", "spoken word", "audio drama", "karaoke",
+    "new age", "field recording", "ringtone", "advertising",
+    "non-music", "interview", "live score",
+}
+
+# ── Fix D: Genre-tag → Mood mapping (covers mainstream Last.fm tags) ──────────
+# Last.fm tags for most tracks are genre words, not mood words.
+# This maps common genre tags to the mood they imply.
+GENRE_TO_MOOD = {
+    # Rock family
+    "classic rock":      "Energetic",
+    "hard rock":         "Intense",
+    "soft rock":         "Chill",
+    "alternative rock":  "Energetic",
+    "indie rock":        "Energetic",
+    "psychedelic rock":  "Dreamy",
+    "progressive rock":  "Epic",
+    "punk rock":         "Intense",
+    "glam rock":         "Upbeat",
+    "blues rock":        "Soulful",
+    "southern rock":     "Energetic",
+    "arena rock":        "Energetic",
+    "rock":              "Energetic",
+    # Pop family
+    "pop":               "Upbeat",
+    "pop rock":          "Upbeat",
+    "synth pop":         "Upbeat",
+    "power pop":         "Upbeat",
+    "teen pop":          "Upbeat",
+    "indie pop":         "Upbeat",
+    "dream pop":         "Dreamy",
+    "bubblegum":         "Happy",
+    # Country family
+    "country":           "Warm",
+    "country pop":       "Upbeat",
+    "country rock":      "Energetic",
+    "bluegrass":         "Joyful",
+    "americana":         "Warm",
+    "outlaw country":    "Intense",
+    # R&B / Soul / Funk
+    "r&b":               "Soulful",
+    "soul":              "Soulful",
+    "funk":              "Upbeat",
+    "neo soul":          "Chill",
+    "motown":            "Joyful",
+    "rhythm and blues":  "Soulful",
+    # Hip-Hop / Rap
+    "hip hop":           "Energetic",
+    "hip-hop":           "Energetic",
+    "rap":               "Energetic",
+    "trap":              "Intense",
+    "gangsta rap":       "Intense",
+    # Electronic / Dance
+    "electronic":        "Energetic",
+    "edm":               "Energetic",
+    "house":             "Energetic",
+    "techno":            "Intense",
+    "trance":            "Euphoric",
+    "dubstep":           "Intense",
+    "synthwave":         "Nostalgic",
+    "chillwave":         "Chill",
+    # Jazz / Blues
+    "jazz":              "Chill",
+    "blues":             "Soulful",
+    "smooth jazz":       "Chill",
+    "bebop":             "Energetic",
+    # Metal
+    "metal":             "Intense",
+    "heavy metal":       "Intense",
+    "death metal":       "Intense",
+    "black metal":       "Dark",
+    "power metal":       "Epic",
+    # Folk / Acoustic
+    "folk":              "Peaceful",
+    "acoustic":          "Peaceful",
+    "singer-songwriter": "Emotional",
+    "folk rock":         "Warm",
+    # Classical
+    "classical":         "Peaceful",
+    "orchestral":        "Epic",
+    "chamber music":     "Peaceful",
+    # General mood boosters
+    "80s":               "Nostalgic",
+    "90s":               "Nostalgic",
+    "70s":               "Nostalgic",
+    "60s":               "Nostalgic",
+    "oldies":            "Nostalgic",
+}
 
 # ── Pydantic Models ───────────────────────────────────────────────────────────
 class ScanRequest(BaseModel):
@@ -245,36 +339,55 @@ async def fetch_musicbrainz(artist: str, title: str, album: str = "") -> dict:
         if not recordings:
             return result
 
-        # Find best match — MUST match artist name, then prefer most tags
+        # Fix A: Fuzzy artist matching — hard-reject wrong artists
+        # Strip punctuation for fairer comparison (AC/DC → acdc, R.E.M. → rem)
+        def _norm(s: str) -> str:
+            s = s.lower().strip()
+            s = re.sub(r"[^\w\s]", "", s)   # remove punctuation
+            s = re.sub(r"\s+", " ", s)       # collapse whitespace
+            s = re.sub(r"^the\s+", "", s)    # strip leading "the"
+            return s.strip()
+
+        def _artist_score(query: str, candidate: str) -> float:
+            q, c = _norm(query), _norm(candidate)
+            if not q or not c:
+                return 0.0
+            # Exact match after normalisation → perfect score
+            if q == c:
+                return 1.0
+            # One is a substring of the other (handles "AC DC" in "AC DC feat. Bon Scott")
+            if q in c or c in q:
+                return 0.85
+            return difflib.SequenceMatcher(None, q, c).ratio()
+
+        ARTIST_THRESHOLD = 0.55   # Below this → wrong artist, reject tags
+
         best_rec = None
         best_tags = []
+        best_score = 0.0
         artist_lower = artist.lower()
 
         for rec in recordings:
-            # Strict artist check — skip if artist doesn't match
-            rec_artists = [a.get("name", "").lower() for a in rec.get("artist-credit", [])
+            rec_artists = [a.get("name", "") for a in rec.get("artist-credit", [])
                           if isinstance(a, dict)]
             if not rec_artists:
                 continue
-            artist_match = any(
-                artist_lower in a or a in artist_lower or
-                # Handle "The X" vs "X" variations
-                artist_lower.lstrip("the ") in a or a in artist_lower.lstrip("the ")
-                for a in rec_artists
-            )
-            if not artist_match:
+            score = max(_artist_score(artist, ra) for ra in rec_artists)
+            if score < ARTIST_THRESHOLD:
+                log.debug(f"MB artist mismatch ({score:.2f}): '{artist}' vs {rec_artists} — skipped")
                 continue
             tags = rec.get("tags", [])
-            # Prefer recordings with tags, but accept any artist match
-            if best_rec is None or len(tags) > len(best_tags):
+            # Prefer higher artist match score; break ties by tag count
+            if score > best_score or (score == best_score and len(tags) > len(best_tags)):
+                best_score = score
                 best_tags = tags
                 best_rec = rec
 
-        # If no artist match at all, use first result but don't trust its tags
+        # If nothing passed the threshold, use first result but discard its tags entirely
         if not best_rec:
             best_rec = recordings[0]
-            best_tags = []  # Don't use tags from wrong artist
-            log.debug(f"No artist match for {artist} - {title}, using first result without tags")
+            best_tags = []
+            log.debug(f"No artist match above threshold for '{artist}' — using first result, tags discarded")
 
         # Phase 2: Direct lookup with genres included (Gemini recommendation)
         # Release Group level has better genre coverage than Recording level
@@ -299,12 +412,35 @@ async def fetch_musicbrainz(artist: str, title: str, album: str = "") -> dict:
         result["mbid"] = best_rec.get("id")
         result["confidence"] = "high" if best_rec.get("score", 0) >= 90 else "medium"
 
-        # Year from earliest release date
+        # Fix C: Year — prefer original official Album release, not singles or reissues
         releases = best_rec.get("releases", [])
-        dates = sorted([rel.get("date", "") for rel in releases
-                       if rel.get("date") and re.match(r'\d{4}', rel.get("date", ""))])
-        if dates:
-            result["year"] = int(dates[0][:4])
+
+        def _release_year(rel: dict) -> Optional[int]:
+            d = rel.get("date", "")
+            if d and re.match(r'\d{4}', d):
+                return int(d[:4])
+            return None
+
+        # First pass: official studio albums only
+        album_years = [
+            _release_year(rel) for rel in releases
+            if rel.get("status", "").lower() == "official"
+            and rel.get("release-group", {}).get("primary-type", "").lower() == "album"
+            and _release_year(rel)
+        ]
+        # Second pass: any official release (catches singles that predate the album)
+        if not album_years:
+            album_years = [
+                _release_year(rel) for rel in releases
+                if rel.get("status", "").lower() == "official"
+                and _release_year(rel)
+            ]
+        # Last resort: anything with a date
+        if not album_years:
+            album_years = [_release_year(rel) for rel in releases if _release_year(rel)]
+
+        if album_years:
+            result["year"] = min(yr for yr in album_years if yr and 1900 < yr < 2030)
 
         # Tags — also check release group tags
         if not best_tags and releases:
@@ -405,28 +541,46 @@ async def fetch_lastfm(artist: str, title: str, lastfm_key: str) -> dict:
                 if any(kw in name for kw in keywords):
                     if chart_key not in charts:
                         charts.append(chart_key)
-            # Mood extraction
+            # Mood extraction — two passes:
+            # Pass 1: direct mood keywords in the tag name
             mood_map = {
-                "happy":"Happy","sad":"Melancholic","melancholic":"Melancholic",
-                "energetic":"Energetic","chill":"Chill","relaxing":"Relaxing",
-                "upbeat":"Upbeat","romantic":"Romantic","angry":"Intense",
-                "peaceful":"Peaceful","uplifting":"Uplifting","dark":"Dark",
-                "nostalgic":"Nostalgic","party":"Party","workout":"Energetic",
-                "calm":"Calm","epic":"Epic","emotional":"Emotional",
-                "soulful":"Soulful","joyful":"Joyful","powerful":"Powerful",
-                "disco":"Energetic","dance":"Energetic","fun":"Happy",
-                "feel good":"Happy","feelgood":"Happy","groovy":"Upbeat",
-                "summer":"Upbeat","driving":"Energetic","sexy":"Romantic",
-                "sensual":"Romantic","mellow":"Chill","laid back":"Chill",
-                "aggressive":"Intense","heavy":"Intense","sad":"Melancholic",
-                "depressing":"Melancholic","heartbreak":"Melancholic",
-                "love":"Romantic","happy":"Happy","cheerful":"Happy",
-                "atmospheric":"Peaceful","ambient":"Peaceful","dreamy":"Peaceful",
-                "euphoric":"Uplifting","inspirational":"Uplifting","motivating":"Uplifting",
+                "happy":        "Happy",      "sad":          "Melancholic",
+                "melancholic":  "Melancholic","energetic":    "Energetic",
+                "chill":        "Chill",      "relaxing":     "Relaxing",
+                "upbeat":       "Upbeat",     "romantic":     "Romantic",
+                "angry":        "Intense",    "peaceful":     "Peaceful",
+                "uplifting":    "Uplifting",  "dark":         "Dark",
+                "nostalgic":    "Nostalgic",  "party":        "Party",
+                "workout":      "Energetic",  "calm":         "Calm",
+                "epic":         "Epic",       "emotional":    "Emotional",
+                "soulful":      "Soulful",    "joyful":       "Joyful",
+                "powerful":     "Powerful",   "disco":        "Energetic",
+                "dance":        "Energetic",  "fun":          "Happy",
+                "feel good":    "Happy",      "feelgood":     "Happy",
+                "groovy":       "Upbeat",     "summer":       "Upbeat",
+                "driving":      "Energetic",  "sexy":         "Romantic",
+                "sensual":      "Romantic",   "mellow":       "Chill",
+                "laid back":    "Chill",      "aggressive":   "Intense",
+                "heavy":        "Intense",    "depressing":   "Melancholic",
+                "heartbreak":   "Melancholic","love":         "Romantic",
+                "cheerful":     "Happy",      "atmospheric":  "Peaceful",
+                "ambient":      "Peaceful",   "dreamy":       "Dreamy",
+                "euphoric":     "Uplifting",  "inspirational":"Uplifting",
+                "motivating":   "Uplifting",  "anthemic":     "Epic",
+                "intense":      "Intense",    "warm":         "Warm",
+                "bittersweet":  "Melancholic","haunting":     "Dark",
+                "triumphant":   "Uplifting",  "rebellious":   "Intense",
             }
             for kw, mood in mood_map.items():
                 if kw in name and mood not in moods:
                     moods.append(mood)
+                    break  # one mood per tag is enough
+
+            # Pass 2: Fix D — genre-style tags → mood (covers "classic rock", "hard rock", etc.)
+            if not any(kw in name for kw in mood_map):
+                genre_mood = GENRE_TO_MOOD.get(name)
+                if genre_mood and genre_mood not in moods:
+                    moods.append(genre_mood)
 
         result["moods"] = moods[:3]
         result["charts"] = charts
@@ -525,12 +679,69 @@ async def fetch_deezer(artist: str, title: str) -> dict:
     return result
 
 
+async def fetch_listenbrainz(mbid: Optional[str], artist: str, title: str) -> dict:
+    """
+    Fix E: ListenBrainz — free, no API key, mood tags from real listeners.
+    Uses MBID from MusicBrainz for precise lookup; falls back to name search.
+    Returns: {"moods": [...up to 3 mood strings...]}
+    """
+    result = {"moods": []}
+    if not mbid and (not artist or not title):
+        return result
 
-    for genre in genres:
-        for keyword, moods in CCM_MOOD_MAP.items():
-            if keyword in genre.lower():
-                return moods[:3]
-    return []
+    # ListenBrainz mood tags are community-applied — very reliable for popular tracks
+    LBZ_MOOD_TAGS = {
+        "happy", "sad", "energetic", "chill", "relaxing", "upbeat", "romantic",
+        "angry", "peaceful", "uplifting", "dark", "nostalgic", "party", "calm",
+        "epic", "emotional", "soulful", "joyful", "powerful", "groovy", "dreamy",
+        "intense", "warm", "bittersweet", "haunting", "triumphant", "rebellious",
+        "melancholic", "atmospheric", "anthemic", "fun", "motivating", "inspirational",
+    }
+    # Map ListenBrainz raw tags to our capitalised mood labels
+    LBZ_TAG_MAP = {t: t.title() for t in LBZ_MOOD_TAGS}
+    # Add some synonyms they use
+    LBZ_TAG_MAP.update({
+        "feel good": "Happy", "feelgood": "Happy", "mellow": "Chill",
+        "laid back": "Chill", "driving": "Energetic", "workout": "Energetic",
+        "heartbreak": "Melancholic", "depressing": "Melancholic",
+        "euphoric": "Uplifting", "summer": "Upbeat",
+    })
+
+    try:
+        headers = {"User-Agent": "ChartHound/1.0 (https://github.com/CurtisColby/ChartHound)"}
+        moods = []
+
+        if mbid:
+            # Correct endpoint: recording_mbids (plural), no inc= param needed
+            # Response structure: { "<mbid>": { "recording": {...}, "tag": { "recording": [...] } } }
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                r = await client.get(
+                    "https://api.listenbrainz.org/1/metadata/recording/",
+                    params={"recording_mbids": mbid},
+                    headers=headers
+                )
+            if r.is_success:
+                data = r.json()
+                # Tags are nested under the MBID key
+                recording_data = data.get(mbid, {})
+                tags = recording_data.get("tag", {}).get("recording", [])
+                for tag in sorted(tags, key=lambda t: t.get("count", 0), reverse=True)[:20]:
+                    name = tag.get("tag", "").lower().strip()
+                    mood = LBZ_TAG_MAP.get(name)
+                    if mood and mood not in moods:
+                        moods.append(mood)
+                    if len(moods) >= 3:
+                        break
+            else:
+                log.debug(f"ListenBrainz {r.status_code} for mbid={mbid}")
+
+        result["moods"] = moods[:3]
+        if moods:
+            log.debug(f"ListenBrainz moods for {artist} - {title}: {moods}")
+    except Exception as e:
+        log.debug(f"ListenBrainz error for {artist} - {title}: {e}")
+    return result
+
 
 
 def merge_genres(sources: List[List[str]], top_n: int = 3) -> List[str]:
@@ -554,6 +765,10 @@ def merge_genres(sources: List[List[str]], top_n: int = 3) -> List[str]:
             if not genre or len(genre) < 2:
                 continue
             norm = genre.lower().strip()
+            # Fix B: Hard blacklist — drop these before they can ever be voted in
+            if norm in GENRE_BLACKLIST:
+                log.debug(f"Blacklisted genre dropped: '{genre}'")
+                continue
             if norm not in votes:
                 votes[norm] = {"display": genre, "count": 0,
                                "first_src": src_idx, "broad": norm in BROAD}
@@ -1146,6 +1361,8 @@ async def process_single_file(filepath: str, job_id: int, lastfm_key: str, mode:
     # MusicBrainz first — if it has genres, skip the slow sources
     mb_data  = await fetch_musicbrainz(artist, title, album)
     lfm_data = await fetch_lastfm(artist, title, lastfm_key)  # Always call for moods/charts
+    # Fix E: ListenBrainz — free mood supplement, uses MBID from MusicBrainz
+    lbz_data = await fetch_listenbrainz(mb_data.get("mbid"), artist, title)
 
     if mb_data.get("genres"):
         # MusicBrainz has genres — skip Deezer, Discogs, iTunes
@@ -1199,8 +1416,26 @@ async def process_single_file(filepath: str, job_id: int, lastfm_key: str, mode:
         all_genres = []
 
     moods = lfm_data.get("moods", [])
+    # Fix E: Merge ListenBrainz moods — add any LBZ moods not already in the list
+    for lbz_mood in lbz_data.get("moods", []):
+        if lbz_mood not in moods:
+            moods.append(lbz_mood)
+    # Fallback 1: CCM/Gospel genre-based moods
     if not moods and all_genres:
         moods = get_ccm_moods(all_genres)
+    # Fallback 2: GENRE_TO_MOOD — fires when Last.fm + ListenBrainz both return nothing.
+    # Uses the genres we already have (Rock, Hard Rock, etc.) to assign a sensible mood.
+    # This guarantees mainstream artists always get at least one mood.
+    if not moods and all_genres:
+        for genre in all_genres:
+            mood = GENRE_TO_MOOD.get(genre.lower().strip())
+            if mood and mood not in moods:
+                moods.append(mood)
+            if len(moods) >= 3:
+                break
+        if moods:
+            log.debug(f"Genre-to-mood fallback fired for {title}: {all_genres} → {moods}")
+    moods = moods[:3]
 
     chart_entries = []
     for chart_name in lfm_data.get("charts", []):
@@ -1294,21 +1529,6 @@ async def write_from_cache(track_id: int, filepath: str):
 
 async def write_approved_tracks(job_id: int, track_ids: List[int], write_art: bool):
     import concurrent.futures
-
-    # Check if file-sync-server is configured
-    file_writer_url = ""
-    try:
-        async with aiosqlite.connect(settings.database_url) as db:
-            db.row_factory = aiosqlite.Row
-            cursor = await db.execute(
-                "SELECT base_url FROM connections WHERE service='file_writer'"
-            )
-            row = await cursor.fetchone()
-            if row and row["base_url"]:
-                file_writer_url = row["base_url"].rstrip("/")
-    except Exception:
-        pass
-
     loop = asyncio.get_event_loop()
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
     success_count = 0
@@ -1334,54 +1554,7 @@ async def write_approved_tracks(job_id: int, track_ids: List[int], write_art: bo
         track_data.append((track_id, track["file_path"], genres, moods,
                           track["year"], comment, star))
 
-    # Use file-sync-server if configured — writes from host using metaflac
-    if file_writer_url and track_data:
-        try:
-            limits = httpx.Limits(max_connections=1, max_keepalive_connections=1)
-            now = datetime.now(timezone.utc).isoformat()
-
-            async with httpx.AsyncClient(timeout=120.0, limits=limits) as client:
-                for (track_id, file_path, genres, moods, year, comment, star) in track_data:
-                    real_path = file_path
-                    if settings.media_server_music_prefix and settings.docker_music_prefix:
-                        if file_path.startswith(settings.docker_music_prefix):
-                            real_path = settings.media_server_music_prefix + \
-                                        file_path[len(settings.docker_music_prefix):]
-                    try:
-                        r = await client.post(f"{file_writer_url}/write",
-                                             json={"matches": [{
-                                                 "filepath": real_path,
-                                                 "genres": genres,
-                                                 "moods": moods,
-                                                 "year": year,
-                                                 "replace": True
-                                             }]})
-                        if r.is_success and r.json().get("written", 0) > 0:
-                            success_count += 1
-                        else:
-                            fail_count += 1
-                    except Exception as e:
-                        fail_count += 1
-                        log.error(f"File-sync-server write failed for {file_path}: {e}")
-
-                    async with aiosqlite.connect(settings.database_url) as db:
-                        await db.execute(
-                            "INSERT INTO write_log (track_id, file_path, field_changed, new_value, write_status, written_at) "
-                            "VALUES (?,?,'all',?,?,?)",
-                            (track_id, file_path,
-                             json.dumps({"genres": genres, "moods": moods, "year": year}),
-                             "success" if success_count > 0 else "failed", now)
-                        )
-                        await db.commit()
-
-            log.info(f"File-sync-server wrote {success_count} files, {fail_count} failed")
-            executor.shutdown(wait=False)
-            return {"success": success_count, "failed": fail_count}
-
-        except Exception as e:
-            log.error(f"File-sync-server failed: {e} — falling back to direct write")
-
-    # Direct write fallback
+    # Write ONE file at a time — serial writes prevent race conditions
     now = datetime.now(timezone.utc).isoformat()
     for (track_id, file_path, genres, moods, year, comment, star) in track_data:
         try:
@@ -1408,5 +1581,4 @@ async def write_approved_tracks(job_id: int, track_ids: List[int], write_art: bo
             await db.commit()
 
     executor.shutdown(wait=False)
-    return {"success": success_count, "failed": fail_count}
     return {"success": success_count, "failed": fail_count}
