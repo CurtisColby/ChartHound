@@ -93,6 +93,20 @@ services:
       # then add: - "/media/colby/NAS1/MUSIC TAGGED:/media/colby/NAS1/MUSIC TAGGED"
       - "CHANGE_ME_PATH_TO_YOUR_MUSIC:CHANGE_ME_PATH_TO_YOUR_MUSIC"
 
+      # ══════════════════════════════════════════════════════════
+      # STATIC CHART DATABASE (read-only — do not change right side)
+      # ══════════════════════════════════════════════════════════
+      # This ships pre-populated with historical Billboard chart data.
+      # Replace the left side with the full path to the data folder
+      # where you cloned ChartHound. The right side never changes.
+      #
+      # Examples:
+      #   Linux:    - "/home/username/ChartHound/data/charthound_static.db:/data/charthound_static.db:ro"
+      #   Unraid:   - "/mnt/user/appdata/ChartHound/data/charthound_static.db:/data/charthound_static.db:ro"
+      #   Synology: - "/volume1/docker/ChartHound/data/charthound_static.db:/data/charthound_static.db:ro"
+      # ══════════════════════════════════════════════════════════
+      - "CHANGE_ME_PATH_TO_CHARTHOUND/data/charthound_static.db:/data/charthound_static.db:ro"
+
       # Persistent database — stores connections, cached metadata,
       # and scan history. Do not change this line.
       - charthound_data:/data
@@ -141,8 +155,9 @@ services:
       # ══════════════════════════════════════════════════════════
       - CH_OPEN_REGISTRATION=false
 
-      # Database path inside container — do not change
+      # Database paths inside container — do not change these lines
       - DATABASE_URL=/data/charthound.db
+      - STATIC_DB_URL=/data/charthound_static.db
 
       # ══════════════════════════════════════════════════════════
       # PATH TRANSLATION

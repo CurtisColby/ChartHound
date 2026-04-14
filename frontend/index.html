@@ -138,11 +138,76 @@ nav.sidebar{width:225px;flex-shrink:0;background:var(--surface);border-right:1px
 .content-area{flex:1;overflow-y:auto;display:flex;flex-direction:column;}
 .tab-panel{display:none;flex:1;}
 .tab-panel.active{display:flex;flex-direction:column;}
-.pane{display:grid;grid-template-columns:330px 1fr;flex:1;min-height:0;}
-.pane-aside{border-right:1px solid var(--border);background:var(--surface);padding:1.25rem;overflow-y:auto;display:flex;flex-direction:column;gap:1rem;}
-.pane-main{padding:1.5rem 2rem;overflow-y:auto;display:flex;flex-direction:column;gap:1.25rem;}
+/* ── Sidebar — collapsible ────────────────────────────────────────────────── */
+nav.sidebar{
+  width:225px;flex-shrink:0;
+  background:var(--surface);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;
+  padding:1rem 0;overflow-y:auto;overflow-x:hidden;
+  position:sticky;top:62px;height:calc(100vh - 62px);
+  transition:width .2s ease;
+}
+nav.sidebar.collapsed{width:48px;}
+nav.sidebar.collapsed .nav-label,
+nav.sidebar.collapsed .nav-text,
+nav.sidebar.collapsed .nav-conn-dot,
+nav.sidebar.collapsed .nav-heartbeat,
+nav.sidebar.collapsed .nav-version,
+nav.sidebar.collapsed .nav-wizard{display:none;}
+nav.sidebar.collapsed .nav-item{padding:.65rem 0;justify-content:center;gap:0;}
+nav.sidebar.collapsed .nav-icon{font-size:1rem;width:auto;margin:0;}
+.sidebar-toggle-btn{
+  display:flex;align-items:center;justify-content:center;
+  margin:.35rem .75rem .25rem;padding:.3rem;
+  background:var(--surface2);border:1px solid var(--border);
+  border-radius:5px;cursor:pointer;font-size:.65rem;color:var(--muted);
+  transition:all .15s;user-select:none;flex-shrink:0;
+}
+.sidebar-toggle-btn:hover{background:var(--teal);color:#000;border-color:var(--teal);}
+nav.sidebar.collapsed .sidebar-toggle-btn{margin:.35rem auto .25rem;width:32px;}
 
-/* LABELS */
+/* ── Resizable two-pane layout ───────────────────────────────────────────── */
+.pane{display:flex;flex:1;min-height:0;overflow:hidden;}
+.pane-aside{
+  width:330px;min-width:180px;max-width:600px;flex-shrink:0;
+  border-right:1px solid var(--border);background:var(--surface);
+  padding:1.25rem;overflow-y:auto;
+  display:flex;flex-direction:column;gap:1rem;
+  position:relative;transition:width .2s ease,padding .2s ease,min-width .2s ease;
+}
+.pane-aside.collapsed{width:36px !important;min-width:36px !important;padding:.75rem 0;overflow:hidden;}
+.pane-aside.collapsed > *:not(.pane-collapse-btn){display:none;}
+.pane-collapse-btn{
+  position:absolute;top:.6rem;right:.5rem;width:22px;height:22px;
+  background:var(--surface2);border:1px solid var(--border);border-radius:4px;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;
+  font-size:.65rem;color:var(--muted);z-index:10;transition:color .15s,background .15s;flex-shrink:0;
+}
+.pane-collapse-btn:hover{background:var(--teal);color:#000;border-color:var(--teal);}
+.pane-aside.collapsed .pane-collapse-btn{position:static;margin:0 auto;width:28px;height:auto;padding:.4rem 0;}
+.pane-resizer{
+  width:5px;flex-shrink:0;cursor:col-resize;
+  background:transparent;border-left:1px solid var(--border);
+  transition:background .15s;position:relative;z-index:5;
+}
+.pane-resizer:hover,.pane-resizer.dragging{background:var(--teal);border-color:var(--teal);}
+.pane-main{flex:1;min-width:0;padding:1.5rem 2rem;overflow-y:auto;display:flex;flex-direction:column;gap:1.25rem;}
+
+.nav-label{font-family:var(--mono);font-size:.48rem;color:var(--muted2);letter-spacing:3px;text-transform:uppercase;padding:0 1rem;margin-bottom:.4rem;margin-top:.5rem;}
+.nav-item{display:flex;align-items:flex-start;gap:.6rem;padding:.6rem 1rem;cursor:pointer;transition:all .15s;border-left:2px solid transparent;user-select:none;}
+.nav-item:hover{background:var(--surface2);}
+.nav-item.active{border-left-color:var(--tab-color,var(--gold));background:rgba(255,255,255,.03);}
+.nav-icon{font-size:.9rem;width:1.1rem;text-align:center;flex-shrink:0;margin-top:1px;}
+.nav-text{display:flex;flex-direction:column;gap:.1rem;flex:1;}
+.nav-name{font-family:var(--display);font-size:.88rem;letter-spacing:1.5px;color:var(--muted);transition:color .15s;line-height:1.1;}
+.nav-item:hover .nav-name,.nav-item.active .nav-name{color:var(--tab-color,var(--gold));}
+.nav-desc{font-family:var(--mono);font-size:.52rem;color:var(--muted);line-height:1.4;}
+.nav-conn-dot{width:5px;height:5px;border-radius:50%;background:var(--muted2);margin-top:5px;flex-shrink:0;transition:background .4s;}
+.nav-conn-dot.ok{background:var(--green);box-shadow:0 0 5px var(--green);}
+.nav-spacer{flex:1;}
+.nav-heartbeat{font-family:var(--mono);font-size:.48rem;color:var(--muted2);padding:.3rem 1rem;}
+.nav-version{font-family:var(--mono);font-size:.48rem;color:var(--muted2);padding:.3rem 1rem;}
+.nav-wizard{padding:.5rem 1rem;}
 .section-label{font-family:var(--mono);font-size:.52rem;letter-spacing:3px;text-transform:uppercase;margin-bottom:.6rem;display:flex;align-items:center;gap:.5rem;}
 .section-label::after{content:'';flex:1;height:1px;background:var(--border);}
 .sl-purple{color:var(--purple);} .sl-teal{color:var(--teal);} .sl-gold{color:var(--gold);}
@@ -432,7 +497,8 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
 
 <!-- APP SHELL -->
 <div class="app-shell" id="appShell" style="display:none">
-  <nav class="sidebar">
+  <nav class="sidebar" id="appSidebar">
+    <div class="sidebar-toggle-btn" onclick="toggleSidebar()" id="sidebarToggleBtn" title="Collapse navigation">◀ hide</div>
     <div class="nav-label">NAVIGATION</div>
     <div class="nav-item active" id="nav-kennel" style="--tab-color:var(--c1)" onclick="switchTab('kennel')">
       <span class="nav-icon">🔑</span>
@@ -469,7 +535,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
     </div>
     <div class="nav-spacer"></div>
     <div class="nav-heartbeat" id="navHeartbeat">⟳ —</div>
-    <div style="padding:.5rem 1rem">
+    <div class="nav-wizard">
       <button onclick="showWizard()" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:5px;color:var(--muted);font-family:var(--mono);font-size:.52rem;padding:.35rem .5rem;cursor:pointer;letter-spacing:1px;text-align:left;transition:all .15s" onmouseover="this.style.borderColor='var(--gold)';this.style.color='var(--gold)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">⚙ SETUP WIZARD</button>
     </div>
     <div class="nav-version">v1.0.0 · MILESTONE 4</div>
@@ -479,8 +545,9 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
 
     <!-- THE KENNEL -->
     <div class="tab-panel active" id="panel-kennel">
-      <div class="pane">
-        <div class="pane-aside">
+      <div class="pane" id="pane-kennel">
+        <div class="pane-aside" id="aside-kennel">
+          <button class="pane-collapse-btn" onclick="toggleAside('kennel')" title="Collapse/expand panel">◀</button>
           <div>
             <div class="section-label sl-purple">VAULT STATUS</div>
             <div class="card" style="padding:.65rem 1rem">
@@ -532,6 +599,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
           </div>
         </div>
 
+        <div class="pane-resizer" id="resizer-kennel" onmousedown="startResize(event,'kennel')"></div>
         <div class="pane-main">
           <div class="section-label sl-purple">API CONNECTIONS — THE VAULT</div>
           <p style="font-family:var(--mono);font-size:.6rem;color:var(--muted);margin-top:-.5rem;line-height:1.7">
@@ -758,15 +826,16 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
 
     <!-- THE RETRIEVER -->
     <div class="tab-panel" id="panel-retriever">
-      <div class="pane">
-        <div class="pane-aside">
+      <div class="pane" id="pane-retriever">
+        <div class="pane-aside" id="aside-retriever">
+          <button class="pane-collapse-btn" onclick="toggleAside('retriever')" title="Collapse/expand panel">◀</button>
           <div id="retrieverLfmBanner" class="feature-banner warn" style="display:none">
             ⚠ Last.fm not connected — mood tags limited. Connect in The Kennel for best results.
           </div>
           <div>
             <div class="section-label sl-teal">SCAN SCOPE</div>
             <div class="scope-tabs">
-              <div class="scope-tab active" onclick="setScope('library',this)">FULL LIBRARY</div>
+              <div class="scope-tab active" id="scopeLibraryBtn" onclick="setScope('library',this)">FULL LIBRARY</div>
               <div class="scope-tab" onclick="setScope('subfolder',this)">SUBFOLDER</div>
             </div>
             <div id="subfolderInput" style="display:none">
@@ -780,14 +849,20 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
                   <option value="">— select a folder —</option>
                 </select>
                 <button onclick="browseSubfolder()" style="background:var(--surface2);border:1px solid var(--border);border-radius:5px;color:var(--muted);font-family:var(--mono);font-size:.58rem;padding:.3rem .6rem;cursor:pointer;white-space:nowrap;flex-shrink:0" title="Refresh folder list">⟳</button>
+                <button onclick="addSubfolderToQueue()" style="background:var(--teal);border:none;border-radius:5px;color:#000;font-family:var(--mono);font-size:.58rem;padding:.3rem .6rem;cursor:pointer;white-space:nowrap;flex-shrink:0" title="Add to scan queue">＋ ADD</button>
               </div>
-              <div class="field-hint" id="subfolderHint">Click ⟳ to load folders from your /music mount</div>
+              <div id="subfolderQueue" style="display:none;margin-bottom:.35rem">
+                <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted);letter-spacing:1px;margin-bottom:.25rem">SCAN QUEUE</div>
+                <div id="subfolderQueueList" style="display:flex;flex-direction:column;gap:.2rem"></div>
+              </div>
+              <div class="field-hint" id="subfolderHint">Click ⟳ to load folders · ＋ ADD to queue multiple folders</div>
             </div>
           </div>
           <div>
             <div class="section-label sl-teal">MODE</div>
             <div class="mode-toggle">
               <div class="mode-btn active" onclick="setMode('preview',this)">👁 PREVIEW</div>
+              <div class="mode-btn" onclick="setMode('album_tagger',this)">📀 ALBUM TAGGER</div>
               <div class="mode-btn" onclick="setMode('autopilot',this)">⚡ AUTO-PILOT</div>
             </div>
             <p style="font-family:var(--mono);font-size:.58rem;color:var(--muted);line-height:1.7" id="modeDesc">Preview mode shows proposed vs current metadata. You approve before anything is written to your files.</p>
@@ -812,7 +887,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
               <button class="btn btn-teal" id="btnStartScan" onclick="startScan()">▶ START SCAN</button>
               <div style="display:flex;gap:.5rem">
                 <button class="btn btn-outline btn-sm" id="btnPauseScan" onclick="pauseScan()" disabled style="flex:1">⏸ PAUSE</button>
-                <button class="btn btn-red btn-sm" id="btnStopScan" onclick="stopScan()" disabled style="flex:1">⏹ STOP</button>
+                <button class="btn btn-red btn-sm" id="btnStopScan" onclick="stopScan()" style="flex:1">⏹ STOP</button>
               </div>
             </div>
           </div>
@@ -825,13 +900,16 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
           </div>
         </div>
 
+        <div class="pane-resizer" id="resizer-retriever" onmousedown="startResize(event,'retriever')"></div>
         <div class="pane-main">
           <div class="section-label sl-teal">SCAN PROGRESS</div>
-          <div class="feature-banner recommend">
-            ⭐ Run The Retriever first to pre-populate the metadata cache. The Sniffer and Groomer will be significantly faster once your library is tagged. Chart data is also written permanently to your files as a backup.
+          <div id="bannerTip" class="feature-banner recommend" style="justify-content:space-between;align-items:flex-start">
+            <span>⭐ Run The Retriever first to pre-populate the metadata cache. The Sniffer and Groomer will be significantly faster once your library is tagged. Chart data is also written permanently to your files as a backup.</span>
+            <button onclick="document.getElementById('bannerTip').style.display='none'" style="background:none;border:none;color:inherit;cursor:pointer;font-size:.85rem;padding:0 0 0 .75rem;opacity:.5;flex-shrink:0;line-height:1" title="Dismiss">✕</button>
           </div>
-          <div class="feature-banner" style="background:rgba(255,160,0,.08);border-color:rgba(255,160,0,.3);color:#ffa500;margin-bottom:.75rem">
-            ⚠️ If you use <strong>Lidarr</strong> — go to Lidarr → Settings → Metadata → set <strong>"Tag Audio Files with Metadata"</strong> to <strong>Never</strong> to prevent Lidarr from overwriting ChartHound's tags.
+          <div id="bannerLidarr" class="feature-banner" style="background:rgba(255,160,0,.08);border-color:rgba(255,160,0,.3);color:#ffa500;margin-bottom:.75rem;justify-content:space-between;align-items:flex-start">
+            <span>⚠️ If you use <strong>Lidarr</strong> — go to Lidarr → Settings → Metadata → set <strong>"Tag Audio Files with Metadata"</strong> to <strong>Never</strong> to prevent Lidarr from overwriting ChartHound's tags.</span>
+            <button onclick="document.getElementById('bannerLidarr').style.display='none'" style="background:none;border:none;color:inherit;cursor:pointer;font-size:.85rem;padding:0 0 0 .75rem;opacity:.5;flex-shrink:0;line-height:1" title="Dismiss">✕</button>
           </div>
           <div class="card">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem">
@@ -859,20 +937,130 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
             <div class="section-label sl-teal">PREVIEW RESULTS</div>
             <div style="display:flex;gap:.5rem;margin-bottom:.75rem;align-items:center">
               <button class="btn btn-teal btn-sm" onclick="writeSelected()">✓ WRITE SELECTED</button>
+              <button class="btn btn-pink btn-sm" onclick="openOverride()">✏️ OVERRIDE GENRES</button>
               <button class="btn btn-outline btn-sm" onclick="selectAll(true)">SELECT ALL</button>
               <button class="btn btn-outline btn-sm" onclick="selectAll(false)">DESELECT ALL</button>
-              <span style="font-family:var(--mono);font-size:.6rem;color:var(--muted);margin-left:auto" id="selectedCount">0 selected</span>
+              <input type="text" placeholder="Filter results…" oninput="retFilter(this.value)" style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:var(--mono);font-size:.58rem;padding:.3rem .5rem;margin-left:auto;width:160px">
+              <span style="font-family:var(--mono);font-size:.6rem;color:var(--muted)" id="selectedCount">0 selected</span>
             </div>
             <div class="preview-table-wrap">
               <table class="preview-table">
-                <thead><tr>
-                  <th style="width:30px"></th><th>ARTIST</th><th>TITLE</th>
-                  <th>CURRENT GENRES</th><th>PROPOSED GENRES</th><th>MOODS</th><th>⭐</th><th>YEAR</th><th>CONF</th>
+                <thead><tr id="ret-sort-row" style="cursor:pointer;user-select:none">
+                  <th style="width:30px"><input type="checkbox" id="ret-select-all" onchange="retSelectAll(this.checked)" style="accent-color:var(--teal)"></th>
+                  <th onclick="retSort('artist')" title="Sort by Artist">ARTIST <span id="ret-sort-artist"></span></th>
+                  <th onclick="retSort('title')" title="Sort by Title">TITLE <span id="ret-sort-title"></span></th>
+                  <th onclick="retSort('current')" title="Sort by Current Genre">CURRENT GENRES <span id="ret-sort-current"></span></th>
+                  <th onclick="retSort('proposed')" title="Sort by Proposed Genre">PROPOSED GENRES <span id="ret-sort-proposed"></span></th>
+                  <th>MOODS</th>
+                  <th onclick="retSort('year')" title="Sort by Year">YEAR <span id="ret-sort-year"></span></th>
+                  <th onclick="retSort('conf')" title="Sort by Confidence">CONF <span id="ret-sort-conf"></span></th>
                 </tr></thead>
                 <tbody id="previewTableBody"></tbody>
               </table>
             </div>
           </div>
+
+          <!-- MANUAL OVERRIDE PANEL -->
+          <div id="overridePanel" style="display:none;margin-top:1rem;padding:1rem;background:var(--surface2);border:1px solid var(--border);border-radius:8px">
+            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--pink);margin-bottom:.75rem">✏️ MANUAL GENRE OVERRIDE</div>
+            <div style="font-family:var(--mono);font-size:.58rem;color:var(--muted);margin-bottom:.75rem" id="overrideCount">0 tracks selected for override</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.5rem;margin-bottom:.5rem">
+              <div>
+                <div style="font-family:var(--mono);font-size:.48rem;color:var(--muted);margin-bottom:.2rem">GENRE 1</div>
+                <select id="override-g1" style="width:100%;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:.3rem;font-family:var(--mono);font-size:.58rem">
+                  <option value="">— select —</option>
+                </select>
+              </div>
+              <div>
+                <div style="font-family:var(--mono);font-size:.48rem;color:var(--muted);margin-bottom:.2rem">GENRE 2</div>
+                <select id="override-g2" style="width:100%;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:.3rem;font-family:var(--mono);font-size:.58rem">
+                  <option value="">— optional —</option>
+                </select>
+              </div>
+              <div>
+                <div style="font-family:var(--mono);font-size:.48rem;color:var(--muted);margin-bottom:.2rem">GENRE 3</div>
+                <select id="override-g3" style="width:100%;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:.3rem;font-family:var(--mono);font-size:.58rem">
+                  <option value="">— optional —</option>
+                </select>
+              </div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.5rem;margin-bottom:.75rem">
+              <div>
+                <div style="font-family:var(--mono);font-size:.48rem;color:var(--muted);margin-bottom:.2rem">MOOD 1</div>
+                <select id="override-m1" style="width:100%;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:.3rem;font-family:var(--mono);font-size:.58rem">
+                  <option value="">— select —</option>
+                </select>
+              </div>
+              <div>
+                <div style="font-family:var(--mono);font-size:.48rem;color:var(--muted);margin-bottom:.2rem">MOOD 2</div>
+                <select id="override-m2" style="width:100%;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:.3rem;font-family:var(--mono);font-size:.58rem">
+                  <option value="">— optional —</option>
+                </select>
+              </div>
+              <div>
+                <div style="font-family:var(--mono);font-size:.48rem;color:var(--muted);margin-bottom:.2rem">MOOD 3</div>
+                <select id="override-m3" style="width:100%;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:.3rem;font-family:var(--mono);font-size:.58rem">
+                  <option value="">— optional —</option>
+                </select>
+              </div>
+            </div>
+            <div style="display:flex;gap:.5rem">
+              <button class="btn btn-pink btn-sm" onclick="applyOverride()">✓ WRITE OVERRIDE TO SELECTED</button>
+              <button class="btn btn-outline btn-sm" onclick="closeOverride()">✕ CANCEL</button>
+            </div>
+          </div>
+
+          <!-- ALBUM TAGGER PANEL -->
+          <div id="albumTaggerSection" style="display:none">
+            <div class="section-label sl-teal">ALBUM TAGGER</div>
+
+            <!-- Mode explanation -->
+            <div style="font-family:var(--mono);font-size:.58rem;color:var(--muted);margin-bottom:.6rem;line-height:1.8;padding:.5rem;background:var(--surface);border-radius:6px;border:1px solid var(--border)">
+              <strong style="color:var(--teal)">📂 LOCAL FIRST</strong> — Reads tags straight from your files. No internet. No API calls. Instant.<br>
+              Each card = one folder on disk. Per card you choose:<br>
+              <strong style="color:var(--teal)">🔍 LOOKUP</strong> — Go online to MusicBrainz for a genre recommendation for this album.<br>
+              <strong style="color:var(--pink)">✏️ OVERRIDE</strong> — Skip the internet. You set Genre, Mood, Album name, Year manually.<br>
+              <strong style="color:var(--muted)">✓ KEEP</strong> — Tags look fine. Leave them alone.<br>
+              Nothing writes to your files until you click a write button.
+            </div>
+
+            <!-- Step 1: Read Tags -->
+            <div id="atStep1" style="margin-bottom:.75rem">
+              <button class="btn btn-teal" onclick="atReadTags()" id="atReadBtn" style="width:100%;padding:.6rem;font-size:.65rem;letter-spacing:2px">
+                📂 READ TAGS FROM FILES
+              </button>
+              <div id="atLoadingMsg" style="display:none;font-family:var(--mono);font-size:.55rem;color:var(--teal);margin-top:.4rem;text-align:center">
+                ⟳ Reading files from disk…
+              </div>
+            </div>
+
+            <!-- Results area -->
+            <div id="atStep1Results" style="display:none">
+              <!-- Summary bar -->
+              <div style="display:flex;gap:.5rem;margin-bottom:.6rem;align-items:center;flex-wrap:wrap">
+                <span style="font-family:var(--mono);font-size:.55rem;color:var(--teal)" id="atStatusBadge">0 folders</span>
+                <span style="font-family:var(--mono);font-size:.5rem;color:var(--muted)" id="atPageBadge"></span>
+              </div>
+              <!-- Bulk action buttons -->
+              <div style="display:flex;gap:.35rem;margin-bottom:.75rem;flex-wrap:wrap">
+                <button class="btn btn-outline btn-sm" onclick="atWriteAllOverrides()">⬇ WRITE ALL OVERRIDES</button>
+                <button class="btn btn-outline btn-sm" onclick="atWriteAllAccepted()">⬇ WRITE ALL ACCEPTED</button>
+                <button class="btn btn-outline btn-sm" onclick="atKeepAll()">✓ KEEP ALL</button>
+              </div>
+
+              <!-- Cards container -->
+              <div id="albumTaggerCards" style="display:flex;flex-direction:column;gap:.75rem"></div>
+
+              <!-- Load More button -->
+              <div id="atLoadMoreWrap" style="display:none;margin-top:.75rem;text-align:center">
+                <button class="btn btn-outline" id="atLoadMoreBtn" onclick="atLoadMore()" style="font-size:.62rem;letter-spacing:1.5px;width:100%;padding:.55rem">
+                  ⬇ LOAD MORE FOLDERS
+                </button>
+                <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted);margin-top:.3rem" id="atLoadMoreHint"></div>
+              </div>
+            </div>
+          </div>
+
         </div>
       </div>
     </div>
@@ -930,9 +1118,8 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
                 <span style="font-family:var(--mono);font-size:.6rem;color:var(--muted)">Reference entries</span>
                 <span style="font-family:var(--display);font-size:1.1rem;color:var(--teal)" id="grm-ref-count">—</span>
               </div>
-              <div style="font-family:var(--mono);font-size:.55rem;color:var(--muted2);margin-bottom:.6rem" id="grm-ref-status">Not loaded</div>
-              <button onclick="grmLoadCharts()" id="grm-load-btn" style="width:100%;padding:.45rem;background:var(--teal);color:#000;border:none;border-radius:5px;font-family:var(--mono);font-size:.6rem;letter-spacing:1px;cursor:pointer;transition:all .2s">🔄 LOAD CHART DATA</button>
-              <div style="font-family:var(--mono);font-size:.52rem;color:var(--muted2);margin-top:.4rem;line-height:1.6">Downloads Billboard Hot 100 (1958–present) + CCM + Country + R&B + Rock + UK. Free, no API key needed.</div>
+              <div style="font-family:var(--mono);font-size:.55rem;color:var(--muted2);margin-bottom:.6rem" id="grm-ref-status">Loading…</div>
+              <div style="font-family:var(--mono);font-size:.52rem;color:var(--muted2);line-height:1.6">Historical Billboard chart data ships pre-loaded. No downloads needed.</div>
             </div>
           </div>
 
@@ -971,11 +1158,19 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
             <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem;display:flex;flex-direction:column;gap:.65rem">
               <div>
                 <div style="display:flex;justify-content:space-between;margin-bottom:.3rem">
-                  <label style="font-size:.7rem;color:var(--muted)">Peak Position</label>
+                  <label style="font-size:.7rem;color:var(--muted)">Peak Position — From</label>
+                  <span style="font-family:var(--display);font-size:1.05rem;color:var(--amber)" id="grm-peak-min-display">#1</span>
+                </div>
+                <input type="range" id="grm-peak-min" min="1" max="100" value="1" oninput="grmUpdatePeakMin(this.value)" style="width:100%">
+                <div style="display:flex;justify-content:space-between;margin-top:.2rem"><span style="font-size:.52rem;color:var(--muted);font-family:var(--mono)">#1</span><span style="font-size:.52rem;color:var(--muted);font-family:var(--mono)">#100</span></div>
+              </div>
+              <div>
+                <div style="display:flex;justify-content:space-between;margin-bottom:.3rem">
+                  <label style="font-size:.7rem;color:var(--muted)">Peak Position — To</label>
                   <span style="font-family:var(--display);font-size:1.05rem;color:var(--amber)" id="grm-peak-display">Top 40</span>
                 </div>
                 <input type="range" id="grm-peak" min="1" max="100" value="40" oninput="grmUpdatePeak(this.value)" style="width:100%">
-                <div style="display:flex;justify-content:space-between;margin-top:.2rem"><span style="font-size:.52rem;color:var(--muted);font-family:var(--mono)">#1 Only</span><span style="font-size:.52rem;color:var(--muted);font-family:var(--mono)">Top 100</span></div>
+                <div style="display:flex;justify-content:space-between;margin-top:.2rem"><span style="font-size:.52rem;color:var(--muted);font-family:var(--mono)">#1</span><span style="font-size:.52rem;color:var(--muted);font-family:var(--mono)">#100</span></div>
               </div>
               <div>
                 <div style="display:flex;justify-content:space-between;margin-bottom:.3rem">
@@ -997,7 +1192,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
           <!-- PLAYLIST NAME -->
           <div>
             <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--pink);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">PLAYLIST NAME<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
-            <input type="text" id="grm-playlist-name" value="Top 40 Hits" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:.76rem;padding:.55rem .7rem;outline:none;box-sizing:border-box">
+            <input type="text" id="grm-playlist-name" value="Chart Hits" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:.76rem;padding:.55rem .7rem;outline:none;box-sizing:border-box">
           </div>
 
           <!-- OPTIONS -->
@@ -1078,14 +1273,14 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
             <div style="overflow-x:auto">
               <table style="width:100%;border-collapse:collapse;font-family:var(--mono);font-size:.6rem">
                 <thead>
-                  <tr style="background:var(--surface2)">
+                  <tr style="background:var(--surface2)" id="grm-sort-row">
                     <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap"><input type="checkbox" id="grm-select-all" onchange="grmSelectAll(this.checked)" style="accent-color:var(--pink)"></th>
-                    <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap">ARTIST</th>
-                    <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap">TITLE</th>
-                    <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap">YEAR</th>
-                    <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap">⭐</th>
-                    <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap">PEAK</th>
-                    <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap">WEEKS</th>
+                    <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer" onclick="grmSort('artist')">ARTIST <span id="sort-ind-artist"></span></th>
+                    <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer" onclick="grmSort('title')">TITLE <span id="sort-ind-title"></span></th>
+                    <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer" onclick="grmSort('year')">YEAR <span id="sort-ind-year"></span></th>
+                    <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer" onclick="grmSort('stars')">⭐ <span id="sort-ind-stars"></span></th>
+                    <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer" onclick="grmSort('peak')">PEAK <span id="sort-ind-peak"></span></th>
+                    <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer" onclick="grmSort('weeks')">WEEKS <span id="sort-ind-weeks"></span></th>
                     <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap">CHARTS</th>
                   </tr>
                 </thead>
@@ -1102,8 +1297,8 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
           <!-- Push Bar -->
           <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:.9rem 1.25rem;display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
             <div style="flex:1;min-width:160px">
-              <div style="font-family:var(--display);font-size:.95rem;letter-spacing:1px" id="grm-bar-title">Playlist: Top 40 Hits</div>
-              <div style="font-family:var(--mono);font-size:.6rem;color:var(--muted);margin-top:.15rem" id="grm-bar-sub">0 matched songs ready to push</div>
+              <div style="font-family:var(--display);font-size:.95rem;letter-spacing:1px" id="grm-bar-title">Playlist: Chart Hits</div>
+              <div style="font-family:var(--mono);font-size:.6rem;color:var(--muted);margin-top:.15rem" id="grm-bar-sub">0 matched songs ready to push · <span style="color:var(--amber)">Push capped at 15,000 tracks</span> · Use ⬇ M3U for full results</div>
             </div>
             <button id="grm-push-plex" onclick="grmPushPlaylist('plex')" disabled title="Scan Plex library first" style="padding:.45rem 1rem;background:#e5a00d;color:#000;border:none;border-radius:5px;font-family:var(--mono);font-size:.65rem;cursor:pointer;opacity:.35;transition:all .2s">↑ PLEX</button>
             <button id="grm-push-emby" onclick="grmPushPlaylist('emby')" disabled title="Scan Emby library first" style="padding:.45rem 1rem;background:#52b54b;color:#000;border:none;border-radius:5px;font-family:var(--mono);font-size:.65rem;cursor:pointer;opacity:.35;transition:all .2s">↑ EMBY</button>
@@ -1500,24 +1695,70 @@ function setScope(scope, el) {
   el.classList.add('active');
   document.getElementById('subfolderInput').style.display = scope === 'subfolder' ? 'block' : 'none';
 }
+
 function setMode(mode, el) {
   currentMode = mode;
   document.querySelectorAll('.mode-btn').forEach(t => t.classList.remove('active'));
   el.classList.add('active');
-  document.getElementById('modeDesc').textContent = mode === 'preview'
-    ? 'Preview mode shows proposed vs current metadata. You approve before anything is written to your files.'
-    : 'Auto-Pilot writes metadata to files immediately without preview. Test on a small subfolder first.';
+  const desc = {
+    preview:
+      '🌐 GOES ONLINE — fetches proposed tags from MusicBrainz, Last.fm, Deezer & more in chunks. ' +
+      'Results appear live as they come in. You review and approve before anything writes to your files. ' +
+      'You can Override any individual track before writing.',
+    album_tagger:
+      '📂 LOCAL FIRST — reads tags straight from your files instantly. No internet. No API calls. ' +
+      'One card per folder. Choose LOOKUP (goes online for that album), OVERRIDE (you set tags manually), ' +
+      'or KEEP (leave as-is). Nothing writes until you say so.',
+    autopilot:
+      '⚡ AUTO-PILOT — goes online and writes metadata automatically in the background. ' +
+      'Skips tracks you have already manually verified. Low-confidence results go to a Review Queue instead of writing. ' +
+      'Test on a small subfolder first — Full Library is disabled in this mode.',
+  };
+  document.getElementById('modeDesc').textContent = desc[mode] || desc.preview;
+  document.getElementById('albumTaggerSection').style.display = mode === 'album_tagger' ? 'block' : 'none';
+  document.getElementById('previewSection').style.display = mode === 'preview' ? 'block' : 'none';
+
+  // Disable Full Library for Album Tagger and Auto-Pilot — subfolder only
+  const libBtn = document.getElementById('scopeLibraryBtn');
+  const isLibraryRestricted = (mode === 'album_tagger' || mode === 'autopilot');
+  if (libBtn) {
+    libBtn.style.opacity   = isLibraryRestricted ? '0.35' : '1';
+    libBtn.style.cursor    = isLibraryRestricted ? 'not-allowed' : 'pointer';
+    libBtn.title           = isLibraryRestricted
+      ? 'Full Library is disabled in this mode — use Subfolder to keep things manageable'
+      : '';
+    libBtn.onclick = isLibraryRestricted
+      ? function() { toast('Use Subfolder mode for Album Tagger and Auto-Pilot.', 'warn'); }
+      : function() { setScope('library', libBtn); };
+  }
+
+  // If Library was selected and mode needs subfolder, auto-switch scope
+  if (isLibraryRestricted && currentScope === 'library') {
+    currentScope = 'subfolder';
+    document.querySelectorAll('.scope-tab').forEach(t => t.classList.remove('active'));
+    document.getElementById('subfolderInput').style.display = 'block';
+    addLog('ℹ️ Switched to Subfolder mode — Full Library is not available in this mode.', 'info');
+  }
+
+  // Hide START SCAN in Album Tagger — READ TAGS button is the entry point
+  const startBtn = document.getElementById('btnStartScan');
+  if (startBtn) startBtn.style.display = mode === 'album_tagger' ? 'none' : '';
 }
 async function startScan() {
   const body = {scope:currentScope, mode:currentMode, chunk_size:parseInt(document.getElementById('chunkSlider').value)};
   if (currentScope === 'subfolder') {
-    const sel = document.getElementById('subfolderPath');
-    const subfolder = sel ? sel.value.trim() : '';
-    if (!subfolder || subfolder === '__up__' || subfolder === '') {
-      toast('Select a subfolder first using the ⟳ button, or switch to Full Library mode.', 'warn');
-      return;
+    if (_subfolderQueue.length > 0) {
+      body.subfolders = _subfolderQueue;
+      body.scope = 'subfolder';
+    } else {
+      const sel = document.getElementById('subfolderPath');
+      const subfolder = sel ? sel.value.trim() : '';
+      if (!subfolder || subfolder === '__up__' || subfolder === '') {
+        toast('Select a subfolder first using the ⟳ button, or switch to Full Library mode.', 'warn');
+        return;
+      }
+      body.subfolder = subfolder;
     }
-    body.subfolder = subfolder;
   }
   addLog('Starting scan…', 'info');
   addLog('⟳ Fetching metadata from MusicBrainz · Last.fm · Discogs · Deezer · ListenBrainz — please wait…', 'info');
@@ -1566,8 +1807,12 @@ async function pauseScan() {
 }
 async function stopScan() {
   if (scanPollTimer) { clearInterval(scanPollTimer); scanPollTimer = null; }
-  await fetch(`${API}/api/retriever/scan/stop`, {method:'POST', headers:authHdrs()});
+  // Always call stop endpoint — works even if scanJobId is null (kills any running job)
+  try {
+    await fetch(`${API}/api/retriever/scan/stop`, {method:'POST', headers:authHdrs()});
+  } catch(e) { addLog('Stop request failed: ' + e.message, 'err'); }
   scanPaused = false;
+  scanJobId = null;
   document.getElementById('btnPauseScan').textContent = '⏸ PAUSE';
   addLog('Scan stopped.', 'warn');
   document.getElementById('btnStartScan').disabled = false;
@@ -1616,38 +1861,10 @@ async function loadPreviewResults() {
     const tracks = await r.json();
     if (!tracks.length) return;
     document.getElementById('previewSection').style.display = 'block';
-    const tbody = document.getElementById('previewTableBody');
-    tbody.innerHTML = '';
-    const existing = new Set([...tbody.querySelectorAll('tr[data-id]')].map(r => r.dataset.id));
-    tracks.forEach(t => {
-      if (existing.has(String(t.track_id))) return;
-      const proposed = [t.genre_1,t.genre_2,t.genre_3].filter(Boolean).join(', ') || '—';
-      const current = t.current_genre || '—';
-      const confClass = t.confidence==='high'?'conf-high':t.confidence==='medium'?'conf-medium':'conf-low';
-      const changed = proposed !== '—' && current !== proposed;
-      // Mood pills
-      const moodList = [t.mood_1,t.mood_2,t.mood_3].filter(Boolean);
-      const moodHTML = moodList.length
-        ? moodList.map(m=>`<span style="display:inline-block;font-size:.5rem;padding:.1rem .35rem;border-radius:10px;background:rgba(192,132,252,.12);border:1px solid rgba(192,132,252,.3);color:var(--purple);margin:.1rem .1rem 0 0;white-space:nowrap">${esc(m)}</span>`).join('')
-        : '<span style="color:var(--muted2)">—</span>';
-      // Star rating from chart data
-      const stars = t.star_rating || 0;
-      const starsHTML = stars > 0 ? '★'.repeat(stars) + '<span style="color:var(--muted2)">★</span>'.repeat(5-stars) : '<span style="color:var(--muted2)">—</span>';
-      const row = document.createElement('tr');
-      row.dataset.id = t.track_id;
-      row.innerHTML = `
-        <td><input type="checkbox" onchange="toggleTrack(${t.track_id},this.checked)" style="accent-color:var(--teal)"></td>
-        <td style="color:var(--muted)">${esc(t.tag_artist||'')}</td>
-        <td style="color:var(--muted)">${esc(t.title||'')}</td>
-        <td style="color:var(--muted);font-size:.7rem">${esc(current)}</td>
-        <td class="tag-proposed" style="${changed?'color:var(--teal)':''}">${esc(proposed)}</td>
-        <td>${moodHTML}</td>
-        <td style="color:var(--amber);font-size:.65rem;letter-spacing:1px">${starsHTML}</td>
-        <td class="tag-proposed">${t.year||'—'}</td>
-        <td><span class="confidence-dot ${confClass}"></span>${t.confidence||'low'}</td>`;
-      tbody.appendChild(row);
-    });
+    _retAllTracks = tracks;
+    retRenderTable(tracks);
     document.getElementById('statMatched').textContent = tracks.length;
+    if (currentMode === 'album_tagger') loadAlbumTagger();
   } catch(e) { addLog(`Preview load error: ${e.message}`, 'err'); }
 }
 function toggleTrack(id, checked) {
@@ -1662,6 +1879,833 @@ function selectAll(checked) {
   });
   document.getElementById('selectedCount').textContent = `${selectedTrackIds.size} selected`;
 }
+
+function retSelectAll(checked) { selectAll(checked); }
+
+// ── Retriever sortable columns ────────────────────────────────────────────────
+let _retSortKey = 'artist';
+let _retSortAsc = true;
+let _retAllTracks = [];
+
+function retSort(key) {
+  if (_retSortKey === key) { _retSortAsc = !_retSortAsc; }
+  else { _retSortKey = key; _retSortAsc = true; }
+  ['artist','title','current','proposed','year','conf'].forEach(k => {
+    const el = document.getElementById('ret-sort-' + k);
+    if (el) el.textContent = k === _retSortKey ? (_retSortAsc ? ' ▲' : ' ▼') : '';
+  });
+  retRenderTable(_retAllTracks);
+}
+
+function retFilter(q) {
+  const lq = q.toLowerCase();
+  document.querySelectorAll('#previewTableBody tr[data-id]').forEach(tr => {
+    tr.style.display = (tr.dataset.text || '').includes(lq) ? '' : 'none';
+  });
+}
+
+function retRenderTable(tracks) {
+  const _sortFns = {
+    artist:   t => (t.tag_artist || '').toLowerCase(),
+    title:    t => (t.title || '').toLowerCase(),
+    current:  t => (t.current_genre || '').toLowerCase(),
+    proposed: t => ([t.genre_1,t.genre_2,t.genre_3].filter(Boolean).join(',') || '').toLowerCase(),
+    year:     t => parseInt(t.year) || 9999,
+    conf:     t => t.confidence || '',
+  };
+  const fn = _sortFns[_retSortKey] || _sortFns.artist;
+  tracks = [...tracks].sort((a,b) => {
+    const av = fn(a), bv = fn(b);
+    if (av < bv) return _retSortAsc ? -1 : 1;
+    if (av > bv) return _retSortAsc ? 1 : -1;
+    return 0;
+  });
+  const tbody = document.getElementById('previewTableBody');
+  tbody.innerHTML = '';
+  tracks.forEach(t => {
+    const proposed = [t.genre_1,t.genre_2,t.genre_3].filter(Boolean).join(', ') || '—';
+    const current  = t.current_genre || '—';
+    const confClass = t.confidence==='high'?'conf-high':t.confidence==='medium'?'conf-medium':'conf-low';
+    const changed = proposed !== '—' && current !== proposed;
+    const moodList = [t.mood_1,t.mood_2,t.mood_3].filter(Boolean);
+    const moodHTML = moodList.length
+      ? moodList.map(m=>`<span style="display:inline-block;font-size:.5rem;padding:.1rem .35rem;border-radius:10px;background:rgba(192,132,252,.12);border:1px solid rgba(192,132,252,.3);color:var(--purple);margin:.1rem .1rem 0 0;white-space:nowrap">${esc(m)}</span>`).join('')
+      : '<span style="color:var(--muted2)">—</span>';
+    const row = document.createElement('tr');
+    row.dataset.id   = t.track_id;
+    row.dataset.text = `${(t.tag_artist||'').toLowerCase()} ${(t.title||'').toLowerCase()} ${proposed.toLowerCase()} ${current.toLowerCase()}`;
+    row.innerHTML = `
+      <td><input type="checkbox" onchange="toggleTrack(${t.track_id},this.checked)" style="accent-color:var(--teal)"></td>
+      <td style="color:var(--muted)">${esc(t.tag_artist||'')}</td>
+      <td style="color:var(--muted)">${esc(t.title||'')}</td>
+      <td style="color:var(--muted);font-size:.7rem">${esc(current)}</td>
+      <td class="tag-proposed" style="${changed?'color:var(--teal)':''}">${esc(proposed)}</td>
+      <td>${moodHTML}</td>
+      <td class="tag-proposed">${t.year||'—'}</td>
+      <td><span class="confidence-dot ${confClass}"></span>${t.confidence||'low'}</td>`;
+    tbody.appendChild(row);
+  });
+}
+
+// ── Multi-folder queue ────────────────────────────────────────────────────────
+let _subfolderQueue = [];
+
+function addSubfolderToQueue() {
+  const sel = document.getElementById('subfolderPath');
+  const val = sel ? sel.value.trim() : '';
+  if (!val || val === '__up__') { toast('Select a folder first.', 'warn'); return; }
+  const name = sel.options[sel.selectedIndex]?.text || val;
+  if (_subfolderQueue.includes(val)) { toast('Already in queue.', 'warn'); return; }
+  _subfolderQueue.push(val);
+  renderSubfolderQueue();
+}
+
+function removeFromQueue(idx) {
+  _subfolderQueue.splice(idx, 1);
+  renderSubfolderQueue();
+}
+
+function renderSubfolderQueue() {
+  const wrap = document.getElementById('subfolderQueue');
+  const list = document.getElementById('subfolderQueueList');
+  if (!_subfolderQueue.length) { wrap.style.display = 'none'; return; }
+  wrap.style.display = 'block';
+  list.innerHTML = _subfolderQueue.map((p,i) => `
+    <div style="display:flex;align-items:center;gap:.4rem;font-family:var(--mono);font-size:.55rem;color:var(--text);background:var(--surface);padding:.3rem .5rem;border-radius:4px">
+      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(p)}">${esc(p.split('/').pop())}</span>
+      <button onclick="removeFromQueue(${i})" style="background:none;border:none;color:var(--muted2);cursor:pointer;font-size:.7rem;padding:0">✕</button>
+    </div>`).join('');
+}
+
+// ── Override panel ────────────────────────────────────────────────────────────
+const GENRE_LIST = [
+  // Rock
+  'Rock','Hard Rock','Classic Rock','Soft Rock','Alternative Rock','Indie Rock',
+  'Progressive Rock','Punk Rock','Glam Rock','Blues Rock','Southern Rock','Arena Rock',
+  'Rockabilly','New Wave','Psychedelic Rock',
+  // Pop
+  'Pop','Synth-Pop','Dance-Pop','Country Pop','Pop Rock','Indie Pop','Dream Pop',
+  'Bubblegum Pop','Classic Hits','Oldies','Easy Listening','Adult Contemporary',
+  // Country
+  'Country','Country Rock','Bluegrass','Americana','Outlaw Country','Western',
+  // R&B / Soul / Funk
+  'R&B','Soul','Funk','Neo Soul','Motown','Rhythm and Blues',
+  // Hip-Hop / Rap
+  'Hip-Hop','Rap',
+  // Electronic / Dance
+  'Electronic','EDM','House','Dance','Techno','Synthwave','Disco','Trance',
+  // Jazz / Blues / Big Band
+  'Jazz','Blues','Smooth Jazz','Big Band','Swing','Bebop',
+  // Metal
+  'Metal','Heavy Metal','Death Metal','Power Metal',
+  // Folk / Acoustic
+  'Folk','Acoustic','Singer-Songwriter',
+  // Classical
+  'Classical','Orchestral','Chamber Music',
+  // Christian / Gospel
+  'CCM','Contemporary Christian','Worship','Gospel','Southern Gospel',
+  'Urban Gospel','Christian Rock','Christian Pop','Inspirational','Devotional',
+  // Special / Mixed
+  'Compilation','Mixed','Novelty','Comedy','Funny','Spoken Word','Soundtrack',
+  'Holiday','Children\'s','Instrumental',
+  // Custom — type your own
+  'Custom…',
+];
+const MOOD_LIST = [
+  'Energetic','Upbeat','Happy','Joyful','Feel Good','Singalong',
+  'Chill','Peaceful','Relaxing','Laid Back','Dreamy',
+  'Romantic','Warm','Nostalgic',
+  'Melancholic','Emotional','Bittersweet',
+  'Dark','Intense','Powerful','Anthemic','Epic',
+  'Soulful','Funky','Groovy',
+  'Uplifting','Inspirational','Motivating',
+  'Party','Driving','Workout',
+  'Worshipful','Reverent','Devotional','Spiritual',
+  // Custom — type your own
+  'Custom…',
+];
+
+function populateDropdowns() {
+  ['override-g1','override-g2','override-g3'].forEach((id,i) => {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    const first = i === 0 ? '— select —' : '— optional —';
+    sel.innerHTML = `<option value="">${first}</option>` +
+      GENRE_LIST.map(g => `<option value="${esc(g)}">${esc(g)}</option>`).join('');
+    sel.onchange = () => handleCustomOption(sel);
+  });
+  ['override-m1','override-m2','override-m3'].forEach((id,i) => {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    const first = i === 0 ? '— select —' : '— optional —';
+    sel.innerHTML = `<option value="">${first}</option>` +
+      MOOD_LIST.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('');
+    sel.onchange = () => handleCustomOption(sel);
+  });
+}
+
+// When "Custom…" is selected, show a text input below the dropdown.
+// User types their value, presses Enter or clicks away — it gets added
+// to the dropdown as a selected option and the input disappears.
+function handleCustomOption(sel) {
+  if (sel.value !== 'Custom…') {
+    // Remove any existing custom input for this select
+    const existing = document.getElementById('custom-input-' + sel.id);
+    if (existing) existing.remove();
+    return;
+  }
+
+  // Don't add twice
+  if (document.getElementById('custom-input-' + sel.id)) return;
+
+  const input = document.createElement('input');
+  input.type        = 'text';
+  input.id          = 'custom-input-' + sel.id;
+  input.placeholder = 'Type custom value, press Enter…';
+  input.style.cssText =
+    'width:100%;box-sizing:border-box;margin-top:.2rem;display:block;' +
+    'background:var(--surface2);color:var(--text);' +
+    'border:1px solid var(--teal);border-radius:4px;' +
+    'padding:.25rem .4rem;font-family:var(--mono);font-size:.52rem;';
+
+  function commit() {
+    const val = input.value.trim();
+    if (val) {
+      // Add as new option and select it
+      const opt = document.createElement('option');
+      opt.value = val;
+      opt.textContent = val;
+      sel.appendChild(opt);
+      sel.value = val;
+    } else {
+      // Nothing typed — revert to blank
+      sel.value = '';
+    }
+    input.remove();
+  }
+
+  input.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') { e.preventDefault(); commit(); }
+    if (e.key === 'Escape') { sel.value = ''; input.remove(); }
+  });
+  input.addEventListener('blur', commit);
+
+  // Insert directly after the select element
+  sel.parentNode.insertBefore(input, sel.nextSibling);
+  input.focus();
+}
+
+function openOverride() {
+  if (!selectedTrackIds.size) { toast('Select tracks to override first.', 'warn'); return; }
+  populateDropdowns();
+  document.getElementById('overrideCount').textContent = `${selectedTrackIds.size} track(s) selected for override`;
+  document.getElementById('overridePanel').style.display = 'block';
+  document.getElementById('overridePanel').scrollIntoView({behavior:'smooth'});
+}
+
+function closeOverride() {
+  document.getElementById('overridePanel').style.display = 'none';
+}
+
+async function applyOverride() {
+  const genres = ['override-g1','override-g2','override-g3']
+    .map(id => document.getElementById(id)?.value || '').filter(Boolean);
+  const moods  = ['override-m1','override-m2','override-m3']
+    .map(id => document.getElementById(id)?.value || '').filter(Boolean);
+  if (!genres.length) { toast('Select at least one genre.', 'warn'); return; }
+  try {
+    const r = await fetch(`${API}/api/retriever/override`, {
+      method:'POST', headers:authHdrs(),
+      body: JSON.stringify({track_ids:[...selectedTrackIds], genres, moods})
+    });
+    const d = await r.json();
+    if (r.ok) {
+      toast(`✓ ${d.message}`, 'ok');
+      addLog(`✓ ${d.message}`, 'ok');
+      closeOverride();
+      loadPreviewResults();
+    } else toast(`Override failed: ${d.detail || 'unknown error'}`, 'error');
+  } catch(e) { toast(`Server error: ${e.message}`, 'error'); }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  ALBUM TAGGER — Folder-based, paginated, enhanced override
+//  Cards group by FOLDER PATH (not album tag). 20 folders per page.
+//  Override panel: Genre, Mood, Album name, Album Artist, Year,
+//                  Compilation flag, Clear MBIDs.
+//  Cards disappear on successful write — work pane = live to-do list.
+// ══════════════════════════════════════════════════════════════════════════════
+
+// State store — keyed by full folder path (unique, no collisions across folders)
+let _atAlbums     = {};
+let _atPaths      = [];     // current selected paths
+let _atOffset     = 0;      // pagination cursor
+let _atPageSize   = 20;
+let _atTotalFolders = 0;
+
+async function atReadTags() {
+  // Collect selected paths
+  let paths = [];
+  if (_subfolderQueue.length > 0) {
+    paths = [..._subfolderQueue];
+  } else {
+    const sel = document.getElementById('subfolderPath');
+    const val = sel ? sel.value.trim() : '';
+    if (val && val !== '__up__') paths = [val];
+  }
+  if (!paths.length) {
+    toast('Select a folder in SUBFOLDER mode first.', 'warn');
+    return;
+  }
+
+  // Reset pagination for a fresh load
+  _atPaths    = paths;
+  _atOffset   = 0;
+  _atAlbums   = {};
+  const cards = document.getElementById('albumTaggerCards');
+  cards.innerHTML = '';
+  document.getElementById('atStep1Results').style.display = 'none';
+
+  await _atFetchPage(true);
+}
+
+async function atLoadMore() {
+  const btn = document.getElementById('atLoadMoreBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '⟳ Loading…'; }
+  await _atFetchPage(false);
+  if (btn) { btn.disabled = false; btn.textContent = '⬇ LOAD MORE FOLDERS'; }
+}
+
+async function _atFetchPage(isFirst) {
+  const btn     = document.getElementById('atReadBtn');
+  const loading = document.getElementById('atLoadingMsg');
+  if (isFirst && btn)  { btn.disabled = true; btn.textContent = '⟳ Reading files…'; }
+  if (loading) loading.style.display = 'block';
+
+  addLog(`📂 Reading folder page — offset ${_atOffset}, page size ${_atPageSize}…`, 'info');
+
+  try {
+    const r = await fetch(`${API}/api/retriever/read-tags`, {
+      method:'POST', headers:authHdrs(),
+      body: JSON.stringify({
+        paths:     _atPaths,
+        page_size: _atPageSize,
+        offset:    _atOffset
+      })
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || 'Read failed');
+
+    _atTotalFolders = d.total_folders || 0;
+
+    // Log the console message from the backend
+    if (d.console_msg) addLog(d.console_msg, 'info');
+
+    const cards = document.getElementById('albumTaggerCards');
+
+    for (const alb of (d.albums || [])) {
+      const key = alb.key;   // = full folder path — globally unique
+      _atAlbums[key] = {
+        folderName:     alb.folder_name,
+        folderPath:     alb.folder_path,
+        year:           alb.year,
+        trackCount:     alb.track_count,
+        tracks:         alb.tracks || [],       // per-track detail
+        currentGenres:  alb.genres  || [],
+        currentMoods:   alb.moods   || [],
+        isCompilation:  alb.is_compilation || false,
+        artists:        alb.artists || [],
+        proposedGenres: [],
+        proposedMoods:  [],
+        overrideGenres: [],
+        overrideMoods:  [],
+        overrideAlbum:  '',
+        overrideAlbumArtist: alb.is_compilation ? 'Various Artists' : '',
+        overrideYear:   alb.year || null,
+        isCompilationFlag: alb.is_compilation || false,
+        clearMbids:     true,
+        state:          'idle',
+      };
+      cards.appendChild(atBuildCard(key, _atAlbums[key]));
+    }
+
+    // Advance cursor
+    _atOffset = (d.next_offset != null) ? d.next_offset : _atOffset + _atPageSize;
+
+    // Show/hide Load More
+    const lmWrap = document.getElementById('atLoadMoreWrap');
+    const lmHint = document.getElementById('atLoadMoreHint');
+    if (lmWrap) lmWrap.style.display = d.has_more ? 'block' : 'none';
+    if (lmHint && d.has_more) {
+      const remaining = _atTotalFolders - _atOffset;
+      lmHint.textContent = `${remaining} more folder${remaining!==1?'s':''} remaining`;
+    }
+
+    document.getElementById('atStep1Results').style.display = 'block';
+    atUpdateStatusBadge();
+
+    addLog(`✓ Loaded ${d.albums?.length || 0} folders (${d.total_files || 0} files total).${d.has_more?' More available.':' All loaded.'}`, 'ok');
+
+    if (isFirst && btn) { btn.textContent = '🔄 RE-READ TAGS'; btn.disabled = false; }
+  } catch(e) {
+    toast(`Read failed: ${e.message}`, 'error');
+    addLog(`❌ Read tags failed: ${e.message}`, 'err');
+    if (isFirst && btn) { btn.disabled = false; btn.textContent = '📂 READ TAGS FROM FILES'; }
+  } finally {
+    if (loading) loading.style.display = 'none';
+  }
+}
+
+function atBuildCard(key, alb) {
+  // safeKey: full folder path → safe DOM id segment
+  const safeKey = key.replace(/[^a-z0-9]/gi, '_');
+
+  const genreDisplay = alb.currentGenres.length
+    ? alb.currentGenres.map(g =>
+        `<span style="display:inline-block;background:rgba(20,184,166,.12);border:1px solid rgba(20,184,166,.3);color:var(--teal);font-size:.5rem;padding:.1rem .35rem;border-radius:10px;margin:.1rem">${esc(g)}</span>`
+      ).join('')
+    : '<span style="color:var(--muted2);font-size:.52rem;font-style:italic">no genres on file</span>';
+
+  const moodDisplay = alb.currentMoods.length
+    ? alb.currentMoods.map(m =>
+        `<span style="display:inline-block;background:rgba(192,132,252,.12);border:1px solid rgba(192,132,252,.3);color:var(--purple);font-size:.5rem;padding:.1rem .35rem;border-radius:10px;margin:.1rem">${esc(m)}</span>`
+      ).join('')
+    : '<span style="color:var(--muted2);font-size:.52rem;font-style:italic">no moods on file</span>';
+
+  const compilationBadge = alb.isCompilation
+    ? `<span style="display:inline-block;background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.3);color:var(--amber);font-size:.48rem;padding:.1rem .4rem;border-radius:10px;margin-left:.3rem">COMPILATION</span>`
+    : '';
+
+  const trackCountBadge = `<span style="display:inline-block;background:var(--surface);border:1px solid var(--border);color:var(--muted);font-size:.48rem;padding:.1rem .35rem;border-radius:10px;margin-left:.3rem">${alb.trackCount} track${alb.trackCount!==1?'s':''}</span>`;
+
+  // Per-track rows for the Override panel
+  const trackRows = (alb.tracks || []).map((t,i) =>
+    `<div style="display:flex;align-items:center;gap:.4rem;padding:.2rem 0;border-bottom:1px solid var(--border)">
+      <input type="checkbox" id="at-tr-${safeKey}-${i}" checked style="accent-color:var(--teal)">
+      <span style="font-family:var(--mono);font-size:.5rem;flex:1;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(t.file_path)}">${esc(t.title || t.file_path.split('/').pop())}</span>
+      <span style="font-family:var(--mono);font-size:.46rem;color:var(--muted2);flex-shrink:0">${esc(t.album_tag || '—')}</span>
+    </div>`
+  ).join('');
+
+  const card = document.createElement('div');
+  card.id = `at-card-${safeKey}`;
+  card.style.cssText = 'background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem;transition:border-color .2s,opacity .3s';
+
+  card.innerHTML = `
+    <!-- Card header -->
+    <div style="display:flex;align-items:flex-start;gap:.75rem;flex-wrap:wrap">
+      <div style="flex:1;min-width:180px">
+        <div style="font-family:var(--mono);font-size:.65rem;color:var(--text);font-weight:bold">
+          📁 ${esc(alb.folderName)}${compilationBadge}${trackCountBadge}
+        </div>
+        ${alb.isCompilation && alb.artists.length
+          ? `<div style="font-family:var(--mono);font-size:.48rem;color:var(--muted);margin-top:.15rem">Artists: ${esc(alb.artists.slice(0,4).join(', '))}${alb.artists.length>4?'…':''}</div>`
+          : ''}
+        <div style="margin-top:.35rem">
+          <span style="font-family:var(--mono);font-size:.48rem;color:var(--muted2);letter-spacing:1px">GENRES: </span>${genreDisplay}
+        </div>
+        <div style="margin-top:.2rem">
+          <span style="font-family:var(--mono);font-size:.48rem;color:var(--muted2);letter-spacing:1px">MOODS: </span>${moodDisplay}
+        </div>
+        <div id="at-proposed-${safeKey}" style="margin-top:.35rem;display:none"></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:.3rem;align-items:flex-end">
+        <div style="display:flex;gap:.35rem;flex-wrap:wrap;justify-content:flex-end">
+          <button class="btn btn-outline btn-sm" onclick="atLookup('${esc(key)}')"
+            id="at-lookup-btn-${safeKey}"
+            title="${alb.isCompilation ? 'Various Artists — Lookup may not work well. Consider Override instead.' : 'Get genre recommendation from MusicBrainz'}">
+            ${alb.isCompilation ? '⚠️ LOOKUP' : '🔍 LOOKUP'}
+          </button>
+          <button class="btn btn-pink btn-sm" onclick="atToggleOverride('${esc(key)}')" title="Manually set all tags for this folder">✏️ OVERRIDE</button>
+          <button class="btn btn-outline btn-sm" onclick="atKeep('${esc(key)}')" title="Tags are fine — leave them alone">✓ KEEP</button>
+        </div>
+        <div id="at-state-${safeKey}" style="font-family:var(--mono);font-size:.48rem;color:var(--muted2)">idle</div>
+      </div>
+    </div>
+
+    <!-- Enhanced Override Panel (hidden by default) -->
+    <div id="at-override-${safeKey}" style="display:none;margin-top:.65rem;padding:.65rem;background:var(--surface);border-radius:6px;border:1px solid var(--border)">
+
+      <!-- Album fields -->
+      <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted);letter-spacing:1px;margin-bottom:.35rem">ALBUM INFO</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.35rem;margin-bottom:.45rem">
+        <div>
+          <div style="font-family:var(--mono);font-size:.46rem;color:var(--muted2);margin-bottom:.15rem">ALBUM NAME</div>
+          <input id="at-album-${safeKey}" type="text" value="${esc(alb.folderName)}"
+            style="width:100%;box-sizing:border-box;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:.25rem .4rem;font-family:var(--mono);font-size:.52rem">
+        </div>
+        <div>
+          <div style="font-family:var(--mono);font-size:.46rem;color:var(--muted2);margin-bottom:.15rem">ALBUM ARTIST</div>
+          <input id="at-albumartist-${safeKey}" type="text"
+            value="${esc(alb.isCompilation ? 'Various Artists' : (alb.artists[0] || ''))}"
+            style="width:100%;box-sizing:border-box;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:.25rem .4rem;font-family:var(--mono);font-size:.52rem">
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.35rem;margin-bottom:.45rem">
+        <div>
+          <div style="font-family:var(--mono);font-size:.46rem;color:var(--muted2);margin-bottom:.15rem">YEAR</div>
+          <input id="at-year-${safeKey}" type="number" min="1900" max="2030"
+            value="${alb.year || ''}" placeholder="e.g. 1985"
+            style="width:100%;box-sizing:border-box;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:.25rem .4rem;font-family:var(--mono);font-size:.52rem">
+        </div>
+        <div style="display:flex;flex-direction:column;gap:.25rem;justify-content:flex-end">
+          <label style="display:flex;align-items:center;gap:.35rem;font-family:var(--mono);font-size:.5rem;color:var(--amber);cursor:pointer">
+            <input type="checkbox" id="at-comp-${safeKey}" ${alb.isCompilation?'checked':''} style="accent-color:var(--amber)">
+            Mark as Compilation
+          </label>
+          <label style="display:flex;align-items:center;gap:.35rem;font-family:var(--mono);font-size:.5rem;color:var(--muted);cursor:pointer">
+            <input type="checkbox" id="at-mbid-${safeKey}" checked style="accent-color:var(--teal)">
+            Clear MusicBrainz IDs
+          </label>
+        </div>
+      </div>
+
+      <!-- Genre dropdowns -->
+      <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted);letter-spacing:1px;margin-bottom:.3rem">GENRES (max 3)</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.35rem;margin-bottom:.45rem">
+        ${[1,2,3].map(n => `
+        <select id="at-g${n}-${safeKey}" onchange="handleCustomOption(this)" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:.25rem;font-family:var(--mono);font-size:.52rem">
+          <option value="">— genre ${n}${n>1?' (opt)':''} —</option>
+          ${GENRE_LIST.map(g=>`<option value="${esc(g)}">${esc(g)}</option>`).join('')}
+        </select>`).join('')}
+      </div>
+
+      <!-- Mood dropdowns -->
+      <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted);letter-spacing:1px;margin-bottom:.3rem">MOODS (max 3)</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.35rem;margin-bottom:.5rem">
+        ${[1,2,3].map(n => `
+        <select id="at-m${n}-${safeKey}" onchange="handleCustomOption(this)" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:.25rem;font-family:var(--mono);font-size:.52rem">
+          <option value="">— mood ${n}${n>1?' (opt)':''} —</option>
+          ${MOOD_LIST.map(m=>`<option value="${esc(m)}">${esc(m)}</option>`).join('')}
+        </select>`).join('')}
+      </div>
+
+      <!-- Per-track selection -->
+      <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted);letter-spacing:1px;margin-bottom:.3rem">
+        TRACKS — uncheck any to exclude from write
+        <button onclick="atSelectAllTracks('${esc(key)}',true)" style="background:none;border:none;color:var(--teal);font-family:var(--mono);font-size:.46rem;cursor:pointer;padding:0 .3rem">all</button>
+        <button onclick="atSelectAllTracks('${esc(key)}',false)" style="background:none;border:none;color:var(--muted);font-family:var(--mono);font-size:.46rem;cursor:pointer;padding:0 .3rem">none</button>
+      </div>
+      <div style="max-height:120px;overflow-y:auto;background:var(--surface2);border-radius:4px;border:1px solid var(--border);padding:.25rem .4rem;margin-bottom:.5rem">
+        ${trackRows}
+      </div>
+
+      <!-- Action buttons -->
+      <div style="display:flex;gap:.35rem;flex-wrap:wrap">
+        <button class="btn btn-pink btn-sm" onclick="atApplyOverride('${esc(key)}')">✓ APPLY OVERRIDE</button>
+        <button class="btn btn-teal btn-sm" onclick="atWriteAlbum('${esc(key)}')">⬇ WRITE NOW</button>
+        <button class="btn btn-outline btn-sm" onclick="atToggleOverride('${esc(key)}')">✕ CLOSE</button>
+      </div>
+    </div>`;
+
+  return card;
+}
+
+// ── Lookup (warns on compilation) ────────────────────────────────────────────
+async function atLookup(key) {
+  const safeKey = key.replace(/[^a-z0-9]/gi,'_');
+  const alb = _atAlbums[key];
+  if (!alb) return;
+
+  // Compilation warning — still works but user is warned
+  if (alb.isCompilation) {
+    if (!confirm('This folder has multiple artists — MusicBrainz Lookup may not return useful results.\n\nContinue anyway? (Override is usually better for compilations.)')) return;
+  }
+
+  const btn   = document.getElementById(`at-lookup-btn-${safeKey}`);
+  const propEl = document.getElementById(`at-proposed-${safeKey}`);
+  if (btn)   { btn.disabled = true; btn.textContent = '⟳'; }
+  if (propEl){ propEl.style.display = 'block'; propEl.innerHTML = '<span style="color:var(--muted2);font-size:.52rem">🌐 Looking up MusicBrainz…</span>'; }
+
+  addLog(`🔍 Lookup: ${alb.folderName}…`, 'info');
+
+  try {
+    // Use folder name as album, first artist as artist for lookup
+    const artist = alb.artists[0] || alb.folderName;
+    const r = await fetch(`${API}/api/retriever/album-lookup`, {
+      method:'POST', headers:authHdrs(),
+      body: JSON.stringify({artist, album: alb.folderName, year: alb.year})
+    });
+    const d = await r.json();
+    if (r.ok && d.proposed_genres?.length) {
+      _atAlbums[key].proposedGenres = d.proposed_genres;
+      atSetState(key, 'accepted');
+
+      const currStr = alb.currentGenres.join(' · ') || 'none';
+      const propStr = d.proposed_genres.join(' · ');
+      const changed = currStr !== propStr;
+      if (propEl) propEl.innerHTML = changed
+        ? `<span style="font-family:var(--mono);font-size:.5rem">
+             <span style="color:var(--muted2);text-decoration:line-through">${esc(currStr)}</span>
+             <span style="color:var(--text)"> → </span>
+             <span style="color:var(--teal)">${esc(propStr)}</span>
+             <span style="color:var(--muted2)"> (${d.confidence})</span>
+           </span>`
+        : `<span style="font-family:var(--mono);font-size:.5rem;color:var(--muted2)">✓ Already matches (${d.confidence})</span>`;
+      addLog(`✓ Lookup complete: ${alb.folderName} → ${propStr}`, 'ok');
+    } else {
+      if (propEl) propEl.innerHTML = '<span style="color:var(--muted2);font-size:.52rem">No recommendation found — use Override.</span>';
+      addLog(`⚠️ No result for: ${alb.folderName}`, 'warn');
+    }
+  } catch(e) {
+    if (propEl) propEl.innerHTML = `<span style="color:var(--pink);font-size:.52rem">Lookup failed: ${e.message}</span>`;
+    addLog(`❌ Lookup error: ${e.message}`, 'err');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = alb.isCompilation ? '⚠️ LOOKUP' : '🔍 LOOKUP'; }
+  }
+}
+
+// ── Toggle override panel open/close ─────────────────────────────────────────
+function atToggleOverride(key) {
+  const safeKey = key.replace(/[^a-z0-9]/gi,'_');
+  const el = document.getElementById('at-override-' + safeKey);
+  if (!el) return;
+  const opening = el.style.display === 'none';
+  el.style.display = opening ? 'block' : 'none';
+
+  if (opening) {
+    // Pre-fill dropdowns with current file tags
+    const alb = _atAlbums[key];
+    if (!alb) return;
+    [1,2,3].forEach(n => {
+      const gs = document.getElementById(`at-g${n}-${safeKey}`);
+      if (gs && alb.currentGenres[n-1]) gs.value = alb.currentGenres[n-1];
+      const ms = document.getElementById(`at-m${n}-${safeKey}`);
+      if (ms && alb.currentMoods[n-1])  ms.value = alb.currentMoods[n-1];
+    });
+  }
+}
+
+function atSelectAllTracks(key, checked) {
+  const safeKey = key.replace(/[^a-z0-9]/gi,'_');
+  const alb = _atAlbums[key];
+  if (!alb) return;
+  alb.tracks.forEach((_,i) => {
+    const cb = document.getElementById(`at-tr-${safeKey}-${i}`);
+    if (cb) cb.checked = checked;
+  });
+}
+
+// ── Apply override (stores values, shows preview on card) ─────────────────────
+function atApplyOverride(key) {
+  const safeKey = key.replace(/[^a-z0-9]/gi,'_');
+  const alb = _atAlbums[key];
+  if (!alb) return;
+
+  const genres = [1,2,3].map(n => document.getElementById(`at-g${n}-${safeKey}`)?.value||'').filter(Boolean);
+  const moods  = [1,2,3].map(n => document.getElementById(`at-m${n}-${safeKey}`)?.value||'').filter(Boolean);
+
+  // Read album-level fields
+  const albumName   = document.getElementById(`at-album-${safeKey}`)?.value.trim() || '';
+  const albumArtist = document.getElementById(`at-albumartist-${safeKey}`)?.value.trim() || '';
+  const yearVal     = parseInt(document.getElementById(`at-year-${safeKey}`)?.value || '') || null;
+  const isComp      = document.getElementById(`at-comp-${safeKey}`)?.checked || false;
+  const clearMbids  = document.getElementById(`at-mbid-${safeKey}`)?.checked ?? true;
+
+  // Store in state
+  alb.overrideGenres      = genres;
+  alb.overrideMoods       = moods;
+  alb.overrideAlbum       = albumName;
+  alb.overrideAlbumArtist = albumArtist;
+  alb.overrideYear        = yearVal;
+  alb.isCompilationFlag   = isComp;
+  alb.clearMbids          = clearMbids;
+
+  // Show summary on card face
+  const propEl = document.getElementById(`at-proposed-${safeKey}`);
+  if (propEl) {
+    const parts = [];
+    if (albumName) parts.push(`Album: "${esc(albumName)}"`);
+    if (albumArtist) parts.push(`Artist: "${esc(albumArtist)}"`);
+    if (genres.length) parts.push(`Genres: ${esc(genres.join(' · '))}`);
+    if (moods.length)  parts.push(`Moods: ${esc(moods.join(' · '))}`);
+    if (isComp)        parts.push('COMPILATION ✓');
+    propEl.style.display = 'block';
+    propEl.innerHTML = `<span style="font-family:var(--mono);font-size:.5rem;color:var(--pink)">${parts.join('  ·  ')}</span>`;
+  }
+
+  atSetState(key, 'override');
+  document.getElementById(`at-override-${safeKey}`).style.display = 'none';
+}
+
+// ── Write a single album card ─────────────────────────────────────────────────
+async function atWriteAlbum(key) {
+  const alb = _atAlbums[key];
+  if (!alb) return;
+  const safeKey = key.replace(/[^a-z0-9]/gi,'_');
+
+  // Determine which tracks to write (checked checkboxes in override panel)
+  const selectedPaths = [];
+  alb.tracks.forEach((t, i) => {
+    const cb = document.getElementById(`at-tr-${safeKey}-${i}`);
+    // If override panel was never opened, include all tracks
+    if (!cb || cb.checked) selectedPaths.push(t.file_path);
+  });
+  if (!selectedPaths.length) {
+    toast('No tracks selected.', 'warn');
+    return;
+  }
+
+  // Determine genres/moods — override wins over lookup wins over nothing
+  const genres = alb.overrideGenres.length ? alb.overrideGenres : alb.proposedGenres;
+  const moods  = alb.overrideMoods.length  ? alb.overrideMoods  : alb.proposedMoods;
+
+  addLog(`⬇ Writing: ${alb.folderName} (${selectedPaths.length} tracks)…`, 'info');
+
+  try {
+    const r = await fetch(`${API}/api/retriever/album-override`, {
+      method: 'POST', headers: authHdrs(),
+      body: JSON.stringify({
+        file_paths:   selectedPaths,
+        album_name:   alb.overrideAlbum || null,
+        album_artist: alb.overrideAlbumArtist || null,
+        year:         alb.overrideYear || null,
+        is_compilation: alb.isCompilationFlag || false,
+        clear_mbids:  alb.clearMbids ?? true,
+        genres,
+        moods,
+      })
+    });
+    const d = await r.json();
+
+    // Print per-file console messages from backend
+    if (d.console_msgs) d.console_msgs.forEach(m => addLog(m, m.includes('❌') ? 'err' : 'info'));
+
+    if (r.ok && d.success > 0) {
+      toast(`✓ ${d.success} track${d.success!==1?'s':''} written`, 'ok');
+      // Card disappears — it's done
+      atRemoveCard(key);
+    } else {
+      toast(`Write failed: ${d.detail || d.message || 'error'}`, 'error');
+      atSetState(key, 'override');
+    }
+  } catch(e) {
+    toast(`Write error: ${e.message}`, 'error');
+    addLog(`❌ Write error: ${e.message}`, 'err');
+  }
+}
+
+// ── Remove a card from the DOM after successful write ─────────────────────────
+function atRemoveCard(key) {
+  const safeKey = key.replace(/[^a-z0-9]/gi,'_');
+  const card = document.getElementById(`at-card-${safeKey}`);
+  if (card) {
+    card.style.opacity = '0';
+    setTimeout(() => {
+      card.remove();
+      delete _atAlbums[key];
+      atUpdateStatusBadge();
+    }, 300);
+  }
+}
+
+function atKeep(key) {
+  atSetState(key, 'keep');
+  // Keep cards visible but styled as done — user may still want to come back
+}
+
+function atSetState(key, state) {
+  const safeKey = key.replace(/[^a-z0-9]/gi,'_');
+  if (_atAlbums[key]) _atAlbums[key].state = state;
+  const card  = document.getElementById(`at-card-${safeKey}`);
+  const label = document.getElementById(`at-state-${safeKey}`);
+  const colors = {
+    idle:     'var(--border)',
+    keep:     'var(--muted)',
+    override: 'var(--pink)',
+    accepted: 'var(--teal)',
+    written:  'var(--amber)',
+  };
+  const labels = {
+    idle:     'idle',
+    keep:     '✓ keeping as-is',
+    override: '✏️ override set — ready to write',
+    accepted: '✓ lookup accepted — ready to write',
+    written:  '⬇ written',
+  };
+  if (card)  card.style.borderColor = colors[state] || 'var(--border)';
+  if (label) label.textContent      = labels[state] || state;
+  atUpdateStatusBadge();
+}
+
+function atUpdateStatusBadge() {
+  const states  = Object.values(_atAlbums).map(a => a.state);
+  const total   = states.length;
+  const pending = states.filter(s => s === 'idle').length;
+  const done    = total - pending;
+  const badge   = document.getElementById('atStatusBadge');
+  const pageBadge = document.getElementById('atPageBadge');
+  if (badge) badge.textContent =
+    `${total} folder${total!==1?'s':''} loaded · ${done} handled · ${pending} pending`;
+  if (pageBadge) pageBadge.textContent =
+    _atTotalFolders > total ? `(${_atTotalFolders - total} more available — click Load More)` : '';
+}
+
+// ── Bulk write all overrides ──────────────────────────────────────────────────
+async function atWriteAllOverrides() {
+  const toWrite = Object.entries(_atAlbums).filter(([,a]) => a.state === 'override');
+  if (!toWrite.length) { toast('No albums with overrides set.', 'warn'); return; }
+  addLog(`⬇ Writing ${toWrite.length} override album${toWrite.length!==1?'s':''}…`, 'info');
+  let written = 0;
+  for (const [key, alb] of toWrite) {
+    const safeKey = key.replace(/[^a-z0-9]/gi,'_');
+    const genres = alb.overrideGenres.length ? alb.overrideGenres : alb.proposedGenres;
+    const moods  = alb.overrideMoods.length  ? alb.overrideMoods  : [];
+    const selectedPaths = alb.tracks.map(t => t.file_path);
+    try {
+      const r = await fetch(`${API}/api/retriever/album-override`, {
+        method:'POST', headers:authHdrs(),
+        body: JSON.stringify({
+          file_paths:     selectedPaths,
+          album_name:     alb.overrideAlbum || null,
+          album_artist:   alb.overrideAlbumArtist || null,
+          year:           alb.overrideYear || null,
+          is_compilation: alb.isCompilationFlag || false,
+          clear_mbids:    alb.clearMbids ?? true,
+          genres, moods,
+        })
+      });
+      const d = await r.json();
+      if (d.console_msgs) d.console_msgs.forEach(m => addLog(m, 'info'));
+      if (r.ok && d.success > 0) { written += d.success; atRemoveCard(key); }
+    } catch(e) { addLog(`❌ ${e.message}`, 'err'); }
+  }
+  toast(`✓ ${written} tracks written`, 'ok');
+}
+
+// ── Bulk write all accepted lookups ───────────────────────────────────────────
+async function atWriteAllAccepted() {
+  const toWrite = Object.entries(_atAlbums).filter(([,a]) => a.state === 'accepted' && a.proposedGenres.length);
+  if (!toWrite.length) { toast('No accepted lookups to write.', 'warn'); return; }
+  addLog(`⬇ Writing ${toWrite.length} accepted album${toWrite.length!==1?'s':''}…`, 'info');
+  let written = 0;
+  for (const [key, alb] of toWrite) {
+    try {
+      const r = await fetch(`${API}/api/retriever/album-override`, {
+        method:'POST', headers:authHdrs(),
+        body: JSON.stringify({
+          file_paths:  alb.tracks.map(t => t.file_path),
+          genres:      alb.proposedGenres,
+          moods:       alb.proposedMoods || [],
+          clear_mbids: true,
+        })
+      });
+      const d = await r.json();
+      if (d.console_msgs) d.console_msgs.forEach(m => addLog(m, 'info'));
+      if (r.ok && d.success > 0) { written += d.success; atRemoveCard(key); }
+    } catch(e) { addLog(`❌ ${e.message}`, 'err'); }
+  }
+  toast(`✓ ${written} tracks written (accepted lookups)`, 'ok');
+}
+
+function atKeepAll() {
+  Object.keys(_atAlbums).forEach(k => atSetState(k, 'keep'));
+}
+
+// Legacy stubs
+function loadAlbumTagger() {}
+function albumTaggerAcceptAll() { atKeepAll(); }
+function updateAlbumAcceptedCount() { atUpdateStatusBadge(); }
 async function writeSelected() {
   if (!selectedTrackIds.size) { toast('Select tracks to write first.', 'warn'); return; }
   try {
@@ -1867,7 +2911,6 @@ function grmInit() {
     ).join('');
   }
   grmLoadStats();
-  grmLoadChartStatus();
 }
 
 function grmSetMode(mode) {
@@ -1894,10 +2937,18 @@ async function grmLoadStats() {
     const r = await fetch(`${API}/api/groomer/db_stats`, {headers:authHdrs()});
     if (!r.ok) return;
     const d = await r.json();
-    // Update ref count display
     const rc = document.getElementById('grm-ref-count');
-    if (rc) rc.textContent = (d.chart_ref_entries||0).toLocaleString();
-    // Re-attach to running job
+    if (rc) rc.textContent = (d.static_entries||0).toLocaleString();
+    const st = document.getElementById('grm-ref-status');
+    if (st) {
+      if (d.static_db_ready) {
+        st.textContent = `✓ Static DB ready · ${(d.static_entries||0).toLocaleString()} chart entries`;
+        st.style.color = 'var(--green)';
+      } else {
+        st.textContent = '⚠ charthound_static.db not found — check volume mount';
+        st.style.color = 'var(--red)';
+      }
+    }
     if (d.active_job && !grmScanJobId) {
       grmScanJobId     = d.active_job.job_id;
       grmScannedServer = d.active_job.scope;
@@ -1906,26 +2957,9 @@ async function grmLoadStats() {
   } catch {}
 }
 
-async function grmLoadChartStatus() {
-  try {
-    const r = await fetch(`${API}/api/groomer/charts/status`, {headers:authHdrs()});
-    if (!r.ok) return;
-    const d = await r.json();
-    const loaded = d.charts.filter(c => c.status === 'loaded');
-    const st = document.getElementById('grm-ref-status');
-    if (st) {
-      if (loaded.length === 0) {
-        st.textContent = '⚠ No chart data loaded yet — click LOAD CHART DATA';
-        st.style.color = 'var(--amber)';
-      } else {
-        st.textContent = `✓ ${loaded.length} chart(s) loaded · ${(d.total_entries||0).toLocaleString()} entries`;
-        st.style.color = 'var(--green)';
-      }
-    }
-    const rc = document.getElementById('grm-ref-count');
-    if (rc) rc.textContent = (d.total_entries||0).toLocaleString();
-  } catch {}
-}
+// Chart status now comes from static DB via grmLoadStats — no separate load needed
+async function grmLoadChartStatus() { grmLoadStats(); }
+async function grmLoadCharts() { toast('Chart data ships pre-loaded in the static database. No download needed.', 'ok'); }
 
 function grmLog(msg, type='') {
   const el = document.getElementById('grm-log');
@@ -1942,35 +2976,45 @@ function grmLog(msg, type='') {
 async function grmLoadCharts() {
   const btn = document.getElementById('grm-load-btn');
   btn.disabled = true; btn.textContent = '⏳ LOADING…';
-  grmLog('Starting chart data download… Hot 100 + CCM + Country + R&B + Rock + UK', 'info');
-  grmLog('This may take 2–5 minutes. You can still use the app while it loads.', 'warn');
+  grmLog('Starting chart data load — scraping Billboard.com year by year 1990–present.', 'info');
+  grmLog('This takes 5–15 minutes depending on Billboard server speed. App remains usable.', 'warn');
   try {
     const r = await fetch(`${API}/api/groomer/charts/load`, {
       method:'POST', headers:authHdrs(),
       body: JSON.stringify({charts:[]}),
     });
     if (!r.ok) { const d=await r.json(); throw new Error(d.detail||`HTTP ${r.status}`); }
-    grmLog('Chart download started in background…', 'ok');
-    // Poll load status
+    grmLog('Chart loader running in background…', 'ok');
+    // Poll load status every 5 seconds — show elapsed time so it doesn't look frozen
     const poll = setInterval(async () => {
       try {
         const sr = await fetch(`${API}/api/groomer/charts/load/status`, {headers:authHdrs()});
         const sd = await sr.json();
+        const elapsed = sd.elapsed_seconds || 0;
+        const elapsedStr = elapsed > 0 ? ` ${elapsed}s` : '';
         if (sd.status === 'done') {
           clearInterval(poll);
           btn.disabled = false; btn.textContent = '🔄 LOAD CHART DATA';
           grmLog(`✓ ${sd.message}`, 'ok');
           toast('Chart data loaded!', 'success');
           grmLoadChartStatus();
+        } else if (sd.status === 'error') {
+          clearInterval(poll);
+          btn.disabled = false; btn.textContent = '🔄 LOAD CHART DATA';
+          grmLog(`✗ ${sd.message}`, 'err');
+          toast('Chart load failed — check log', 'error');
         } else if (sd.status === 'running') {
-          btn.textContent = `⏳ ${sd.loaded}/${sd.total} charts…`;
-          grmLog(sd.message, 'info');
+          btn.textContent = `⏳ Loading…${elapsedStr}`;
+          // Only log a new line every 30s so the log doesn't flood
+          if (elapsed % 30 === 0 && elapsed > 0) {
+            grmLog(`Still loading… ${elapsedStr} elapsed. (Scraping Billboard year by year)`, 'info');
+          }
         } else if (sd.status === 'idle' && sd.loaded > 0) {
           clearInterval(poll);
           btn.disabled = false; btn.textContent = '🔄 LOAD CHART DATA';
         }
       } catch { clearInterval(poll); btn.disabled=false; btn.textContent='🔄 LOAD CHART DATA'; }
-    }, 3000);
+    }, 5000);
   } catch(e) {
     grmLog(`Load failed: ${e.message}`, 'err');
     btn.disabled=false; btn.textContent='🔄 LOAD CHART DATA';
@@ -2006,6 +3050,8 @@ async function grmStartScan() {
         charts, peak_max: peakMax, weeks_min: weeksMin,
         moods: grmGetSelectedMoods(), playlist_name: name,
         write_tags: writeTags, chunk_size: 50,
+        use_lastfm: (document.getElementById('grm-datasource')?.value !== 'verified'),
+        data_source: document.getElementById('grm-datasource')?.value || 'verified',
       }),
     });
     const d = await r.json();
@@ -2017,6 +3063,9 @@ async function grmStartScan() {
     document.getElementById('grm-btn-stop').disabled  = false;
     document.getElementById('grm-btn-stop').style.opacity = '1';
     document.getElementById('grm-status-title').textContent = `SCANNING ${scope.toUpperCase()}…`;
+    grmResults = []; grmSelected.clear();
+    var _tb2 = document.getElementById('grm-tbody'); if (_tb2) _tb2.innerHTML = '';
+    var _bg2 = document.getElementById('grm-badge'); if (_bg2) _bg2.textContent = '0 songs';
     grmStartPoll();
     // Live results refresh every 30s during scan
     grmLivePoll = setInterval(() => { if (grmResults.length > 0 || grmScanJobId) grmSearch(); }, 30000);
@@ -2099,9 +3148,32 @@ function grmScanDone(success) {
 }
 
 // ── Filter helpers ────────────────────────────────────────────────
+function grmUpdatePeakMin(v) {
+  document.getElementById('grm-peak-min-display').textContent = `#${v}`;
+  // Ensure peak-min never exceeds peak-max
+  const maxSlider = document.getElementById('grm-peak');
+  if (parseInt(v) > parseInt(maxSlider.value)) {
+    maxSlider.value = v;
+    grmUpdatePeak(v);
+  }
+  grmSyncBar();
+}
 function grmUpdatePeak(v) {
-  document.getElementById('grm-peak-display').textContent = v==1?'#1 Only':`Top ${v}`;
-  document.getElementById('grm-playlist-name').value = v==1?'#1 Hits':`Top ${v} Hits`;
+  const minSlider = document.getElementById('grm-peak-min');
+  const minVal = parseInt(minSlider ? minSlider.value : 1);
+  // Ensure peak-max never goes below peak-min
+  if (parseInt(v) < minVal) {
+    minSlider.value = v;
+    document.getElementById('grm-peak-min-display').textContent = `#${v}`;
+  }
+  const fromVal = minSlider ? parseInt(minSlider.value) : 1;
+  const label = fromVal === 1
+    ? (v == 1 ? '#1 Only' : `Top ${v}`)
+    : `#${fromVal}–#${v}`;
+  document.getElementById('grm-peak-display').textContent = label;
+  document.getElementById('grm-playlist-name').value = fromVal === 1
+    ? (v == 1 ? '#1 Hits' : `Top ${v} Hits`)
+    : `Top ${fromVal}-${v} Hits`;
   grmSyncBar();
 }
 function grmUpdateWeeks(v) {
@@ -2140,9 +3212,12 @@ async function grmSearch() {
   const peakMax  = document.getElementById('grm-peak').value;
   const weeksMin = document.getElementById('grm-weeks').value;
   const moods    = grmGetSelectedMoods();
+  const peakMin  = document.getElementById('grm-peak-min')?.value || 1;
+  const dataSource = document.getElementById('grm-datasource')?.value || 'verified';
   const params   = new URLSearchParams({
-    charts:charts.join(','), peak_max:peakMax,
-    weeks_min:weeksMin, moods:moods.join(','), limit:5000,
+    charts:charts.join(','), peak_min:peakMin, peak_max:peakMax,
+    weeks_min:weeksMin, moods:moods.join(','), limit:15000,
+    data_source: dataSource,
   });
   try {
     const r = await fetch(`${API}/api/groomer/results?${params}`, {headers:authHdrs()});
@@ -2155,6 +3230,14 @@ async function grmSearch() {
 }
 
 function grmRenderResults(results) {
+  // Sort results before rendering
+  const fn = _sortFields[_sortKey] || _sortFields.peak;
+  results = [...results].sort((a,b) => {
+    const av = fn(a), bv = fn(b);
+    if (av < bv) return _sortAsc ? -1 : 1;
+    if (av > bv) return _sortAsc ? 1 : -1;
+    return 0;
+  });
   const tbody = document.getElementById('grm-tbody');
   const empty = document.getElementById('grm-empty');
   const badge = document.getElementById('grm-badge');
@@ -2180,8 +3263,17 @@ function grmRenderResults(results) {
       `<span style="font-size:.5rem;padding:.1rem .35rem;border-radius:8px;
         background:rgba(244,114,182,.1);border:1px solid rgba(244,114,182,.25);
         color:var(--pink);white-space:nowrap">${esc(c)}</span>`).join(' ');
-    const peak  = t.peak_position
-      ? `<span style="font-family:var(--display);font-size:1rem;color:var(--amber)">#${t.peak_position}</span>` : '—';
+    const peakDisp = t.peak_display || '';
+    let peak;
+    if (peakDisp.startsWith('#')) {
+      peak = `<span style="font-family:var(--display);font-size:1rem;color:var(--amber)">${esc(peakDisp)}</span>`;
+    } else if (peakDisp.startsWith('~')) {
+      peak = `<span style="font-family:var(--display);font-size:1rem;color:var(--muted2)" title="Estimated from Last.fm listener count. Not a verified chart position.">${esc(peakDisp)}</span>`;
+    } else if (peakDisp.startsWith('★')) {
+      peak = `<span style="color:var(--teal);letter-spacing:1px" title="Popularity estimate for CCM/Gospel. Not a Billboard chart position.">${esc(peakDisp)}</span>`;
+    } else {
+      peak = '<span style="color:var(--muted2)">—</span>';
+    }
     const weeks = t.weeks_on_chart || 0;
     const wBar  = weeks > 0
       ? `<span style="color:var(--teal)">${'▪'.repeat(Math.min(weeks,10))}</span>`
@@ -2209,6 +3301,29 @@ function grmFilter(q) {
   document.querySelectorAll('#grm-tbody tr[data-id]').forEach(tr => {
     tr.style.display = tr.dataset.text?.includes(lq) ? '' : 'none';
   });
+}
+
+// ── Sortable columns ───────────────────────────────────────────────────────
+let _sortKey = 'peak';
+let _sortAsc  = true;
+const _sortFields = {
+  artist: t => (t.artist || '').toLowerCase(),
+  title:  t => (t.title  || '').toLowerCase(),
+  year:   t => parseInt(t.year) || 9999,
+  stars:  t => -(t.stars || 0),    // negate so 5★ sorts first
+  peak:   t => t.peak_position || 9999,
+  weeks:  t => -(t.weeks_on_chart || 0),
+};
+
+function grmSort(key) {
+  if (_sortKey === key) { _sortAsc = !_sortAsc; }
+  else { _sortKey = key; _sortAsc = (key === 'artist' || key === 'title'); }
+  // Update indicators
+  ['artist','title','year','stars','peak','weeks'].forEach(k => {
+    const el = document.getElementById('sort-ind-' + k);
+    if (el) el.textContent = k === _sortKey ? (_sortAsc ? ' ▲' : ' ▼') : '';
+  });
+  grmRenderResults(grmResults);
 }
 function grmToggleTrack(id, checked) {
   if (checked) grmSelected.add(id); else grmSelected.delete(id);
@@ -2313,6 +3428,88 @@ async function grmDownloadM3U() {
 // Hook into tab navigation to init Groomer when tab is opened
 const _origShowTab = typeof showTab === 'function' ? showTab : null;
 
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  SIDEBAR COLLAPSE
+// ══════════════════════════════════════════════════════════════════════════════
+
+function toggleSidebar() {
+  const nav = document.getElementById('appSidebar');
+  const btn = document.getElementById('sidebarToggleBtn');
+  if (!nav) return;
+  const collapsing = !nav.classList.contains('collapsed');
+  nav.classList.toggle('collapsed', collapsing);
+  if (btn) btn.textContent = collapsing ? '▶' : '◀ hide';
+  if (btn) btn.title       = collapsing ? 'Expand navigation' : 'Collapse navigation';
+  try { localStorage.setItem('ch_sidebar', collapsing ? 'collapsed' : 'open'); } catch(e) {}
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  PANE COLLAPSE & RESIZE
+// ══════════════════════════════════════════════════════════════════════════════
+
+function toggleAside(name) {
+  const aside = document.getElementById('aside-' + name);
+  const btn   = aside ? aside.querySelector('.pane-collapse-btn') : null;
+  if (!aside) return;
+  const collapsing = !aside.classList.contains('collapsed');
+  aside.classList.toggle('collapsed', collapsing);
+  if (btn) btn.textContent = collapsing ? '▶' : '◀';
+  if (btn) btn.title       = collapsing ? 'Expand panel' : 'Collapse panel';
+  try { localStorage.setItem('ch_aside_' + name, collapsing ? 'collapsed' : 'open'); } catch(e) {}
+}
+
+function startResize(e, name) {
+  e.preventDefault();
+  const aside   = document.getElementById('aside-' + name);
+  const resizer = document.getElementById('resizer-' + name);
+  if (!aside || aside.classList.contains('collapsed')) return;
+  resizer.classList.add('dragging');
+  const startX = e.clientX;
+  const startW = aside.offsetWidth;
+  function onMove(ev) {
+    const newW = Math.min(600, Math.max(180, startW + ev.clientX - startX));
+    aside.style.width = newW + 'px';
+  }
+  function onUp() {
+    resizer.classList.remove('dragging');
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup',   onUp);
+    try { localStorage.setItem('ch_aside_w_' + name, aside.offsetWidth); } catch(e) {}
+  }
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup',   onUp);
+}
+
+// Restore all saved states on page load
+(function restoreUIState() {
+  // Sidebar
+  try {
+    if (localStorage.getItem('ch_sidebar') === 'collapsed') {
+      const nav = document.getElementById('appSidebar');
+      const btn = document.getElementById('sidebarToggleBtn');
+      if (nav) nav.classList.add('collapsed');
+      if (btn) { btn.textContent = '▶'; btn.title = 'Expand navigation'; }
+    }
+  } catch(e) {}
+
+  // Pane asides
+  ['kennel', 'retriever'].forEach(function(name) {
+    const aside = document.getElementById('aside-' + name);
+    if (!aside) return;
+    try {
+      const state = localStorage.getItem('ch_aside_' + name);
+      const width = localStorage.getItem('ch_aside_w_' + name);
+      if (state === 'collapsed') {
+        aside.classList.add('collapsed');
+        const btn = aside.querySelector('.pane-collapse-btn');
+        if (btn) { btn.textContent = '▶'; btn.title = 'Expand panel'; }
+      } else if (width) {
+        aside.style.width = parseInt(width) + 'px';
+      }
+    } catch(e) {}
+  });
+})();
 
 </script>
 </body>

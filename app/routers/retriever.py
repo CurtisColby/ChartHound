@@ -92,7 +92,42 @@ GENRE_BLACKLIST = {
     "holiday", "comedy", "spoken word", "audio drama", "karaoke",
     "new age", "field recording", "ringtone", "advertising",
     "non-music", "interview", "live score",
+    "album rock", "composed", "music", "ballad", "cover", "tribute",
 }
+
+# ── Artist genre fingerprint ──────────────────────────────────────────────────
+_artist_genre_cache: dict = {}
+
+def _norm_artist(s: str) -> str:
+    s = s.lower().strip()
+    s = re.sub(r"[^\w\s]", "", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+def update_artist_fingerprint(artist: str, genres: list):
+    key = _norm_artist(artist)
+    if key not in _artist_genre_cache:
+        _artist_genre_cache[key] = {}
+    for g in (genres or []):
+        norm = g.lower().strip()
+        _artist_genre_cache[key][norm] = _artist_genre_cache[key].get(norm, 0) + 1
+
+def apply_artist_fingerprint(artist: str, proposed: list) -> list:
+    key = _norm_artist(artist)
+    cache = _artist_genre_cache.get(key, {})
+    total = sum(cache.values()) or 1
+    if total < 3 or not proposed:
+        return proposed
+    top_count = max(cache.values()) if cache else 0
+    if top_count / total < 0.5:
+        return proposed
+    fp_set = set(cache.keys())
+    result = [g for g in proposed if g.lower().strip() in fp_set]
+    for g, _ in sorted(cache.items(), key=lambda x: -x[1]):
+        if len(result) >= 3: break
+        if g not in {x.lower() for x in result}:
+            result.append(g.title())
+    return result[:3]
 
 # ── Fix D: Genre-tag → Mood mapping (covers mainstream Last.fm tags) ──────────
 # Last.fm tags for most tracks are genre words, not mood words.
@@ -182,6 +217,7 @@ GENRE_TO_MOOD = {
 class ScanRequest(BaseModel):
     scope: str = "library"
     subfolder: Optional[str] = None
+    subfolders: Optional[List[str]] = None
     mode: str = "preview"
     chunk_size: int = 20
     media_server: str = "plex"
@@ -190,6 +226,42 @@ class ApproveRequest(BaseModel):
     job_id: int
     track_ids: List[int]
     write_art: bool = True
+
+class ReadTagsRequest(BaseModel):
+    """Request to read physical file tags — no DB, no APIs, instant."""
+    paths: List[str]        # list of folder paths to read
+    page_size: int = 20     # how many folder-cards to return per call
+    offset: int = 0         # pagination offset — start at 0, increment by page_size
+
+class AlbumTagRequest(BaseModel):
+    """For album-level lookup — one MusicBrainz release-group call per album."""
+    artist: str
+    album: str
+    year: Optional[int] = None
+
+class ManualOverrideRequest(BaseModel):
+    """Manual genre/mood override for selected track IDs or file paths."""
+    track_ids: List[int] = []
+    file_paths: Optional[List[str]] = None  # from album tagger direct writes
+    genres: List[str]
+    moods: List[str] = []
+    year: Optional[int] = None
+
+class AlbumOverrideRequest(BaseModel):
+    """
+    NEW — Album Tagger enhanced override.
+    Writes Album, Album Artist, Year, Compilation flag, Genre, Mood
+    and optionally clears MusicBrainz IDs — all in one pass.
+    Per-track file_paths list controls which files in the folder are written.
+    """
+    file_paths: List[str]                   # tracks to write (subset of folder)
+    album_name: Optional[str] = None        # new Album tag value
+    album_artist: Optional[str] = None      # new Album Artist tag value
+    year: Optional[int] = None
+    is_compilation: bool = False            # write COMPILATION=1 flag
+    clear_mbids: bool = True               # wipe MusicBrainz ID tags
+    genres: List[str] = []
+    moods: List[str] = []
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -809,6 +881,61 @@ def get_ccm_moods(genres: List[str]) -> List[str]:
     return []
 
 
+async def fetch_musicbrainz_album(artist: str, album: str) -> dict:
+    """
+    Album-level MusicBrainz release-group lookup.
+    More reliable than per-track — returns genres agreed on at album level.
+    """
+    result = {"genres": [], "year": None, "confidence": "low", "album_id": None}
+    if not artist or not album:
+        return result
+    try:
+        headers = {"User-Agent": "ChartHound/1.0 (https://github.com/CurtisColby/ChartHound)"}
+        query = f'artist:"{artist}" release:"{album}"'
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r = await client.get(
+                "https://musicbrainz.org/ws/2/release-group/",
+                params={"query": query, "fmt": "json", "limit": 3},
+                headers=headers)
+        if not r.is_success:
+            return result
+        data = r.json()
+        rgs = data.get("release-groups", [])
+        if not rgs:
+            return result
+
+        best = rgs[0]
+        result["album_id"]  = best.get("id")
+        result["confidence"] = "high" if best.get("score", 0) >= 85 else "medium"
+
+        # Fetch full release-group with tags
+        rg_id = best.get("id")
+        if rg_id:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                r2 = await client.get(
+                    f"https://musicbrainz.org/ws/2/release-group/{rg_id}",
+                    params={"inc": "tags+genres", "fmt": "json"},
+                    headers=headers)
+            if r2.is_success:
+                rg_data = r2.json()
+                tags = rg_data.get("genres", []) or rg_data.get("tags", [])
+                tags.sort(key=lambda t: t.get("count", 0), reverse=True)
+                raw = [t.get("name", "").title() for t in tags[:6]]
+                result["genres"] = merge_genres([raw], top_n=3)
+
+        # Year from first-release-date
+        frd = best.get("first-release-date", "")
+        if frd and len(frd) >= 4 and frd[:4].isdigit():
+            yr = int(frd[:4])
+            if 1900 < yr < 2030:
+                result["year"] = yr
+
+        await asyncio.sleep(0.1)
+    except Exception as e:
+        log.debug(f"MB album lookup error for {artist}/{album}: {e}")
+    return result
+
+
 def format_chart_comment(chart_entries: List[dict]) -> str:
     if not chart_entries:
         return ""
@@ -955,6 +1082,150 @@ def write_tags(filepath: str, genres: List[str], moods: List[str],
         return False
 
 
+def write_tags_extended(filepath: str, genres: List[str], moods: List[str],
+                        year: Optional[int], album_name: Optional[str],
+                        album_artist: Optional[str], is_compilation: bool,
+                        clear_mbids: bool) -> bool:
+    """
+    NEW — Extended tag writer for Album Tagger override panel.
+    Writes Genre, Mood, Year, Album, Album Artist, Compilation flag.
+    Optionally clears MusicBrainz ID tags left by Picard/beets.
+    Constitution §2: File-First, Non-Destructive (no move/rename/delete).
+    """
+    try:
+        ext = os.path.splitext(filepath)[1].lower()
+
+        # Translate Docker /music path to real server path
+        real_path = filepath
+        if settings.media_server_music_prefix and settings.docker_music_prefix:
+            if filepath.startswith(settings.docker_music_prefix):
+                real_path = settings.media_server_music_prefix + \
+                            filepath[len(settings.docker_music_prefix):]
+
+        if ext == ".mp3":
+            from mutagen.id3 import (ID3, TCON, TDRC, TXXX, TALB, TPE2,
+                                     TCMP, ID3NoHeaderError)
+            try:
+                from mutagen.apev2 import delete as ape_delete
+                ape_delete(real_path)
+            except Exception:
+                pass
+            try:
+                tags = ID3(real_path)
+            except ID3NoHeaderError:
+                tags = ID3()
+
+            # Clear fields we're replacing
+            for key in list(tags.keys()):
+                if any(key.startswith(p) for p in ["TCON", "TDRC", "TALB", "TPE2", "TCMP"]) or \
+                   (key.startswith("TXXX") and any(x in key.lower()
+                    for x in ["mood", "genre", "musicbrainz"])):
+                    del tags[key]
+
+            # Clear MusicBrainz ID frames if requested
+            if clear_mbids:
+                mbid_frames = [k for k in list(tags.keys())
+                               if "musicbrainz" in k.lower() or k in
+                               ("TXXX:MusicBrainz Track Id",
+                                "TXXX:MusicBrainz Album Id",
+                                "TXXX:MusicBrainz Artist Id",
+                                "TXXX:MusicBrainz Release Group Id",
+                                "UFID:http://musicbrainz.org")]
+                for k in mbid_frames:
+                    try: del tags[k]
+                    except Exception: pass
+
+            if genres:      tags["TCON"]      = TCON(encoding=3, text=["; ".join(genres)])
+            if moods:       tags["TXXX:MOOD"] = TXXX(encoding=3, desc="MOOD",
+                                                      text=["; ".join(moods)])
+            if year:        tags["TDRC"]      = TDRC(encoding=3, text=[str(year)])
+            if album_name:  tags["TALB"]      = TALB(encoding=3, text=[album_name])
+            if album_artist:tags["TPE2"]      = TPE2(encoding=3, text=[album_artist])
+            if is_compilation:
+                tags["TCMP"] = TCMP(encoding=3, text=["1"])
+            tags.save(real_path, v2_version=3)
+            os.sync()
+
+        elif ext == ".flac":
+            import subprocess
+            real_path = filepath
+            if settings.media_server_music_prefix and settings.docker_music_prefix:
+                if filepath.startswith(settings.docker_music_prefix):
+                    real_path = settings.media_server_music_prefix + \
+                                filepath[len(settings.docker_music_prefix):]
+            cmd = ["metaflac"]
+            # Remove tags we're setting
+            for tag in ["GENRE", "MOOD", "DATE", "ALBUM", "ALBUMARTIST",
+                        "COMPILATION"]:
+                cmd += [f"--remove-tag={tag}"]
+            if clear_mbids:
+                for tag in ["MUSICBRAINZ_TRACKID", "MUSICBRAINZ_ALBUMID",
+                            "MUSICBRAINZ_ARTISTID", "MUSICBRAINZ_RELEASEGROUPID",
+                            "MUSICBRAINZ_RELEASETRACKID"]:
+                    cmd += [f"--remove-tag={tag}"]
+            # Set new values
+            for g in (genres or []):    cmd += [f"--set-tag=GENRE={g}"]
+            for m in (moods or []):     cmd += [f"--set-tag=MOOD={m}"]
+            if year:         cmd += [f"--set-tag=DATE={year}"]
+            if album_name:   cmd += [f"--set-tag=ALBUM={album_name}"]
+            if album_artist: cmd += [f"--set-tag=ALBUMARTIST={album_artist}"]
+            if is_compilation: cmd += ["--set-tag=COMPILATION=1"]
+            cmd += [real_path]
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                log.error(f"metaflac extended error for {real_path}: {result.stderr}")
+                return False
+
+        elif ext in (".m4a", ".aac", ".mp4"):
+            from mutagen.mp4 import MP4
+            f = MP4(filepath)
+            if genres:       f["\xa9gen"] = ["; ".join(genres)]
+            if moods:        f["----:com.apple.iTunes:MOOD"] = [m.encode() for m in moods]
+            if year:         f["\xa9day"] = [str(year)]
+            if album_name:   f["\xa9alb"] = [album_name]
+            if album_artist: f["aART"]    = [album_artist]
+            if is_compilation: f["cpil"]  = True
+            if clear_mbids:
+                for k in list(f.keys()):
+                    if "musicbrainz" in k.lower():
+                        try: del f[k]
+                        except Exception: pass
+            f.save()
+
+        elif ext in (".ogg", ".opus"):
+            from mutagen import File as MFile
+            f = MFile(filepath)
+            if f:
+                if genres:       f["genre"]       = genres
+                if moods:        f["mood"]         = moods
+                if year:         f["date"]         = [str(year)]
+                if album_name:   f["album"]        = [album_name]
+                if album_artist: f["albumartist"]  = [album_artist]
+                if is_compilation: f["compilation"] = ["1"]
+                if clear_mbids:
+                    for k in list(f.keys()):
+                        if "musicbrainz" in k.lower():
+                            try: del f[k]
+                            except Exception: pass
+                f.save()
+
+        else:
+            from mutagen import File as MFile
+            f = MFile(filepath, easy=True)
+            if f:
+                if genres:     f["genre"] = genres
+                if album_name: f["album"] = [album_name]
+                if year:
+                    try: f["date"] = [str(year)]
+                    except Exception: pass
+                f.save()
+
+        return True
+    except Exception as e:
+        log.error(f"write_tags_extended failed for {filepath}: {e}")
+        return False
+
+
 def index_audio_files(root_path: str) -> List[str]:
     """Walk directory and return list of all audio file paths."""
     files = []
@@ -1019,6 +1290,188 @@ async def browse_music(path: str = "", user: dict = Depends(require_auth)):
         return {"path": target, "entries": entries, "base": base}
     except Exception as e:
         raise HTTPException(500, str(e))
+
+
+@router.post("/read-tags")
+async def read_tags_from_folders(req: ReadTagsRequest, user: dict = Depends(require_auth)):
+    """
+    NEW — Folder-based Album Tagger, paginated.
+    Groups by FOLDER PATH (not album tag) — one card per folder.
+    Returns `page_size` folders at a time. Frontend calls again with
+    offset= to load more. Never dumps the whole library at once.
+
+    Also detects likely compilations (3+ unique artists in one folder)
+    and returns per-track album tag state for the Override panel.
+    """
+    base = settings.docker_music_prefix
+    page_size = getattr(req, 'page_size', 20)
+    offset    = getattr(req, 'offset', 0)
+
+    # Security: all paths must be within music mount
+    safe_paths = []
+    for p in req.paths:
+        p = p.strip()
+        if not p.startswith("/"):
+            p = os.path.join(base, p)
+        p = os.path.normpath(p)
+        if not p.startswith(base):
+            continue
+        if os.path.exists(p):
+            safe_paths.append(p)
+
+    if not safe_paths:
+        raise HTTPException(404, "No valid paths found")
+
+    # ── Step 1: Discover all immediate subfolders that contain audio files ──────
+    # We group by the DIRECT parent folder of each audio file.
+    # This gives one card per album folder regardless of what tags say.
+    folder_files: dict = {}   # folder_path → list of audio file paths
+    total_files_found = 0
+
+    for path in safe_paths:
+        for root, dirs, fnames in os.walk(path):
+            dirs[:] = sorted([d for d in dirs if not d.startswith(".")])
+            audio_in_dir = [
+                os.path.join(root, fn)
+                for fn in sorted(fnames)
+                if os.path.splitext(fn)[1].lower() in AUDIO_EXTS
+            ]
+            if audio_in_dir:
+                folder_key = root  # use the full folder path as the unique key
+                if folder_key not in folder_files:
+                    folder_files[folder_key] = []
+                folder_files[folder_key].extend(audio_in_dir)
+                total_files_found += len(audio_in_dir)
+
+    # Sort folders alphabetically for consistent pagination
+    all_folders = sorted(folder_files.keys())
+    total_folders = len(all_folders)
+
+    # Apply pagination — return only the requested slice
+    page_folders = all_folders[offset: offset + page_size]
+
+    # ── Step 2: Read tags for this page of folders only ───────────────────────
+    result = []
+    for folder_path in page_folders:
+        filepaths = folder_files[folder_path]
+        folder_name = os.path.basename(folder_path)
+
+        genre_counts:  dict = {}
+        mood_counts:   dict = {}
+        artists_seen:  set  = set()
+        years_seen:    list = []
+        track_details: list = []   # per-track info for Override panel
+
+        for filepath in filepaths:
+            try:
+                tags = read_tags_from_file(filepath)
+                artist      = tags.get("artist") or tags.get("albumartist") or ""
+                album_tag   = tags.get("album") or ""
+                title       = tags.get("title") or os.path.splitext(
+                                  os.path.basename(filepath))[0]
+                year        = tags.get("year")
+                genre       = tags.get("genre") or ""
+                albumartist = tags.get("albumartist") or ""
+
+                file_genres = [g.strip() for g in
+                               genre.replace(";", ",").split(",") if g.strip()][:3]
+
+                # Mood read — MP3 TXXX:MOOD, FLAC MOOD tag
+                file_moods: list = []
+                try:
+                    fext = os.path.splitext(filepath)[1].lower()
+                    if fext == ".mp3":
+                        from mutagen.id3 import ID3, ID3NoHeaderError
+                        try:
+                            id3 = ID3(filepath)
+                            mf  = id3.get("TXXX:MOOD")
+                            if mf:
+                                file_moods = [m.strip() for m in
+                                              str(mf).split(";") if m.strip()][:3]
+                        except Exception:
+                            pass
+                    elif fext == ".flac":
+                        from mutagen.flac import FLAC
+                        ff = FLAC(filepath)
+                        file_moods = [m.strip() for m in
+                                      ff.get("mood", []) if m.strip()][:3]
+                except Exception:
+                    pass
+
+                for g in file_genres:
+                    genre_counts[g] = genre_counts.get(g, 0) + 1
+                for m in file_moods:
+                    mood_counts[m] = mood_counts.get(m, 0) + 1
+                if artist:
+                    artists_seen.add(artist.strip())
+                if year:
+                    years_seen.append(year)
+
+                track_details.append({
+                    "file_path":   filepath,
+                    "title":       title,
+                    "artist":      artist,
+                    "album_tag":   album_tag,   # what the ALBUM tag currently says
+                    "albumartist": albumartist,
+                    "year":        year,
+                    "genres":      file_genres,
+                    "moods":       file_moods,
+                })
+            except Exception as e:
+                log.debug(f"Tag read error {filepath}: {e}")
+                continue
+
+        # Detect compilation: 3+ unique track artists in one folder
+        is_compilation = len(artists_seen) >= 3
+
+        # Most common year across tracks
+        common_year = None
+        if years_seen:
+            from collections import Counter
+            common_year = Counter(years_seen).most_common(1)[0][0]
+
+        top_genres = [g for g, _ in sorted(genre_counts.items(), key=lambda x: -x[1])[:3]]
+        top_moods  = [m for m, _ in sorted(mood_counts.items(),  key=lambda x: -x[1])[:3]]
+
+        result.append({
+            "key":            folder_path,          # unique — full path, no collisions
+            "folder_name":    folder_name,           # display name (last path component)
+            "folder_path":    folder_path,
+            "track_count":    len(filepaths),
+            "year":           common_year,
+            "genres":         top_genres,
+            "moods":          top_moods,
+            "has_genres":     len(top_genres) > 0,
+            "has_moods":      len(top_moods) > 0,
+            "is_compilation": is_compilation,        # flag for UI warning on LOOKUP
+            "artists":        sorted(list(artists_seen))[:5],
+            "tracks":         track_details,         # per-track detail for Override panel
+        })
+
+    has_more   = (offset + page_size) < total_folders
+    next_offset = offset + page_size if has_more else None
+
+    log.info(
+        f"[read-tags] Returning folders {offset}–{offset+len(result)} "
+        f"of {total_folders} total | "
+        f"paths={[os.path.basename(p) for p in safe_paths]}"
+    )
+
+    return {
+        "albums":        result,
+        "total_files":   total_files_found,
+        "total_folders": total_folders,
+        "offset":        offset,
+        "page_size":     page_size,
+        "has_more":      has_more,
+        "next_offset":   next_offset,
+        # Console message the frontend can display directly
+        "console_msg":   (
+            f"📂 Found {total_folders} folders containing audio files. "
+            f"Showing {offset+1}–{offset+len(result)}."
+            + (" Load more when ready." if has_more else " All folders loaded.")
+        ),
+    }
 
 
 @router.post("/scan/start")
@@ -1183,6 +1636,218 @@ async def clear_cache(user: dict = Depends(require_auth)):
     return {"ok": True, "message": "Cache cleared."}
 
 
+@router.post("/override")
+async def manual_override(req: ManualOverrideRequest, user: dict = Depends(require_auth)):
+    """
+    Manual genre/mood override — bypasses waterfall entirely.
+    Accepts track_ids (from preview table) or file_paths (from album tagger).
+    Max 3 genres, max 3 moods enforced.
+    """
+    genres = req.genres[:3]
+    moods  = req.moods[:3]
+    year   = req.year
+    success_count = 0
+    fail_count    = 0
+
+    import concurrent.futures
+    loop     = asyncio.get_event_loop()
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    now      = datetime.now(timezone.utc).isoformat()
+
+    # Build unified list of (file_path, track_id_or_None, file_year)
+    write_targets = []
+
+    for track_id in (req.track_ids or []):
+        async with aiosqlite.connect(settings.database_url) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                "SELECT file_path, year FROM tracks WHERE track_id=?", (track_id,))
+            track = await cursor.fetchone()
+        if track and os.path.exists(track["file_path"]):
+            write_targets.append((track["file_path"], track_id, track["year"]))
+        else:
+            fail_count += 1
+
+    for fp in (req.file_paths or []):
+        if os.path.exists(fp):
+            write_targets.append((fp, None, None))
+        else:
+            fail_count += 1
+
+    for (file_path, track_id, file_year) in write_targets:
+        use_year = year or file_year
+        try:
+            success = await loop.run_in_executor(
+                executor, write_tags, file_path, genres, moods, use_year, "", 0)
+        except Exception as e:
+            log.error(f"Override write error {file_path}: {e}")
+            success = False
+
+        if success:
+            success_count += 1
+            async with aiosqlite.connect(settings.database_url) as db:
+                if track_id:
+                    await db.execute(
+                        "UPDATE tracks SET genre_1=?, genre_2=?, genre_3=?, "
+                        "mood_1=?, mood_2=?, mood_3=?, last_updated=? WHERE track_id=?",
+                        (genres[0] if len(genres) > 0 else None,
+                         genres[1] if len(genres) > 1 else None,
+                         genres[2] if len(genres) > 2 else None,
+                         moods[0]  if len(moods)  > 0 else None,
+                         moods[1]  if len(moods)  > 1 else None,
+                         moods[2]  if len(moods)  > 2 else None,
+                         now, track_id))
+                await db.execute(
+                    "INSERT INTO write_log (track_id, file_path, field_changed, "
+                    "new_value, write_status, written_at) VALUES (?,?,'manual_override',?,?,?)",
+                    (track_id, file_path,
+                     str({"genres": genres, "moods": moods}), "success", now))
+                await db.commit()
+        else:
+            fail_count += 1
+
+    executor.shutdown(wait=False)
+    return {"ok": True, "success": success_count, "failed": fail_count,
+            "message": f"{success_count} track(s) updated with manual genre override"}
+
+
+@router.post("/album-override")
+async def album_override(req: AlbumOverrideRequest, user: dict = Depends(require_auth)):
+    """
+    NEW — Album Tagger enhanced override endpoint.
+    Writes Album, Album Artist, Year, Compilation flag, Genre, Mood to every
+    selected file in one pass. Optionally clears MusicBrainz IDs.
+    Sets manually_verified=1 in DB so Auto-Pilot never overwrites these tracks.
+    Returns per-file results with console messages for the UI log.
+    """
+    genres       = req.genres[:3]
+    moods        = req.moods[:3]
+    success_list = []
+    fail_list    = []
+    console_msgs = []
+
+    import concurrent.futures
+    loop     = asyncio.get_event_loop()
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    now      = datetime.now(timezone.utc).isoformat()
+
+    console_msgs.append(
+        f"✏️  Album Override starting — {len(req.file_paths)} track(s) to write."
+    )
+    if req.album_name:
+        console_msgs.append(f"   Album name → \"{req.album_name}\"")
+    if req.album_artist:
+        console_msgs.append(f"   Album artist → \"{req.album_artist}\"")
+    if req.is_compilation:
+        console_msgs.append("   Compilation flag → ON")
+    if req.clear_mbids:
+        console_msgs.append("   MusicBrainz IDs → will be cleared")
+    if genres:
+        console_msgs.append(f"   Genres → {', '.join(genres)}")
+    if moods:
+        console_msgs.append(f"   Moods → {', '.join(moods)}")
+
+    for fp in req.file_paths:
+        if not os.path.exists(fp):
+            fail_list.append(fp)
+            console_msgs.append(f"   ⚠️  File not found: {os.path.basename(fp)}")
+            continue
+
+        try:
+            success = await loop.run_in_executor(
+                executor,
+                write_tags_extended,
+                fp, genres, moods, req.year,
+                req.album_name, req.album_artist,
+                req.is_compilation, req.clear_mbids
+            )
+        except Exception as e:
+            log.error(f"album-override write error {fp}: {e}")
+            success = False
+
+        fname = os.path.basename(fp)
+        if success:
+            success_list.append(fp)
+            console_msgs.append(f"   ✅ Written: {fname}")
+
+            # Mark as manually_verified in DB so Auto-Pilot skips it
+            async with aiosqlite.connect(settings.database_url) as db:
+                # Try to find existing track record
+                cursor = await db.execute(
+                    "SELECT track_id FROM tracks WHERE file_path=?", (fp,)
+                )
+                row = await cursor.fetchone()
+                if row:
+                    await db.execute(
+                        """UPDATE tracks SET
+                               genre_1=?, genre_2=?, genre_3=?,
+                               mood_1=?, mood_2=?, mood_3=?,
+                               manually_verified=1, last_updated=?
+                           WHERE track_id=?""",
+                        (genres[0] if len(genres) > 0 else None,
+                         genres[1] if len(genres) > 1 else None,
+                         genres[2] if len(genres) > 2 else None,
+                         moods[0]  if len(moods)  > 0 else None,
+                         moods[1]  if len(moods)  > 1 else None,
+                         moods[2]  if len(moods)  > 2 else None,
+                         now, row[0])
+                    )
+                await db.execute(
+                    "INSERT INTO write_log "
+                    "(track_id, file_path, field_changed, new_value, write_status, written_at) "
+                    "VALUES (?,?,'album_override',?,?,?)",
+                    (row[0] if row else None, fp,
+                     json.dumps({
+                         "album": req.album_name,
+                         "album_artist": req.album_artist,
+                         "genres": genres,
+                         "moods": moods,
+                         "year": req.year,
+                         "compilation": req.is_compilation,
+                         "mbids_cleared": req.clear_mbids,
+                     }),
+                     "success", now)
+                )
+                await db.commit()
+        else:
+            fail_list.append(fp)
+            console_msgs.append(f"   ❌ Failed: {fname}")
+
+    executor.shutdown(wait=False)
+
+    summary = (
+        f"Album Override complete — "
+        f"{len(success_list)} written, {len(fail_list)} failed."
+    )
+    console_msgs.append(f"✔️  {summary}")
+    log.info(f"[album-override] {summary}")
+
+    return {
+        "ok":           len(fail_list) == 0,
+        "success":      len(success_list),
+        "failed":       len(fail_list),
+        "message":      summary,
+        "console_msgs": console_msgs,
+    }
+
+
+@router.post("/album-lookup")
+async def album_lookup(req: AlbumTagRequest, user: dict = Depends(require_auth)):
+    """
+    Album-level genre lookup via MusicBrainz release-group.
+    Returns proposed genres and year for the whole album.
+    """
+    result = await fetch_musicbrainz_album(req.artist, req.album)
+    return {
+        "artist":          req.artist,
+        "album":           req.album,
+        "proposed_genres": result.get("genres", []),
+        "year":            result.get("year"),
+        "confidence":      result.get("confidence", "low"),
+        "album_id":        result.get("album_id"),
+    }
+
+
 @router.get("/write-log")
 async def get_write_log(limit: int = 50, user: dict = Depends(require_auth)):
     async with aiosqlite.connect(settings.database_url) as db:
@@ -1200,6 +1865,9 @@ async def get_write_log(limit: int = 50, user: dict = Depends(require_auth)):
 
 async def run_scan_job(job_id: int, scan_path: str, mode: str, chunk_size: int):
     log.info(f"[Job {job_id}] Starting scan: {scan_path} | mode={mode}")
+    log.info(f"[Job {job_id}] 🐾 ChartHound Retriever starting up...")
+    log.info(f"[Job {job_id}] 📂 Scan path: {scan_path}")
+    log.info(f"[Job {job_id}] ⚙️  Mode: {mode.upper()} | Chunk size: {chunk_size}")
 
     # Capture start time for autopilot post-scan write
     started_at = datetime.now(timezone.utc).isoformat()
@@ -1220,7 +1888,8 @@ async def run_scan_job(job_id: int, scan_path: str, mode: str, chunk_size: int):
     # Index files
     file_list = index_audio_files(scan_path)
     total = len(file_list)
-    log.info(f"[Job {job_id}] Found {total} audio files in {scan_path}")
+    log.info(f"[Job {job_id}] 🎵 Found {total} audio files — beginning waterfall scan...")
+    log.info(f"[Job {job_id}] 📡 Waterfall order: MusicBrainz → Last.fm → ListenBrainz → Deezer → Discogs → iTunes")
 
     if total == 0:
         now = datetime.now(timezone.utc).isoformat()
@@ -1253,6 +1922,11 @@ async def run_scan_job(job_id: int, scan_path: str, mode: str, chunk_size: int):
                 return
 
         chunk_scan_start = datetime.now(timezone.utc).isoformat()
+        chunk_num = chunks.index(chunk) + 1
+        log.info(
+            f"[Job {job_id}] 🔍 Chunk {chunk_num}/{len(chunks)} — "
+            f"tracks {processed+1}–{min(processed+len(chunk), total)} of {total}"
+        )
 
         for filepath in chunk:
             try:
@@ -1294,7 +1968,7 @@ async def run_scan_job(job_id: int, scan_path: str, mode: str, chunk_size: int):
             (now, processed, failed, job_id)
         )
         await db.commit()
-    log.info(f"[Job {job_id}] Complete — {processed} processed, {failed} failed")
+    log.info(f"[Job {job_id}] ✅ Scan complete — {processed} processed, {failed} failed")
 
 
 async def process_single_file(filepath: str, job_id: int, lastfm_key: str, mode: str):
@@ -1331,12 +2005,17 @@ async def process_single_file(filepath: str, job_id: int, lastfm_key: str, mode:
     async with aiosqlite.connect(settings.database_url) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
-            "SELECT track_id, last_updated FROM tracks WHERE file_path=? OR file_hash=?",
+            "SELECT track_id, last_updated, manually_verified FROM tracks "
+            "WHERE file_path=? OR file_hash=?",
             (filepath, file_hash)
         )
         cached = await cursor.fetchone()
 
     if cached and cached["last_updated"]:
+        # Skip if manually verified by user — Auto-Pilot must never overwrite hand edits
+        if cached["manually_verified"]:
+            log.info(f"[Auto-Pilot] Skipping manually verified track: {title}")
+            return
         log.debug(f"Cache hit: {title}")
         if mode == "autopilot":
             await write_from_cache(cached["track_id"], filepath)
@@ -1450,6 +2129,13 @@ async def process_single_file(filepath: str, job_id: int, lastfm_key: str, mode:
 
     comment = format_chart_comment(chart_entries)
     confidence = mb_data.get("confidence", "low")
+
+    # Apply artist fingerprint correction before storing
+    if all_genres:
+        update_artist_fingerprint(artist, all_genres)
+        all_genres = apply_artist_fingerprint(artist, all_genres)
+    all_genres = all_genres[:3]
+    moods      = moods[:3]
 
     # ── Step 6: Store in SQLite (available to preview immediately) ─────────────
     async with aiosqlite.connect(settings.database_url) as db:
