@@ -318,9 +318,9 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
 .toast.warn{border-color:var(--amber);color:var(--amber);}
 @keyframes toastIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 @keyframes toastOut{to{opacity:0}}
-::-webkit-scrollbar{width:5px;height:5px;}
+::-webkit-scrollbar{width:8px;height:8px;}
 ::-webkit-scrollbar-track{background:var(--bg);}
-::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px;}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px;}
 ::-webkit-scrollbar-thumb:hover{background:var(--muted2);}
 </style>
 </head>
@@ -876,8 +876,8 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
               </div>
               <input type="range" id="chunkSlider" min="5" max="50" value="20" oninput="document.getElementById('chunkDisplay').textContent=this.value">
               <div style="display:flex;justify-content:space-between;margin-top:.25rem">
-                <span style="font-family:var(--mono);font-size:.5rem;color:var(--muted)">5 (safer)</span>
-                <span style="font-family:var(--mono);font-size:.5rem;color:var(--muted)">50 (faster)</span>
+                <span style="font-family:var(--mono);font-size:.5rem;color:var(--muted)">5 (fewer API calls)</span>
+                <span style="font-family:var(--mono);font-size:.5rem;color:var(--muted)">50 (more API calls)</span>
               </div>
             </div>
           </div>
@@ -923,7 +923,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
               <div class="p-stat"><div class="p-stat-num" id="statTotal">0</div><div class="p-stat-label">TOTAL</div></div>
               <div class="p-stat"><div class="p-stat-num" id="statProcessed">0</div><div class="p-stat-label">PROCESSED</div></div>
               <div class="p-stat"><div class="p-stat-num" style="color:var(--green)" id="statMatched">0</div><div class="p-stat-label">MATCHED</div></div>
-              <div class="p-stat"><div class="p-stat-num" style="color:var(--red)" id="statFailed">0</div><div class="p-stat-label">FAILED</div></div>
+              <div class="p-stat"><div class="p-stat-num" style="color:var(--red)" id="statFailed">0</div><div class="p-stat-label">UNMATCHED</div></div>
               <div class="p-stat"><div class="p-stat-num" style="color:var(--amber)" id="statCached">0</div><div class="p-stat-label">CACHED</div></div>
             </div>
           </div>
@@ -1180,16 +1180,12 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
                   <span style="font-family:var(--display);font-size:1.05rem;color:var(--amber)" id="grm-weeks-display">1</span>
                 </div>
                 <input type="range" id="grm-weeks" min="1" max="52" value="1" oninput="grmUpdateWeeks(this.value)" style="width:100%">
-                <div style="display:flex;justify-content:space-between;margin-top:.2rem"><span style="font-size:.52rem;color:var(--muted);font-family:var(--mono)">Any</span><span style="font-size:.52rem;color:var(--muted);font-family:var(--mono)">52 weeks</span></div>
+                <div style="display:flex;justify-content:space-between;margin-top:.2rem"><span style="font-size:.52rem;color:var(--muted);font-family:var(--mono)">1 wk</span><span style="font-size:.52rem;color:var(--muted);font-family:var(--mono)">52 wks</span></div>
               </div>
             </div>
           </div>
 
-          <!-- MOOD FILTER -->
-          <div>
-            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--pink);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">MOOD FILTER<span style="font-size:.5rem;color:var(--muted);margin-left:.25rem">(optional)</span><span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
-            <div style="display:flex;flex-wrap:wrap;gap:.3rem" id="grm-mood-pills"></div>
-          </div>
+          <!-- Genre/Mood filters moved to results table header for post-scan filtering -->
 
           <!-- PLAYLIST NAME -->
           <div>
@@ -1260,16 +1256,19 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
               </div>
               <div style="text-align:center;min-width:70px">
                 <div style="font-family:var(--display);font-size:1.6rem;color:var(--red)" id="grm-s-failed">0</div>
-                <div style="font-family:var(--mono);font-size:.48rem;color:var(--muted);letter-spacing:1px">FAILED</div>
+                <div style="font-family:var(--mono);font-size:.48rem;color:var(--muted);letter-spacing:1px">UNMATCHED</div>
               </div>
             </div>
           </div>
 
           <!-- Results Table -->
           <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;flex:1">
-            <div style="display:flex;align-items:center;gap:.75rem;padding:.75rem 1rem;border-bottom:1px solid var(--border)">
+            <div style="display:flex;align-items:center;gap:.75rem;padding:.75rem 1rem;border-bottom:1px solid var(--border);flex-wrap:wrap">
               <span style="font-family:var(--display);font-size:1rem;letter-spacing:1px;color:var(--pink)">CHART MATCHES</span>
               <span style="font-family:var(--mono);font-size:.6rem;padding:.15rem .5rem;border-radius:10px;background:rgba(244,114,182,.12);border:1px solid rgba(244,114,182,.3);color:var(--pink)" id="grm-badge">0 songs</span>
+              <select id="grm-genre-filter" onchange="grmApplyGenreFilter()" style="display:none;background:var(--bg);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:.62rem;padding:.3rem .55rem;outline:none;cursor:pointer">
+                <option value="">All Genres</option>
+              </select>
               <input type="text" placeholder="Filter results…" oninput="grmFilter(this.value)" style="margin-left:auto;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:.65rem;padding:.35rem .6rem;outline:none;width:200px">
             </div>
             <div style="overflow-x:auto">
@@ -1284,6 +1283,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
                     <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer" onclick="grmSort('peak')">PEAK <span id="sort-ind-peak"></span></th>
                     <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer" onclick="grmSort('weeks')">WEEKS <span id="sort-ind-weeks"></span></th>
                     <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap">CHARTS</th>
+                    <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer" onclick="grmSort('conf')">CONF <span id="sort-ind-conf"></span></th>
                   </tr>
                 </thead>
                 <tbody id="grm-tbody"></tbody>
@@ -1296,8 +1296,8 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
             </div>
           </div>
 
-          <!-- Push Bar -->
-          <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:.9rem 1.25rem;display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
+          <!-- Push Bar — sticky at top of results -->
+          <div id="grm-push-bar" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:.9rem 1.25rem;display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;position:sticky;top:70px;z-index:100;box-shadow:0 4px 16px rgba(0,0,0,.4)">
             <div style="flex:1;min-width:160px">
               <div style="font-family:var(--display);font-size:.95rem;letter-spacing:1px" id="grm-bar-title">Playlist: Chart Hits</div>
               <div style="font-family:var(--mono);font-size:.6rem;color:var(--muted);margin-top:.15rem" id="grm-bar-sub">0 matched songs ready to push · <span style="color:var(--amber)">Push capped at 15,000 tracks</span> · Use ⬇ M3U for full results</div>
@@ -1857,7 +1857,7 @@ function startScanPolling() {
       if (currentMode === 'preview' && job.processed > 0) loadPreviewResults();
       if (job.status === 'done') {
         clearInterval(scanPollTimer); scanPollTimer = null;
-        addLog(`✓ Scan complete — ${job.processed} processed, ${job.failed} failed`, 'ok');
+        addLog(`✓ Scan complete — ${job.processed} processed, ${job.failed} unmatched`, 'ok');
         document.getElementById('btnStartScan').disabled = false;
         document.getElementById('btnPauseScan').disabled = true;
         document.getElementById('btnStopScan').disabled = true;
@@ -2781,7 +2781,15 @@ async function writeSelected() {
   if (!selectedTrackIds.size) { toast('Select tracks to write first.', 'warn'); return; }
   try {
     const ids = [...selectedTrackIds];
-    const r = await fetch(`${API}/api/retriever/write`, {method:'POST', headers:authHdrs(), body:JSON.stringify({job_id:scanJobId, track_ids:ids, write_art:true})});
+    // If scanJobId was cleared after scan completed, fetch the most recent job_id
+    let jobId = scanJobId;
+    if (!jobId) {
+      try {
+        const jr = await fetch(`${API}/api/retriever/scan/latest`, {headers:authHdrs()});
+        if (jr.ok) { const jd = await jr.json(); jobId = jd.job_id || null; }
+      } catch {}
+    }
+    const r = await fetch(`${API}/api/retriever/write`, {method:'POST', headers:authHdrs(), body:JSON.stringify({job_id:jobId, track_ids:ids, write_art:true})});
     if (r.ok) {
       const d = await r.json();
       toast(`✓ ${d.message}`, 'ok');
@@ -2893,7 +2901,7 @@ function refreshAllDots() {
     const el = document.getElementById(`hDot${key}`);
     if (el) el.className = `dot${connState[svc]?' ok':''}`;
   }
-  const vmap = {plex:'Plex',emby:'Emby',jellyfin:'Jellyfin',lastfm:'Lastfm',prowlarr:'Prowlarr',radarr:'Radarr',sonarr:'Sonarr',qbittorrent:'Qbittorrent',youtube:'Youtube'};
+  const vmap = {plex:'Plex',emby:'Emby',jellyfin:'Jellyfin',lastfm:'Lastfm',prowlarr:'Prowlarr',radarr:'Radarr',sonarr:'Sonarr',qbittorrent:'Qbittorrent',youtube:'Youtube',discogs:'Discogs'};
   for (const [svc,key] of Object.entries(vmap)) {
     const dot = document.getElementById(`vDot${key}`);
     const status = document.getElementById(`vStatus${key}`);
@@ -2910,8 +2918,11 @@ function refreshAllDots() {
 function toast(msg, type='') {
   const el = document.createElement('div');
   el.className = `toast ${type}`; el.textContent = msg;
+  el.style.cursor = 'pointer';
+  el.title = 'Click to dismiss';
+  el.onclick = () => el.remove();
   document.getElementById('toastWrap').appendChild(el);
-  setTimeout(() => el.remove(), 4200);
+  setTimeout(() => { if (el.parentNode) el.remove(); }, 4200);
 }
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
@@ -2980,6 +2991,20 @@ let grmLivePoll      = null;   // auto-refresh results during scan
 
 // ── Init ──────────────────────────────────────────────────────────
 function grmInit() {
+  // Genre filter pills
+  const genres = ['Rock','Pop','Country','R&B','Hip-Hop','Jazz','Classical',
+                  'Electronic','Dance','Folk','Blues','Soul','Metal','Punk',
+                  'Reggae','Gospel','CCM','Worship','Latin','Indie','Alternative'];
+  const gw = document.getElementById('grm-genre-pills');
+  if (gw && !gw.children.length) {
+    gw.innerHTML = genres.map(g =>
+      `<span onclick="grmToggleGenre('${g}')" data-genre="${g}" data-active="0"
+        style="font-family:var(--mono);font-size:.57rem;padding:.18rem .5rem;
+        border-radius:20px;border:1px solid var(--border);background:var(--bg);
+        color:var(--muted);cursor:pointer;transition:all .15s">${g}</span>`
+    ).join('');
+  }
+  // Mood pills
   const moods = ['Energetic','Intense','Upbeat','Happy','Chill','Peaceful',
                  'Romantic','Soulful','Melancholic','Dark','Epic','Nostalgic',
                  'Uplifting','Joyful'];
@@ -2992,7 +3017,62 @@ function grmInit() {
         color:var(--muted);cursor:pointer;transition:all .15s">${m}</span>`
     ).join('');
   }
+  // Check if any tracks have been Retriever-tagged — show genre/mood only if so
+  // Inject scroll nav buttons if not already present
+  grmInjectScrollNav();
   grmLoadStats();
+}
+
+// Genre/mood pills replaced by post-scan dropdown (grmBuildGenreDropdown)
+
+function grmInjectScrollNav() {
+  if (document.getElementById('grm-scroll-nav')) return;
+  // The groomer panel scrolls inside .content-area, not window
+  const scroller = document.querySelector('.content-area') || document.documentElement;
+  const nav = document.createElement('div');
+  nav.id = 'grm-scroll-nav';
+  nav.style.cssText = 'position:fixed;right:1.5rem;bottom:5rem;z-index:500;display:flex;flex-direction:column;gap:.4rem;opacity:0;transition:opacity .3s;pointer-events:none;';
+  const btnStyle = 'width:36px;height:36px;border-radius:50%;background:var(--surface2);border:1px solid var(--border2);color:var(--pink);font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;line-height:1;';
+  nav.innerHTML = `
+    <button style="${btnStyle}" title="Scroll to top"
+      onclick="(document.querySelector('.content-area')||document.documentElement).scrollTo({top:0,behavior:'smooth'})">↑</button>
+    <button style="${btnStyle}" title="Scroll to push bar"
+      onclick="(document.querySelector('.content-area')||document.documentElement).scrollTo({top:99999,behavior:'smooth'})">↓</button>`;
+  document.body.appendChild(nav);
+  scroller.addEventListener('scroll', () => {
+    const show = scroller.scrollTop > 200;
+    nav.style.opacity       = show ? '1'    : '0';
+    nav.style.pointerEvents = show ? 'auto' : 'none';
+  }, {passive:true});
+}
+
+function grmCopyPath(path, el) {
+  if (!path) return;
+  navigator.clipboard.writeText(path).then(() => {
+    const orig = el.style.background;
+    el.style.background = 'rgba(74,222,128,.15)';
+    el.title = '✓ Copied!';
+    setTimeout(() => {
+      el.style.background = orig;
+      el.title = 'Click to copy path: ' + path;
+    }, 1200);
+  }).catch(() => toast('Copy failed — browser blocked clipboard', 'warn'));
+}
+
+function grmToggleGenre(genre) {
+  const p = document.querySelector(`[data-genre="${genre}"]`);
+  if (!p) return;
+  const on = p.dataset.active === '1';
+  p.dataset.active    = on ? '0' : '1';
+  p.style.borderColor = on ? 'var(--border)' : 'var(--teal)';
+  p.style.background  = on ? 'var(--bg)' : 'rgba(45,212,191,.12)';
+  p.style.color       = on ? 'var(--muted)' : 'var(--teal)';
+  grmSearch();
+}
+
+function grmGetSelectedGenres() {
+  return [...document.querySelectorAll('[data-genre][data-active="1"]')]
+    .map(p => p.dataset.genre);
 }
 
 function grmSetMode(mode) {
@@ -3150,7 +3230,7 @@ async function grmStartScan() {
     var _tb2 = document.getElementById('grm-tbody'); if (_tb2) _tb2.innerHTML = '';
     var _bg2 = document.getElementById('grm-badge'); if (_bg2) _bg2.textContent = '0 songs';
     grmStartPoll();
-    grmLivePoll = setInterval(() => { if (grmResults.length > 0 || grmScanJobId) grmSearch(); }, 30000);
+    grmLivePoll = setInterval(() => { if (grmScanJobId) grmSearch(); }, 15000);
     toast(`Groomer scan started on ${scope}`, 'ok');
   } catch(e) {
     grmLog(`Failed to start: ${e.message}`, 'err');
@@ -3288,51 +3368,116 @@ function grmGetSelectedCharts() {
 }
 
 // ── Results ───────────────────────────────────────────────────────
-async function grmSearch() {
+let _grmOffset   = 0;
+let _grmTotal    = 0;
+const GRM_PAGE   = 500;
+
+async function grmSearch(append = false) {
   const charts  = grmGetSelectedCharts();
   if (!charts.length) return;
   const peakMax = document.getElementById('grm-peak').value;
   const peakMin = document.getElementById('grm-peak-min')?.value || 1;
+  if (!append) { _grmOffset = 0; grmResults = []; grmSelected.clear(); }
+  const activeGenres = grmGetSelectedGenres();
   const params  = new URLSearchParams({
-    charts: charts.join(','),
+    charts:   charts.join(','),
     min_peak: peakMin,
     max_peak: peakMax,
-    limit: 5000,
+    limit:    GRM_PAGE,
+    offset:   _grmOffset,
   });
+  if (activeGenres.length) params.set('genre', activeGenres.join(','));
   try {
     const r = await fetch(`${API}/api/groomer/results?${params}`, {headers:authHdrs()});
     if (!r.ok) return;
     const d = await r.json();
-    grmResults = d.results || [];
-    grmRenderResults(grmResults);
+    _grmTotal = d.total || 0;
+    if (append) {
+      grmResults = grmResults.concat(d.results || []);
+    } else {
+      grmResults = d.results || [];
+    }
+    _grmOffset += (d.results || []).length;
+    grmRenderResults(grmResults, append);
     grmSyncBar();
+    grmUpdateLoadMore();
+    grmBuildGenreDropdown();
   } catch {}
 }
 
-function grmRenderResults(results) {
+function grmUpdateLoadMore() {
+  let btn = document.getElementById('grm-load-more');
+  if (!btn) {
+    btn = document.createElement('div');
+    btn.id = 'grm-load-more';
+    btn.style.cssText = 'text-align:center;padding:.75rem;display:none';
+    btn.innerHTML = `<button onclick="grmLoadMore()" style="padding:.4rem 1.2rem;background:var(--surface2);color:var(--pink);border:1px solid var(--pink);border-radius:5px;font-family:var(--mono);font-size:.65rem;cursor:pointer;letter-spacing:1px">LOAD MORE</button><span id="grm-load-count" style="font-family:var(--mono);font-size:.58rem;color:var(--muted);margin-left:.75rem"></span>`;
+    const wrap = document.querySelector('#grm-tbody')?.closest('.overflow-x-auto, div[style*="overflow-x"]');
+    if (wrap) wrap.appendChild(btn);
+    else document.getElementById('grm-tbody')?.parentElement?.parentElement?.appendChild(btn);
+  }
+  const remaining = _grmTotal - _grmOffset;
+  if (remaining > 0) {
+    btn.style.display = 'block';
+    const span = document.getElementById('grm-load-count');
+    if (span) span.textContent = `${grmResults.length.toLocaleString()} shown · ${_grmTotal.toLocaleString()} total`;
+  } else {
+    btn.style.display = 'none';
+  }
+}
+
+let _grmLoadingMore = false;
+let _grmRenderedIds = new Set();  // track_ids already in the DOM
+
+async function grmLoadMore() {
+  if (_grmLoadingMore) return;
+  _grmLoadingMore = true;
+  const btn = document.querySelector('#grm-load-more button');
+  if (btn) { btn.textContent = 'LOADING…'; btn.disabled = true; }
+  try {
+    await grmSearch(true);
+  } finally {
+    _grmLoadingMore = false;
+    if (btn) { btn.textContent = 'LOAD MORE'; btn.disabled = false; }
+  }
+}
+
+function grmRenderResults(results, append = false) {
   const fn = _sortFields[_sortKey] || _sortFields.peak;
-  results = [...results].sort((a,b) => {
-    const av = fn(a), bv = fn(b);
-    if (av < bv) return _sortAsc ? -1 : 1;
-    if (av > bv) return _sortAsc ? 1 : -1;
-    return 0;
-  });
   const tbody = document.getElementById('grm-tbody');
   const empty = document.getElementById('grm-empty');
   const badge = document.getElementById('grm-badge');
-  grmSelected.clear();
-  const sa = document.getElementById('grm-select-all');
-  if (sa) sa.checked = false;
-  if (!results.length) {
+
+  if (!append) {
+    // Full re-render — sort entire set, rebuild table
+    _grmRenderedIds.clear();
+    grmSelected.clear();
+    const sa = document.getElementById('grm-select-all');
+    if (sa) sa.checked = false;
+    results = [...results].sort((a,b) => {
+      const av = fn(a), bv = fn(b);
+      if (av < bv) return _sortAsc ? -1 : 1;
+      if (av > bv) return _sortAsc ? 1 : -1;
+      return 0;
+    });
+  }
+
+  if (!results.length && !append) {
     tbody.innerHTML = '';
     if (empty) empty.style.display = 'block';
     if (badge) badge.textContent = '0 songs';
     grmSyncBar(); return;
   }
   if (empty) empty.style.display = 'none';
-  if (badge) badge.textContent = `${results.length} song${results.length!==1?'s':''}`;
-  tbody.innerHTML = '';
-  results.forEach(t => {
+  if (badge) badge.textContent = `${results.length.toLocaleString()} song${results.length!==1?'s':''}`;
+  if (!append) tbody.innerHTML = '';
+
+  // In append mode: only render rows not already in the DOM
+  const toRender = append
+    ? results.filter(t => !_grmRenderedIds.has(t.track_id))
+    : results;
+
+  toRender.forEach(t => {
     const artist = t.tag_artist || t.artist || '';
     const stars  = t.star_rating || t.stars || 0;
     const peak   = t.peak_position || 0;
@@ -3342,7 +3487,7 @@ function grmRenderResults(results) {
         +'<span style="color:var(--muted2)">'+'★'.repeat(5-stars)+'</span>'
       : '<span style="color:var(--muted2)">—</span>';
     const chartName = t.chart_name || '';
-    const chartDisplay = chartName ? (chartName.toUpperCase()) : '—';
+    const chartDisplay = chartName ? chartName.toUpperCase() : '—';
     const peakHTML = conf === 'low' && peak
       ? `<span style="font-family:var(--display);font-size:1rem;color:var(--muted2)" title="Estimated">~#${peak}</span>`
       : peak
@@ -3355,19 +3500,28 @@ function grmRenderResults(results) {
     const chartBadge = `<span style="font-size:.5rem;padding:.1rem .35rem;border-radius:8px;
       background:rgba(244,114,182,.1);border:1px solid rgba(244,114,182,.25);
       color:var(--pink);white-space:nowrap">${esc(chartDisplay)}</span>`;
+    const confColor = conf === 'high' ? 'var(--green)' : conf === 'medium' ? 'var(--amber)' : 'var(--orange)';
+    const confDot   = `<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${confColor};margin-right:.35rem;vertical-align:middle"></span>`;
+    const confLabel = `${confDot}<span style="color:${confColor};font-size:.55rem">${conf}</span>`;
+    const filePath  = t.file_path || '';
     const tr = document.createElement('tr');
-    tr.dataset.id   = t.track_id;
-    tr.dataset.text = `${artist} ${t.title||''} ${chartName}`.toLowerCase();
+    tr.dataset.id     = t.track_id;
+    tr.dataset.text   = `${artist} ${t.title||''} ${chartName}`.toLowerCase();
+    tr.dataset.genres = [t.genre_1,t.genre_2,t.genre_3].filter(Boolean).join(',');
     tr.style.borderBottom = '1px solid var(--border)';
     tr.innerHTML = `
       <td style="padding:.45rem .75rem"><input type="checkbox" onchange="grmToggleTrack(${t.track_id},this.checked)" style="accent-color:var(--pink)"></td>
       <td style="padding:.45rem .75rem;color:var(--muted)">${esc(artist)}</td>
-      <td style="padding:.45rem .75rem;color:var(--text)">${esc(t.title||'')}</td>
+      <td style="padding:.45rem .75rem;color:var(--text);cursor:pointer"
+          title="Click to copy path: ${esc(filePath)}"
+          onclick="grmCopyPath('${esc(filePath)}',this)">${esc(t.title||'')}</td>
       <td style="padding:.45rem .75rem;color:var(--muted)">${t.chart_year||t.year||'—'}</td>
       <td style="padding:.45rem .75rem">${starsHTML}</td>
       <td style="padding:.45rem .75rem">${peakHTML}</td>
       <td style="padding:.45rem .75rem">${wBar}</td>
-      <td style="padding:.45rem .75rem">${chartBadge}</td>`;
+      <td style="padding:.45rem .75rem">${chartBadge}</td>
+      <td style="padding:.45rem .75rem">${confLabel}</td>`;
+    _grmRenderedIds.add(t.track_id);
     tbody.appendChild(tr);
   });
   grmSyncBar();
@@ -3378,11 +3532,38 @@ let _sortAsc  = true;
 
 function grmFilter(q) {
   const lq = q.toLowerCase();
+  const activeGenre = document.getElementById('grm-genre-filter')?.value || '';
   document.querySelectorAll('#grm-tbody tr[data-id]').forEach(tr => {
-    tr.style.display = tr.dataset.text?.includes(lq) ? '' : 'none';
+    const textMatch  = tr.dataset.text?.includes(lq);
+    const genreMatch = !activeGenre || tr.dataset.genres?.split(',').includes(activeGenre);
+    tr.style.display = (textMatch && genreMatch) ? '' : 'none';
   });
 }
 
+function grmApplyGenreFilter() {
+  grmFilter(document.querySelector('#panel-groomer input[placeholder="Filter results…"]')?.value || '');
+}
+
+function grmBuildGenreDropdown() {
+  const sel = document.getElementById('grm-genre-filter');
+  if (!sel) return;
+  // Collect all unique genres from current result set
+  const genres = new Set();
+  grmResults.forEach(t => {
+    [t.genre_1, t.genre_2, t.genre_3].forEach(g => { if (g) genres.add(g); });
+  });
+  if (genres.size === 0) { sel.style.display = 'none'; return; }
+  // Rebuild options
+  sel.innerHTML = '<option value="">All Genres</option>';
+  [...genres].sort().forEach(g => {
+    const opt = document.createElement('option');
+    opt.value = g; opt.textContent = g;
+    sel.appendChild(opt);
+  });
+  sel.style.display = '';
+}
+
+const _confRank = {high:0, medium:1, low:2};
 const _sortFields = {
   artist: t => (t.tag_artist || t.artist || '').toLowerCase(),
   title:  t => (t.title  || '').toLowerCase(),
@@ -3390,13 +3571,14 @@ const _sortFields = {
   stars:  t => -(t.star_rating || t.stars || 0),
   peak:   t => t.peak_position || 9999,
   weeks:  t => -(t.weeks_on_chart || 0),
+  conf:   t => _confRank[t.confidence] ?? 9,
 };
 
 function grmSort(key) {
   if (_sortKey === key) { _sortAsc = !_sortAsc; }
   else { _sortKey = key; _sortAsc = (key === 'artist' || key === 'title'); }
   // Update indicators
-  ['artist','title','year','stars','peak','weeks'].forEach(k => {
+  ['artist','title','year','stars','peak','weeks','conf'].forEach(k => {
     const el = document.getElementById('sort-ind-' + k);
     if (el) el.textContent = k === _sortKey ? (_sortAsc ? ' ▲' : ' ▼') : '';
   });
@@ -3463,8 +3645,10 @@ async function grmPushPlaylist(server) {
     });
     const d = await r.json();
     if (r.ok && d.ok) {
-      grmLog(`✓ "${name}" pushed to ${label} — ${d.added} tracks${d.not_found?', '+d.not_found+' not found':''}`, 'ok');
-      toast(`✓ "${name}" in ${label} — ${d.added} tracks!`, 'success');
+      const nf = d.not_found || 0;
+      const nfStr = nf > 0 ? ` · ${nf} not found in ${label}` : '';
+      grmLog(`✓ "${name}" pushed to ${label} — ${d.added} tracks added${nfStr}`, 'ok');
+      toast(`✓ "${name}" — ${d.added} added${nf?' · '+nf+' not found':''}`, 'success');
     } else {
       grmLog(`${label} push failed: ${d.detail||d.message||'HTTP '+r.status}`, 'err');
       toast(`${label} push failed — see log`, 'error');

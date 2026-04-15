@@ -79,7 +79,7 @@ MATCH_THRESHOLD = 0.82
 
 # ── Last.fm listener thresholds by genre bucket ───────────────────────────────
 _LFM_THRESHOLDS = {
-    "ccm":     (200_000,   75_000,  25_000,  10_000,  10_000),
+    "ccm":     (100_000,  40_000,  15_000,  5_000,   5_000),   # loosened: min 5k
     "country": (2_000_000, 1_000_000, 500_000, 200_000, 200_000),
     "dance":   (2_000_000, 1_000_000, 500_000, 200_000, 200_000),
     "rnb":     (3_000_000, 1_500_000, 750_000, 300_000, 300_000),
@@ -340,6 +340,20 @@ async def charts_status(_=Depends(require_auth)):
 #  DB STATS
 # ══════════════════════════════════════════════════════════════════════════════
 
+@router.get("/tagged_count")
+async def tagged_count(_=Depends(require_auth)):
+    """Returns count of tracks with genre_1 populated (Retriever-tagged)."""
+    try:
+        async with aiosqlite.connect(_DYNAMIC_DB) as db:
+            async with db.execute(
+                "SELECT COUNT(*) FROM tracks WHERE genre_1 IS NOT NULL AND genre_1 != ''"
+            ) as cur:
+                row = await cur.fetchone()
+                return {"tagged": row[0] if row else 0}
+    except Exception:
+        return {"tagged": 0}
+
+
 @router.get("/db_stats")
 async def db_stats(_=Depends(require_auth)):
     static_total = 0
@@ -391,10 +405,47 @@ class StopRequest(BaseModel):
 #  SCAN — START
 # ══════════════════════════════════════════════════════════════════════════════
 
+async def _migrate_chart_data():
+    """
+    Schema migrations — safe no-ops if columns already exist.
+    1. chart_data.chart_year  — added in this pass
+    2. tracks.tag_artist      — needed for Groomer-inserted minimal rows
+    """
+    try:
+        async with aiosqlite.connect(_DYNAMIC_DB) as db:
+            # chart_data migrations
+            cd_cols = [row[1] async for row in await db.execute("PRAGMA table_info(chart_data)")]
+            if "chart_year" not in cd_cols:
+                await db.execute("ALTER TABLE chart_data ADD COLUMN chart_year INTEGER")
+                log.info("chart_data: chart_year column added via migration")
+
+            # tracks migrations
+            tr_cols = [row[1] async for row in await db.execute("PRAGMA table_info(tracks)")]
+            if "tag_artist" not in tr_cols:
+                await db.execute("ALTER TABLE tracks ADD COLUMN tag_artist TEXT")
+                log.info("tracks: tag_artist column added via migration")
+
+            await db.commit()
+    except Exception as e:
+        log.warning(f"migration warning: {e}")
+
+
 @router.post("/scan/start")
 async def scan_start(req: ScanRequest, bg: BackgroundTasks, _=Depends(require_auth)):
     if _scan_job["status"] == "running":
         raise HTTPException(409, "A scan is already running. Stop it first.")
+
+    # Migrate schema if needed (safe no-op if column already exists)
+    await _migrate_chart_data()
+
+    # Wipe previous scan results so stale data never bleeds into a new scan
+    try:
+        async with aiosqlite.connect(_DYNAMIC_DB) as db:
+            await db.execute("DELETE FROM chart_data")
+            await db.commit()
+        log.info("chart_data cleared — starting fresh scan")
+    except Exception as e:
+        log.warning(f"Could not clear chart_data before scan: {e}")
 
     _scan_job.update({
         "status": "starting", "message": "Initialising scan...",
@@ -477,6 +528,11 @@ async def _run_scan(req: ScanRequest):
                     _scan_job["processed"] += 1
                     continue
 
+                # Resolve track_id — required before any chart_data write
+                track_id = await _resolve_track_id(db, track)
+                if track_id:
+                    track["track_id"] = track_id
+
                 # Static DB lookup (runs in thread — synchronous sqlite3)
                 static_result = await loop.run_in_executor(
                     None, _lookup_static, artist, title, req.charts
@@ -530,6 +586,102 @@ async def _run_scan(req: ScanRequest):
         _scan_job.update({"status": "error", "message": str(e)})
 
 
+async def _resolve_track_id(db: aiosqlite.Connection, track: dict) -> Optional[int]:
+    """
+    Returns a valid track_id for chart_data writes.
+    Priority:
+      1. track dict already has track_id (Retriever-indexed tracks)
+      2. Lookup by file_path in tracks table (unique index — fast)
+      3. Lookup by tag_artist + title (fuzzy fallback)
+      4. Insert minimal tracks row and return new ID
+    """
+    # Already resolved
+    if track.get("track_id"):
+        return track["track_id"]
+
+    file_path  = track.get("file_path", "").strip()
+    artist     = (track.get("tag_artist") or track.get("artist", "")).strip()
+    title      = track.get("title", "").strip()
+
+    # ── 1. Lookup by file_path ───────────────────────────────────────────────
+    if file_path:
+        async with db.execute(
+            "SELECT track_id FROM tracks WHERE file_path = ?", (file_path,)
+        ) as cur:
+            row = await cur.fetchone()
+            if row:
+                return row[0]
+
+    # ── 2. Lookup by artist + title ──────────────────────────────────────────
+    if artist and title:
+        async with db.execute("""
+            SELECT t.track_id FROM tracks t
+            LEFT JOIN artists a ON t.artist_id = a.artist_id
+            WHERE LOWER(t.title) = LOWER(?)
+              AND LOWER(COALESCE(t.tag_artist, a.name, '')) = LOWER(?)
+            LIMIT 1
+        """, (title, artist)) as cur:
+            row = await cur.fetchone()
+            if row:
+                return row[0]
+
+    # ── 3. Insert minimal row so chart_data can reference it ─────────────────
+    # Upsert by file_path to avoid duplicates if path already exists
+    if not file_path and not title:
+        return None  # nothing to anchor on — skip
+
+    # Use a placeholder path if none available
+    anchor_path = file_path or f"__groomer__/{artist}/{title}"
+
+    try:
+        # Resolve or create artist row
+        artist_id = None
+        if artist:
+            async with db.execute(
+                "SELECT artist_id FROM artists WHERE name = ?", (artist,)
+            ) as cur:
+                arow = await cur.fetchone()
+            if arow:
+                artist_id = arow[0]
+            else:
+                cur2 = await db.execute(
+                    "INSERT OR IGNORE INTO artists (name) VALUES (?)", (artist,)
+                )
+                artist_id = cur2.lastrowid or None
+
+        cur3 = await db.execute("""
+            INSERT INTO tracks (file_path, title, tag_artist, artist_id,
+                                plex_rating_key, emby_id, jf_id,
+                                last_scanned)
+            VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            ON CONFLICT(file_path) DO UPDATE SET
+                tag_artist      = excluded.tag_artist,
+                plex_rating_key = COALESCE(excluded.plex_rating_key, tracks.plex_rating_key),
+                emby_id         = COALESCE(excluded.emby_id,         tracks.emby_id),
+                jf_id           = COALESCE(excluded.jf_id,           tracks.jf_id)
+        """, (
+            anchor_path,
+            title,
+            artist,
+            artist_id,
+            track.get("plex_rating_key") or None,
+            track.get("emby_id")         or None,
+            track.get("jf_id")           or None,
+        ))
+        await db.commit()
+
+        # Fetch the ID (lastrowid is 0 on ON CONFLICT UPDATE — re-query)
+        async with db.execute(
+            "SELECT track_id FROM tracks WHERE file_path = ?", (anchor_path,)
+        ) as cur:
+            row = await cur.fetchone()
+            return row[0] if row else None
+
+    except Exception as e:
+        log.warning(f"_resolve_track_id insert failed for '{title}': {e}")
+        return None
+
+
 async def _check_cache(db: aiosqlite.Connection, track: dict, charts: list) -> bool:
     """Returns True if this track already has chart_data rows for the requested charts."""
     track_id = track.get("track_id")
@@ -576,11 +728,14 @@ async def _store_result(db: aiosqlite.Connection, track: dict, result: dict, req
         chart_display = CHART_DISPLAY.get(chart, chart)
         comment_string = f"{chart_display}: ~#{peak} ({weeks} wks)" if peak else f"{chart_display}: ★★★"
 
+    chart_year = result.get("chart_year")
+
     await db.execute("""
         INSERT INTO chart_data
             (track_id, chart_name, peak_position, weeks_on_chart,
-             star_rating, confidence, listener_count, comment_string, fetched_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+             star_rating, confidence, listener_count, comment_string,
+             chart_year, fetched_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
         ON CONFLICT(track_id, chart_name) DO UPDATE SET
             peak_position  = excluded.peak_position,
             weeks_on_chart = excluded.weeks_on_chart,
@@ -588,8 +743,9 @@ async def _store_result(db: aiosqlite.Connection, track: dict, result: dict, req
             confidence     = excluded.confidence,
             listener_count = excluded.listener_count,
             comment_string = excluded.comment_string,
+            chart_year     = excluded.chart_year,
             fetched_at     = excluded.fetched_at
-    """, (track_id, chart, peak, weeks, stars, conf, listeners, comment_string))
+    """, (track_id, chart, peak, weeks, stars, conf, listeners, comment_string, chart_year))
     await db.commit()
 
     # Write COMMENT tag to physical file
@@ -794,13 +950,15 @@ async def get_results(
     min_year:    Optional[int] = None,
     max_year:    Optional[int] = None,
     confidence:  Optional[str] = None,
-    limit:       int = 5000,
+    genre:       Optional[str] = None,
+    limit:       int = 500,
     offset:      int = 0,
     _=Depends(require_auth),
 ):
     """
     Query chart_data joined with tracks for Groomer results table.
-    Filters: charts (comma-sep), peak range, year range, confidence level.
+    Filters: charts (comma-sep), peak range, year range, confidence, genre.
+    Paginated — default 500 rows per page.
     """
     conditions = []
     params: list = []
@@ -817,35 +975,81 @@ async def get_results(
         conditions.append("cd.peak_position <= ?"); params.append(max_peak)
     if confidence:
         conditions.append("cd.confidence = ?"); params.append(confidence)
+    if genre:
+        genre_list = [g.strip() for g in genre.split(",") if g.strip()]
+        if genre_list:
+            placeholders = " OR ".join(
+                ["(t.genre_1=? OR t.genre_2=? OR t.genre_3=?)"] * len(genre_list)
+            )
+            conditions.append(f"({placeholders})")
+            for g in genre_list:
+                params += [g, g, g]
 
-    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
-
-    params += [limit, offset]
+    where        = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+    # Keep filter_params separate — reused for COUNT query without limit/offset
+    filter_params = list(params)
+    page_params   = list(params) + [limit, offset]
 
     try:
         async with aiosqlite.connect(_DYNAMIC_DB) as db:
             db.row_factory = aiosqlite.Row
+
+            # Total count (uses filter_params only — no limit/offset)
             async with db.execute(f"""
-                SELECT
-                    cd.chart_name, cd.peak_position, cd.weeks_on_chart,
-                    cd.star_rating, cd.confidence, cd.comment_string,
-                    cd.listener_count, cd.fetched_at,
-                    t.title, t.file_path, t.file_format,
-                    t.plex_rating_key, t.emby_id, t.jf_id,
-                    t.track_id,
-                    COALESCE(t.tag_artist, a.name, '') AS tag_artist,
-                    COALESCE(t.tag_album,  al.title, '') AS tag_album
+                SELECT COUNT(*)
                 FROM chart_data cd
-                JOIN tracks t   ON cd.track_id = t.track_id
-                LEFT JOIN artists a  ON t.artist_id = a.artist_id
-                LEFT JOIN albums al  ON t.album_id  = al.album_id
+                JOIN tracks t ON cd.track_id = t.track_id
+                LEFT JOIN artists a ON t.artist_id = a.artist_id
                 {where}
-                ORDER BY cd.peak_position ASC, cd.chart_name
+            """, filter_params) as cur:
+                total_row   = await cur.fetchone()
+                total_count = total_row[0] if total_row else 0
+
+            # Dedup: one row per artist+title, best format wins
+            # Outer query filters the ranked inner set then paginates
+            dedup_where = ("AND " + " AND ".join(conditions)) if conditions else ""
+            async with db.execute(f"""
+                SELECT * FROM (
+                    SELECT
+                        cd.chart_name, cd.peak_position, cd.weeks_on_chart,
+                        cd.star_rating, cd.confidence, cd.comment_string,
+                        cd.listener_count, cd.fetched_at,
+                        COALESCE(cd.chart_year, NULL) AS chart_year,
+                        t.title, t.file_path, t.file_format,
+                        t.plex_rating_key, t.emby_id, t.jf_id,
+                        t.track_id, t.genre_1, t.genre_2, t.genre_3,
+                        COALESCE(t.tag_artist, a.name, '') AS tag_artist,
+                        COALESCE(t.tag_album,  al.title, '') AS tag_album,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY
+                                LOWER(COALESCE(t.tag_artist, a.name, '')),
+                                LOWER(t.title)
+                            ORDER BY
+                                CASE LOWER(t.file_format)
+                                    WHEN 'flac' THEN 1 WHEN 'm4a'  THEN 2
+                                    WHEN 'wav'  THEN 3 WHEN 'aiff' THEN 4
+                                    WHEN 'ogg'  THEN 5 WHEN 'mp3'  THEN 6
+                                    ELSE 7
+                                END ASC
+                        ) AS rn
+                    FROM chart_data cd
+                    JOIN tracks t   ON cd.track_id = t.track_id
+                    LEFT JOIN artists a  ON t.artist_id = a.artist_id
+                    LEFT JOIN albums al  ON t.album_id  = al.album_id
+                    WHERE 1=1 {dedup_where}
+                ) WHERE rn = 1
+                ORDER BY peak_position ASC, chart_name
                 LIMIT ? OFFSET ?
-            """, params) as cur:
+            """, page_params) as cur:
                 rows = await cur.fetchall()
 
-            return {"results": [dict(r) for r in rows], "count": len(rows)}
+            return {
+                "results": [dict(r) for r in rows],
+                "count":   len(rows),
+                "total":   total_count,
+                "offset":  offset,
+                "limit":   limit,
+            }
 
     except Exception as e:
         log.exception("Results query error")
@@ -941,16 +1145,49 @@ async def _get_playlist_tracks(req: PlaylistPushRequest) -> list:
 
     async with aiosqlite.connect(_DYNAMIC_DB) as db:
         db.row_factory = aiosqlite.Row
+        # Dedup: for each unique artist+title keep the highest-quality format.
+        # Done via subquery — pick the track_id with the lowest format rank
+        # per artist+title group, then join back for the full row.
+        # Format rank: FLAC=1, M4A=2, WAV=3, AIFF=4, OGG=5, MP3=6, other=7
         async with db.execute(f"""
             SELECT
-                t.track_id, t.title, t.file_path,
+                t.track_id, t.title, t.file_path, t.file_format,
                 t.plex_rating_key, t.emby_id, t.jf_id,
                 COALESCE(t.tag_artist, a.name, '') AS tag_artist,
                 cd.peak_position, cd.chart_name
             FROM chart_data cd
             JOIN tracks t  ON cd.track_id = t.track_id
             LEFT JOIN artists a ON t.artist_id = a.artist_id
-            {where}
+            WHERE cd.track_id IN (
+                SELECT track_id FROM (
+                    SELECT
+                        t2.track_id,
+                        LOWER(COALESCE(t2.tag_artist, a2.name, '')) AS norm_artist,
+                        LOWER(t2.title) AS norm_title,
+                        CASE LOWER(t2.file_format)
+                            WHEN 'flac' THEN 1 WHEN 'm4a'  THEN 2
+                            WHEN 'wav'  THEN 3 WHEN 'aiff' THEN 4
+                            WHEN 'ogg'  THEN 5 WHEN 'mp3'  THEN 6
+                            ELSE 7
+                        END AS fmt_rank,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY
+                                LOWER(COALESCE(t2.tag_artist, a2.name, '')),
+                                LOWER(t2.title)
+                            ORDER BY
+                                CASE LOWER(t2.file_format)
+                                    WHEN 'flac' THEN 1 WHEN 'm4a'  THEN 2
+                                    WHEN 'wav'  THEN 3 WHEN 'aiff' THEN 4
+                                    WHEN 'ogg'  THEN 5 WHEN 'mp3'  THEN 6
+                                    ELSE 7
+                                END ASC
+                        ) AS rn
+                    FROM chart_data cd2
+                    JOIN tracks t2 ON cd2.track_id = t2.track_id
+                    LEFT JOIN artists a2 ON t2.artist_id = a2.artist_id
+                ) WHERE rn = 1
+            )
+            {"AND " + " AND ".join(conditions) if conditions else ""}
             ORDER BY cd.peak_position ASC
             LIMIT ?
         """, params) as cur:
@@ -1110,52 +1347,138 @@ async def _push_to_emby(base: str, token: str, user_id: str, name: str, tracks: 
 
 
 async def _push_to_jellyfin(base: str, token: str, user_id: str, name: str, tracks: list) -> dict:
-    headers = {"Accept":"application/json","Content-Type":"application/json"}
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        jf_ids = []; not_found = 0
+    """
+    Jellyfin playlist push.
 
-        async def _lk(t):
-            if t.get("jf_id"): return t["jf_id"]
+    ID resolution strategy (in priority order):
+      1. jf_id already stored on track (from Jellyfin fetch — most reliable)
+      2. Path-based lookup: fetch JF library with Path field, match file_path exactly
+      3. Artist+title search fallback (last resort, less reliable)
+
+    Delete strategy:
+      - Fetch ALL playlists (no SearchTerm — avoids fuzzy match finding wrong playlist)
+      - Exact name match
+      - DELETE and confirm 200/204 before creating new playlist
+
+    Batch adds:
+      - Jellyfin create endpoint accepts all IDs at once (no 414 issue unlike Emby)
+      - Add in batches of 200 for reliability on large playlists
+    """
+    hdrs = {"Accept":"application/json","Content-Type":"application/json"}
+    not_found = 0
+
+    async with httpx.AsyncClient(timeout=60.0) as client:
+
+        # ── Build a path→jf_id index from the JF library for fast lookup ────────
+        path_index: dict = {}
+        try:
+            start = 0
+            while True:
+                r = await client.get(f"{base}/Users/{user_id}/Items",
+                    params={"IncludeItemTypes":"Audio","Recursive":"true",
+                            "Fields":"Path","api_key":token,
+                            "StartIndex":start,"Limit":1000},
+                    headers=hdrs)
+                if not r.is_success:
+                    break
+                items = r.json().get("Items", [])
+                if not items:
+                    break
+                for item in items:
+                    p = item.get("Path","")
+                    if p:
+                        path_index[p] = item.get("Id","")
+                start += len(items)
+                if len(items) < 1000:
+                    break
+        except Exception as e:
+            log.warning(f"JF path index build failed: {e}")
+
+        # ── Resolve JF IDs for each track ────────────────────────────────────────
+        jf_ids = []
+        for t in tracks:
+            # Priority 1: stored jf_id
+            if t.get("jf_id"):
+                jf_ids.append(t["jf_id"]); continue
+
+            # Priority 2: path match
+            fp = t.get("file_path","")
+            if fp and fp in path_index:
+                jf_ids.append(path_index[fp]); continue
+
+            # Priority 3: artist+title search fallback
             try:
                 r = await client.get(f"{base}/Users/{user_id}/Items",
-                    params={"searchTerm":t.get("title",""),"IncludeItemTypes":"Audio",
-                            "Recursive":"true","api_key":token}, headers=headers)
+                    params={"searchTerm": t.get("title",""),
+                            "IncludeItemTypes":"Audio","Recursive":"true",
+                            "Fields":"Path","api_key":token,
+                            "Limit":20},
+                    headers=hdrs)
                 items = r.json().get("Items",[]) if r.is_success else []
-                a = t.get("tag_artist","")
-                m = next((i for i in items
-                    if i.get("Name","").lower()==t.get("title","").lower()
-                    and a.lower()[:8] in
-                        (i.get("AlbumArtist") or (i.get("Artists") or [""])[0]).lower()),
-                    items[0] if items else None)
-                return m.get("Id") if m else None
-            except:
-                return None
-
-        for i in range(0, len(tracks), 5):
-            ids = await asyncio.gather(*[_lk(t) for t in tracks[i:i+5]])
-            for jid in ids:
-                if jid: jf_ids.append(jid)
-                else: not_found += 1
+                artist = (t.get("tag_artist") or "").lower()
+                title  = t.get("title","").lower()
+                # Exact title + artist match first
+                match = next((i for i in items
+                    if i.get("Name","").lower() == title
+                    and artist[:10] in
+                        (i.get("AlbumArtist") or
+                         (i.get("Artists") or [""])[0]).lower()), None)
+                # Loose title-only fallback
+                if not match:
+                    match = next((i for i in items
+                        if i.get("Name","").lower() == title), None)
+                if match and match.get("Id"):
+                    jf_ids.append(match["Id"])
+                else:
+                    not_found += 1
+            except Exception:
+                not_found += 1
 
         if not jf_ids:
             raise HTTPException(404, "No tracks found in Jellyfin")
 
-        sr = await client.get(f"{base}/Users/{user_id}/Items",
-            params={"SearchTerm":name,"IncludeItemTypes":"Playlist","api_key":token},
-            headers=headers)
-        if sr.is_success:
-            ex = next((p for p in sr.json().get("Items",[]) if p.get("Name")==name),None)
-            if ex:
-                await client.delete(f"{base}/Items/{ex['Id']}?api_key={token}",headers=headers)
+        # ── Delete existing playlist — fetch ALL, exact name match ────────────────
+        try:
+            # Jellyfin paginates playlists — fetch until exhausted
+            pl_start = 0
+            while True:
+                pr = await client.get(f"{base}/Users/{user_id}/Items",
+                    params={"IncludeItemTypes":"Playlist","Recursive":"true",
+                            "api_key":token,"StartIndex":pl_start,"Limit":200},
+                    headers=hdrs)
+                if not pr.is_success:
+                    break
+                pl_items = pr.json().get("Items",[])
+                matched = next((p for p in pl_items if p.get("Name") == name), None)
+                if matched:
+                    dr = await client.delete(
+                        f"{base}/Items/{matched['Id']}?api_key={token}", headers=hdrs)
+                    log.info(f"JF playlist delete: {dr.status_code}")
+                    break
+                if len(pl_items) < 200:
+                    break
+                pl_start += len(pl_items)
+        except Exception as e:
+            log.warning(f"JF playlist delete warning: {e}")
 
-        cr = await client.post(f"{base}/Playlists?api_key={token}", headers=headers,
-            json={"Name":name,"Ids":jf_ids,"UserId":user_id,"MediaType":"Audio"})
+        # ── Create playlist with first batch ──────────────────────────────────────
+        first_batch = jf_ids[:200]
+        cr = await client.post(f"{base}/Playlists?api_key={token}", headers=hdrs,
+            json={"Name":name,"Ids":first_batch,"UserId":user_id,"MediaType":"Audio"})
         if not cr.is_success:
             raise HTTPException(502, f"JF create failed: {cr.status_code}")
-        pl = cr.json()
+        pl  = cr.json()
         pl_id = pl.get("Id") or pl.get("id")
         if not pl_id:
             raise HTTPException(502, "No playlist ID from Jellyfin")
 
+        # ── Add remaining in batches of 200 ───────────────────────────────────────
+        for i in range(200, len(jf_ids), 200):
+            batch = jf_ids[i:i+200]
+            await client.post(f"{base}/Playlists/{pl_id}/Items?api_key={token}",
+                headers=hdrs,
+                json={"Ids":batch,"UserId":user_id})
+
+    added = len(jf_ids)
     return {"ok":True,"server":"jellyfin","playlist":name,
-            "added":len(jf_ids),"not_found":not_found,"playlist_id":pl_id}
+            "added":added,"not_found":not_found,"playlist_id":pl_id}

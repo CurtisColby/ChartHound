@@ -1560,6 +1560,21 @@ async def stop_scan(user: dict = Depends(require_auth)):
     return {"ok": True, "status": "stopped"}
 
 
+@router.get("/scan/latest")
+async def get_latest_job(user: dict = Depends(require_auth)):
+    """Returns the most recent scan job — used by Write Selected when scanJobId is null."""
+    async with aiosqlite.connect(settings.database_url) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT job_id, status, scan_path FROM scan_jobs "
+            "WHERE job_type='retriever' ORDER BY job_id DESC LIMIT 1"
+        )
+        row = await cursor.fetchone()
+    if not row:
+        raise HTTPException(404, "No scan jobs found")
+    return {"job_id": row["job_id"], "status": row["status"], "scan_path": row["scan_path"]}
+
+
 @router.get("/scan/job/{job_id}")
 async def get_job_status(job_id: int, user: dict = Depends(require_auth)):
     async with aiosqlite.connect(settings.database_url) as db:
