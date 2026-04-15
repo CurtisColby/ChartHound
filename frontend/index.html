@@ -940,6 +940,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
               <button class="btn btn-pink btn-sm" onclick="openOverride()">✏️ OVERRIDE GENRES</button>
               <button class="btn btn-outline btn-sm" onclick="selectAll(true)">SELECT ALL</button>
               <button class="btn btn-outline btn-sm" onclick="selectAll(false)">DESELECT ALL</button>
+              <button class="btn btn-outline btn-sm" onclick="selectAllByAlbum()" title="Select all tracks in the same album as your current selection">SELECT BY ALBUM</button>
               <input type="text" placeholder="Filter results…" oninput="retFilter(this.value)" style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:var(--mono);font-size:.58rem;padding:.3rem .5rem;margin-left:auto;width:160px">
               <span style="font-family:var(--mono);font-size:.6rem;color:var(--muted)" id="selectedCount">0 selected</span>
             </div>
@@ -949,6 +950,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
                   <th style="width:30px"><input type="checkbox" id="ret-select-all" onchange="retSelectAll(this.checked)" style="accent-color:var(--teal)"></th>
                   <th onclick="retSort('artist')" title="Sort by Artist">ARTIST <span id="ret-sort-artist"></span></th>
                   <th onclick="retSort('title')" title="Sort by Title">TITLE <span id="ret-sort-title"></span></th>
+                  <th onclick="retSort('album')" title="Sort by Album">ALBUM <span id="ret-sort-album"></span></th>
                   <th onclick="retSort('current')" title="Sort by Current Genre">CURRENT GENRES <span id="ret-sort-current"></span></th>
                   <th onclick="retSort('proposed')" title="Sort by Proposed Genre">PROPOSED GENRES <span id="ret-sort-proposed"></span></th>
                   <th>MOODS</th>
@@ -1472,7 +1474,7 @@ function switchTab(name) {
   document.getElementById(`nav-${name}`).classList.add('active');
   document.getElementById(`panel-${name}`).classList.add('active');
   document.getElementById('vinylIcon').classList.toggle('spinning', ['retriever','sniffer','bloodhound','tracker'].includes(name));
-  if (name === 'retriever') checkRetrieverBanners();
+  if (name === 'retriever') { checkRetrieverBanners(); loadCustomTags(); }
   if (name === 'groomer') grmInit();
 }
 function checkRetrieverBanners() {
@@ -1760,8 +1762,26 @@ async function startScan() {
       body.subfolder = subfolder;
     }
   }
+  // Full Library warning
+  if (currentScope === 'library') {
+    const confirmed = confirm(
+      '⚠️ FULL LIBRARY SCAN\n\n' +
+      'This will scan your entire music collection.\n' +
+      'On large libraries this may take many hours.\n\n' +
+      'Recommendation: Test on a subfolder first to verify\n' +
+      'genres and moods look correct before running full library.\n\n' +
+      'Continue with Full Library scan?'
+    );
+    if (!confirmed) return;
+  }
   addLog('Starting scan…', 'info');
   addLog('⟳ Fetching metadata from MusicBrainz · Last.fm · Discogs · Deezer · ListenBrainz — please wait…', 'info');
+  // Clear previous scan results
+  document.getElementById('previewTableBody').innerHTML = '';
+  document.getElementById('previewSection').style.display = 'none';
+  selectedTrackIds.clear();
+  _retAllTracks = [];
+  document.getElementById('selectedCount').textContent = '0 selected';
   document.getElementById('btnStartScan').disabled = true;
   document.getElementById('btnPauseScan').disabled = false;
   document.getElementById('btnStopScan').disabled = false;
@@ -1776,6 +1796,9 @@ async function startScan() {
     scanPaused = false;
     document.getElementById('btnPauseScan').textContent = '⏸ PAUSE';
     addLog(`Job ${scanJobId} started — scanning ${d.scan_path} in ${currentMode} mode`, 'ok');
+    if (d.verified_skipped > 0) {
+      addLog(`⚠ ${d.verified_skipped} track(s) skipped — manually verified. To re-tag these, click Clear Metadata Cache and rescan.`, 'warn');
+    }
     startScanPolling();
   } catch(e) {
     addLog(`✗ ${e.message}`, 'err');
@@ -1887,16 +1910,6 @@ let _retSortKey = 'artist';
 let _retSortAsc = true;
 let _retAllTracks = [];
 
-function retSort(key) {
-  if (_retSortKey === key) { _retSortAsc = !_retSortAsc; }
-  else { _retSortKey = key; _retSortAsc = true; }
-  ['artist','title','current','proposed','year','conf'].forEach(k => {
-    const el = document.getElementById('ret-sort-' + k);
-    if (el) el.textContent = k === _retSortKey ? (_retSortAsc ? ' ▲' : ' ▼') : '';
-  });
-  retRenderTable(_retAllTracks);
-}
-
 function retFilter(q) {
   const lq = q.toLowerCase();
   document.querySelectorAll('#previewTableBody tr[data-id]').forEach(tr => {
@@ -1908,6 +1921,7 @@ function retRenderTable(tracks) {
   const _sortFns = {
     artist:   t => (t.tag_artist || '').toLowerCase(),
     title:    t => (t.title || '').toLowerCase(),
+    album:    t => (t.tag_album || '').toLowerCase(),
     current:  t => (t.current_genre || '').toLowerCase(),
     proposed: t => ([t.genre_1,t.genre_2,t.genre_3].filter(Boolean).join(',') || '').toLowerCase(),
     year:     t => parseInt(t.year) || 9999,
@@ -1925,26 +1939,61 @@ function retRenderTable(tracks) {
   tracks.forEach(t => {
     const proposed = [t.genre_1,t.genre_2,t.genre_3].filter(Boolean).join(', ') || '—';
     const current  = t.current_genre || '—';
-    const confClass = t.confidence==='high'?'conf-high':t.confidence==='medium'?'conf-medium':'conf-low';
-    const changed = proposed !== '—' && current !== proposed;
+    const conf     = t.confidence || 'low';
+    const confColor = conf === 'high' ? 'var(--green)' : conf === 'medium' ? 'var(--amber)' : 'var(--muted2)';
+    const confDot   = `<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${confColor};margin-right:.35rem;vertical-align:middle"></span>`;
+    const changed = proposed !== '—' && current !== '—' && current !== proposed;
     const moodList = [t.mood_1,t.mood_2,t.mood_3].filter(Boolean);
     const moodHTML = moodList.length
       ? moodList.map(m=>`<span style="display:inline-block;font-size:.5rem;padding:.1rem .35rem;border-radius:10px;background:rgba(192,132,252,.12);border:1px solid rgba(192,132,252,.3);color:var(--purple);margin:.1rem .1rem 0 0;white-space:nowrap">${esc(m)}</span>`).join('')
       : '<span style="color:var(--muted2)">—</span>';
     const row = document.createElement('tr');
-    row.dataset.id   = t.track_id;
-    row.dataset.text = `${(t.tag_artist||'').toLowerCase()} ${(t.title||'').toLowerCase()} ${proposed.toLowerCase()} ${current.toLowerCase()}`;
+    row.dataset.id    = t.track_id;
+    row.dataset.album = (t.tag_album || '').toLowerCase();
+    row.dataset.text  = `${(t.tag_artist||'').toLowerCase()} ${(t.title||'').toLowerCase()} ${(t.tag_album||'').toLowerCase()} ${proposed.toLowerCase()} ${current.toLowerCase()}`;
     row.innerHTML = `
       <td><input type="checkbox" onchange="toggleTrack(${t.track_id},this.checked)" style="accent-color:var(--teal)"></td>
       <td style="color:var(--muted)">${esc(t.tag_artist||'')}</td>
       <td style="color:var(--muted)">${esc(t.title||'')}</td>
+      <td style="color:var(--muted2);font-size:.58rem">${esc(t.tag_album||'—')}</td>
       <td style="color:var(--muted);font-size:.7rem">${esc(current)}</td>
       <td class="tag-proposed" style="${changed?'color:var(--teal)':''}">${esc(proposed)}</td>
       <td>${moodHTML}</td>
       <td class="tag-proposed">${t.year||'—'}</td>
-      <td><span class="confidence-dot ${confClass}"></span>${t.confidence||'low'}</td>`;
+      <td>${confDot}<span style="color:${confColor};font-size:.58rem">${conf}</span></td>`;
     tbody.appendChild(row);
   });
+}
+
+function retSort(key) {
+  if (_retSortKey === key) { _retSortAsc = !_retSortAsc; }
+  else { _retSortKey = key; _retSortAsc = (key === 'artist' || key === 'title' || key === 'album'); }
+  ['artist','title','album','current','proposed','year','conf'].forEach(k => {
+    const el = document.getElementById('ret-sort-' + k);
+    if (el) el.textContent = k === _retSortKey ? (_retSortAsc ? ' ▲' : ' ▼') : '';
+  });
+  retRenderTable(_retAllTracks);
+}
+
+function selectAllByAlbum() {
+  const albums = new Set();
+  document.querySelectorAll('#previewTableBody tr[data-id]').forEach(tr => {
+    const cb = tr.querySelector('input[type="checkbox"]');
+    if (cb && cb.checked) albums.add(tr.dataset.album);
+  });
+  if (!albums.size) { toast('Select at least one track first, then use this to select the whole album.', 'warn'); return; }
+  document.querySelectorAll('#previewTableBody tr[data-id]').forEach(tr => {
+    if (albums.has(tr.dataset.album)) {
+      const cb = tr.querySelector('input[type="checkbox"]');
+      if (cb && !cb.checked) {
+        cb.checked = true;
+        const id = parseInt(tr.dataset.id);
+        if (id) selectedTrackIds.add(id);
+      }
+    }
+  });
+  document.getElementById('selectedCount').textContent = `${selectedTrackIds.size} selected`;
+  toast(`Selected all tracks in ${albums.size} album(s).`, 'ok');
 }
 
 // ── Multi-folder queue ────────────────────────────────────────────────────────
@@ -2025,39 +2074,59 @@ const MOOD_LIST = [
   'Custom…',
 ];
 
+// ── Custom genre/mood persistence ─────────────────────────────────────────────
+let _customGenres = [];
+let _customMoods  = [];
+
+async function loadCustomTags() {
+  try {
+    const r = await fetch(`${API}/api/retriever/genres`, {headers:authHdrs()});
+    if (!r.ok) return;
+    const d = await r.json();
+    _customGenres = d.genres || [];
+    _customMoods  = d.moods  || [];
+  } catch {}
+}
+
+async function saveCustomTag(kind, name) {
+  try {
+    await fetch(`${API}/api/retriever/genres`, {
+      method:'POST', headers:authHdrs(),
+      body: JSON.stringify({kind, name, action:'add'})
+    });
+    if (kind === 'genre' && !_customGenres.includes(name)) _customGenres.push(name);
+    if (kind === 'mood'  && !_customMoods.includes(name))  _customMoods.push(name);
+  } catch {}
+}
+
 function populateDropdowns() {
+  const allGenres = [...new Set([...GENRE_LIST.filter(g=>g!=='Custom…'), ..._customGenres, 'Custom…'])].sort((a,b)=>a==='Custom…'?1:b==='Custom…'?-1:a.localeCompare(b));
+  const allMoods  = [...new Set([...MOOD_LIST.filter(m=>m!=='Custom…'),  ..._customMoods,  'Custom…'])].sort((a,b)=>a==='Custom…'?1:b==='Custom…'?-1:a.localeCompare(b));
   ['override-g1','override-g2','override-g3'].forEach((id,i) => {
     const sel = document.getElementById(id);
     if (!sel) return;
     const first = i === 0 ? '— select —' : '— optional —';
     sel.innerHTML = `<option value="">${first}</option>` +
-      GENRE_LIST.map(g => `<option value="${esc(g)}">${esc(g)}</option>`).join('');
-    sel.onchange = () => handleCustomOption(sel);
+      allGenres.map(g => `<option value="${esc(g)}">${esc(g)}</option>`).join('');
+    sel.onchange = () => handleCustomOption(sel, 'genre');
   });
   ['override-m1','override-m2','override-m3'].forEach((id,i) => {
     const sel = document.getElementById(id);
     if (!sel) return;
     const first = i === 0 ? '— select —' : '— optional —';
     sel.innerHTML = `<option value="">${first}</option>` +
-      MOOD_LIST.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('');
-    sel.onchange = () => handleCustomOption(sel);
+      allMoods.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('');
+    sel.onchange = () => handleCustomOption(sel, 'mood');
   });
 }
 
-// When "Custom…" is selected, show a text input below the dropdown.
-// User types their value, presses Enter or clicks away — it gets added
-// to the dropdown as a selected option and the input disappears.
-function handleCustomOption(sel) {
+function handleCustomOption(sel, kind) {
   if (sel.value !== 'Custom…') {
-    // Remove any existing custom input for this select
     const existing = document.getElementById('custom-input-' + sel.id);
     if (existing) existing.remove();
     return;
   }
-
-  // Don't add twice
   if (document.getElementById('custom-input-' + sel.id)) return;
-
   const input = document.createElement('input');
   input.type        = 'text';
   input.id          = 'custom-input-' + sel.id;
@@ -2067,30 +2136,21 @@ function handleCustomOption(sel) {
     'background:var(--surface2);color:var(--text);' +
     'border:1px solid var(--teal);border-radius:4px;' +
     'padding:.25rem .4rem;font-family:var(--mono);font-size:.52rem;';
-
   function commit() {
     const val = input.value.trim();
     if (val) {
-      // Add as new option and select it
       const opt = document.createElement('option');
-      opt.value = val;
-      opt.textContent = val;
-      sel.appendChild(opt);
-      sel.value = val;
-    } else {
-      // Nothing typed — revert to blank
-      sel.value = '';
-    }
+      opt.value = val; opt.textContent = val;
+      sel.appendChild(opt); sel.value = val;
+      if (kind) saveCustomTag(kind, val);
+    } else { sel.value = ''; }
     input.remove();
   }
-
   input.addEventListener('keydown', function(e) {
     if (e.key === 'Enter') { e.preventDefault(); commit(); }
     if (e.key === 'Escape') { sel.value = ''; input.remove(); }
   });
   input.addEventListener('blur', commit);
-
-  // Insert directly after the select element
   sel.parentNode.insertBefore(input, sel.nextSibling);
   input.focus();
 }
@@ -2114,16 +2174,27 @@ async function applyOverride() {
     .map(id => document.getElementById(id)?.value || '').filter(Boolean);
   if (!genres.length) { toast('Select at least one genre.', 'warn'); return; }
   try {
+    const ids = [...selectedTrackIds];
     const r = await fetch(`${API}/api/retriever/override`, {
       method:'POST', headers:authHdrs(),
-      body: JSON.stringify({track_ids:[...selectedTrackIds], genres, moods})
+      body: JSON.stringify({track_ids:ids, genres, moods})
     });
     const d = await r.json();
     if (r.ok) {
       toast(`✓ ${d.message}`, 'ok');
       addLog(`✓ ${d.message}`, 'ok');
       closeOverride();
-      loadPreviewResults();
+      ids.forEach(id => {
+        const row = document.querySelector(`#previewTableBody tr[data-id="${id}"]`);
+        if (row) row.remove();
+      });
+      _retAllTracks = _retAllTracks.filter(t => !ids.includes(t.track_id));
+      selectedTrackIds.clear();
+      document.getElementById('selectedCount').textContent = '0 selected';
+      const retAll = document.getElementById('ret-select-all');
+      if (retAll) retAll.checked = false;
+      genres.forEach(g => { if (!GENRE_LIST.includes(g)) saveCustomTag('genre', g); });
+      moods.forEach(m => { if (!MOOD_LIST.includes(m)) saveCustomTag('mood', m); });
     } else toast(`Override failed: ${d.detail || 'unknown error'}`, 'error');
   } catch(e) { toast(`Server error: ${e.message}`, 'error'); }
 }
@@ -2709,12 +2780,23 @@ function updateAlbumAcceptedCount() { atUpdateStatusBadge(); }
 async function writeSelected() {
   if (!selectedTrackIds.size) { toast('Select tracks to write first.', 'warn'); return; }
   try {
-    const count = selectedTrackIds.size;
-    const r = await fetch(`${API}/api/retriever/write`, {method:'POST', headers:authHdrs(), body:JSON.stringify({job_id:scanJobId, track_ids:[...selectedTrackIds], write_art:true})});
+    const ids = [...selectedTrackIds];
+    const r = await fetch(`${API}/api/retriever/write`, {method:'POST', headers:authHdrs(), body:JSON.stringify({job_id:scanJobId, track_ids:ids, write_art:true})});
     if (r.ok) {
       const d = await r.json();
       toast(`✓ ${d.message}`, 'ok');
       addLog(`✓ ${d.message}`, 'ok');
+      if (d.success > 0) {
+        ids.forEach(id => {
+          const row = document.querySelector(`#previewTableBody tr[data-id="${id}"]`);
+          if (row) row.remove();
+        });
+        _retAllTracks = _retAllTracks.filter(t => !ids.includes(t.track_id));
+      }
+      selectedTrackIds.clear();
+      document.getElementById('selectedCount').textContent = '0 selected';
+      const retAll = document.getElementById('ret-select-all');
+      if (retAll) retAll.checked = false;
     } else toast('Write request failed.', 'error');
   } catch { toast('Server error.', 'error'); }
 }
@@ -3029,15 +3111,16 @@ function grmGetServer() {
 async function grmStartScan() {
   const charts = grmGetSelectedCharts();
   if (!charts.length) { toast('Select at least one chart filter first.', 'warn'); return; }
-  const mode   = grmCurrentMode;
-  const server = mode === 'server' ? grmGetServer() : '';
+  const mode      = grmCurrentMode;
+  const server    = mode === 'server' ? grmGetServer() : 'local';
   const localPath = mode === 'local'
-    ? (document.getElementById('grm-local-path')?.value.trim() || '/music') : '';
+    ? (document.getElementById('grm-local-path')?.value.trim() || '/music') : null;
   const peakMax   = parseInt(document.getElementById('grm-peak').value);
+  const peakMin   = parseInt(document.getElementById('grm-peak-min')?.value || 1);
   const weeksMin  = parseInt(document.getElementById('grm-weeks').value);
   const writeTags = document.getElementById('grm-write-tags').checked;
   const name      = document.getElementById('grm-playlist-name').value.trim() || 'Chart Hits';
-  const labels    = {plex:'Plex', emby:'Emby', jellyfin:'Jellyfin'};
+  const labels    = {plex:'Plex', emby:'Emby', jellyfin:'Jellyfin', local:'Local'};
   const scope     = mode === 'server' ? labels[server] : `Local: ${localPath}`;
 
   grmLog(`Starting scan — ${scope} · ${charts.length} chart(s) · peak ≤ ${peakMax} · weeks ≥ ${weeksMin}`, 'info');
@@ -3046,12 +3129,12 @@ async function grmStartScan() {
     const r = await fetch(`${API}/api/groomer/scan/start`, {
       method:'POST', headers:authHdrs(),
       body: JSON.stringify({
-        mode, server, local_path: localPath,
-        charts, peak_max: peakMax, weeks_min: weeksMin,
-        moods: grmGetSelectedMoods(), playlist_name: name,
-        write_tags: writeTags, chunk_size: 50,
-        use_lastfm: (document.getElementById('grm-datasource')?.value !== 'verified'),
-        data_source: document.getElementById('grm-datasource')?.value || 'verified',
+        source:      mode === 'server' ? server : 'local',
+        charts:      charts,
+        data_source: 'verified',
+        write_tags:  writeTags,
+        folder_path: localPath,
+        limit:       null,
       }),
     });
     const d = await r.json();
@@ -3067,7 +3150,6 @@ async function grmStartScan() {
     var _tb2 = document.getElementById('grm-tbody'); if (_tb2) _tb2.innerHTML = '';
     var _bg2 = document.getElementById('grm-badge'); if (_bg2) _bg2.textContent = '0 songs';
     grmStartPoll();
-    // Live results refresh every 30s during scan
     grmLivePoll = setInterval(() => { if (grmResults.length > 0 || grmScanJobId) grmSearch(); }, 30000);
     toast(`Groomer scan started on ${scope}`, 'ok');
   } catch(e) {
@@ -3094,11 +3176,11 @@ async function grmPollScan() {
   try {
     const r = await fetch(`${API}/api/groomer/scan/status/${grmScanJobId}`, {headers:authHdrs()});
     const d = await r.json();
-    const total     = d.total_tracks || 0;
-    const processed = d.processed    || 0;
-    const matched   = d.matched      || 0;
-    const cached    = d.cached       || 0;
-    const failed    = d.failed       || 0;
+    const total     = d.total     || d.total_tracks || 0;
+    const processed = d.processed || 0;
+    const matched   = d.matched   || 0;
+    const cached    = d.cached    || 0;
+    const failed    = d.failed    || 0;
     const pct = total > 0 ? Math.round((processed/total)*100) : 0;
     const rate = total > 0 ? ((matched/Math.max(processed,1))*100).toFixed(1)+'%' : '—';
 
@@ -3207,17 +3289,15 @@ function grmGetSelectedCharts() {
 
 // ── Results ───────────────────────────────────────────────────────
 async function grmSearch() {
-  const charts   = grmGetSelectedCharts();
+  const charts  = grmGetSelectedCharts();
   if (!charts.length) return;
-  const peakMax  = document.getElementById('grm-peak').value;
-  const weeksMin = document.getElementById('grm-weeks').value;
-  const moods    = grmGetSelectedMoods();
-  const peakMin  = document.getElementById('grm-peak-min')?.value || 1;
-  const dataSource = document.getElementById('grm-datasource')?.value || 'verified';
-  const params   = new URLSearchParams({
-    charts:charts.join(','), peak_min:peakMin, peak_max:peakMax,
-    weeks_min:weeksMin, moods:moods.join(','), limit:15000,
-    data_source: dataSource,
+  const peakMax = document.getElementById('grm-peak').value;
+  const peakMin = document.getElementById('grm-peak-min')?.value || 1;
+  const params  = new URLSearchParams({
+    charts: charts.join(','),
+    min_peak: peakMin,
+    max_peak: peakMax,
+    limit: 5000,
   });
   try {
     const r = await fetch(`${API}/api/groomer/results?${params}`, {headers:authHdrs()});
@@ -3230,7 +3310,6 @@ async function grmSearch() {
 }
 
 function grmRenderResults(results) {
-  // Sort results before rendering
   const fn = _sortFields[_sortKey] || _sortFields.peak;
   results = [...results].sort((a,b) => {
     const av = fn(a), bv = fn(b);
@@ -3254,47 +3333,48 @@ function grmRenderResults(results) {
   if (badge) badge.textContent = `${results.length} song${results.length!==1?'s':''}`;
   tbody.innerHTML = '';
   results.forEach(t => {
-    const stars = t.stars || 0;
+    const artist = t.tag_artist || t.artist || '';
+    const stars  = t.star_rating || t.stars || 0;
+    const peak   = t.peak_position || 0;
+    const conf   = t.confidence || 'low';
     const starsHTML = stars > 0
       ? '<span style="color:var(--amber)">'+'★'.repeat(stars)+'</span>'
         +'<span style="color:var(--muted2)">'+'★'.repeat(5-stars)+'</span>'
       : '<span style="color:var(--muted2)">—</span>';
-    const badges = (t.all_charts||[t.chart_display]).map(c =>
-      `<span style="font-size:.5rem;padding:.1rem .35rem;border-radius:8px;
-        background:rgba(244,114,182,.1);border:1px solid rgba(244,114,182,.25);
-        color:var(--pink);white-space:nowrap">${esc(c)}</span>`).join(' ');
-    const peakDisp = t.peak_display || '';
-    let peak;
-    if (peakDisp.startsWith('#')) {
-      peak = `<span style="font-family:var(--display);font-size:1rem;color:var(--amber)">${esc(peakDisp)}</span>`;
-    } else if (peakDisp.startsWith('~')) {
-      peak = `<span style="font-family:var(--display);font-size:1rem;color:var(--muted2)" title="Estimated from Last.fm listener count. Not a verified chart position.">${esc(peakDisp)}</span>`;
-    } else if (peakDisp.startsWith('★')) {
-      peak = `<span style="color:var(--teal);letter-spacing:1px" title="Popularity estimate for CCM/Gospel. Not a Billboard chart position.">${esc(peakDisp)}</span>`;
-    } else {
-      peak = '<span style="color:var(--muted2)">—</span>';
-    }
+    const chartName = t.chart_name || '';
+    const chartDisplay = chartName ? (chartName.toUpperCase()) : '—';
+    const peakHTML = conf === 'low' && peak
+      ? `<span style="font-family:var(--display);font-size:1rem;color:var(--muted2)" title="Estimated">~#${peak}</span>`
+      : peak
+        ? `<span style="font-family:var(--display);font-size:1rem;color:var(--amber)">#${peak}</span>`
+        : '<span style="color:var(--muted2)">—</span>';
     const weeks = t.weeks_on_chart || 0;
     const wBar  = weeks > 0
       ? `<span style="color:var(--teal)">${'▪'.repeat(Math.min(weeks,10))}</span>`
         +`<span style="color:var(--muted2);font-size:.55rem"> ${weeks}w</span>` : '—';
+    const chartBadge = `<span style="font-size:.5rem;padding:.1rem .35rem;border-radius:8px;
+      background:rgba(244,114,182,.1);border:1px solid rgba(244,114,182,.25);
+      color:var(--pink);white-space:nowrap">${esc(chartDisplay)}</span>`;
     const tr = document.createElement('tr');
     tr.dataset.id   = t.track_id;
-    tr.dataset.text = `${t.artist||''} ${t.title||''} ${(t.all_charts||[]).join(' ')}`.toLowerCase();
+    tr.dataset.text = `${artist} ${t.title||''} ${chartName}`.toLowerCase();
     tr.style.borderBottom = '1px solid var(--border)';
     tr.innerHTML = `
       <td style="padding:.45rem .75rem"><input type="checkbox" onchange="grmToggleTrack(${t.track_id},this.checked)" style="accent-color:var(--pink)"></td>
-      <td style="padding:.45rem .75rem;color:var(--muted)">${esc(t.artist||'')}</td>
+      <td style="padding:.45rem .75rem;color:var(--muted)">${esc(artist)}</td>
       <td style="padding:.45rem .75rem;color:var(--text)">${esc(t.title||'')}</td>
-      <td style="padding:.45rem .75rem;color:var(--muted)">${t.year||'—'}</td>
+      <td style="padding:.45rem .75rem;color:var(--muted)">${t.chart_year||t.year||'—'}</td>
       <td style="padding:.45rem .75rem">${starsHTML}</td>
-      <td style="padding:.45rem .75rem">${peak}</td>
+      <td style="padding:.45rem .75rem">${peakHTML}</td>
       <td style="padding:.45rem .75rem">${wBar}</td>
-      <td style="padding:.45rem .75rem;display:flex;gap:.25rem;flex-wrap:wrap">${badges}</td>`;
+      <td style="padding:.45rem .75rem">${chartBadge}</td>`;
     tbody.appendChild(tr);
   });
   grmSyncBar();
 }
+
+let _sortKey = 'peak';
+let _sortAsc  = true;
 
 function grmFilter(q) {
   const lq = q.toLowerCase();
@@ -3303,14 +3383,11 @@ function grmFilter(q) {
   });
 }
 
-// ── Sortable columns ───────────────────────────────────────────────────────
-let _sortKey = 'peak';
-let _sortAsc  = true;
 const _sortFields = {
-  artist: t => (t.artist || '').toLowerCase(),
+  artist: t => (t.tag_artist || t.artist || '').toLowerCase(),
   title:  t => (t.title  || '').toLowerCase(),
-  year:   t => parseInt(t.year) || 9999,
-  stars:  t => -(t.stars || 0),    // negate so 5★ sorts first
+  year:   t => parseInt(t.chart_year || t.year) || 9999,
+  stars:  t => -(t.star_rating || t.stars || 0),
   peak:   t => t.peak_position || 9999,
   weeks:  t => -(t.weeks_on_chart || 0),
 };
