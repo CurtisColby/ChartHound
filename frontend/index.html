@@ -533,6 +533,10 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
       <span class="nav-icon">🎬</span>
       <div class="nav-text"><div class="nav-name">THE LOOKOUT</div><div class="nav-desc">Local music video manager</div></div>
     </div>
+    <div class="nav-item" id="nav-debug" style="--tab-color:#6366f1" onclick="switchTab('debug')">
+      <span class="nav-icon">🐛</span>
+      <div class="nav-text"><div class="nav-name" style="color:#6366f1">DEBUG LOG</div><div class="nav-desc">Live log · download</div></div>
+    </div>
     <div class="nav-spacer"></div>
     <div class="nav-heartbeat" id="navHeartbeat">⟳ —</div>
     <div class="nav-wizard">
@@ -848,7 +852,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
                 <select id="subfolderPath" style="flex:1;margin-bottom:0;font-size:.65rem">
                   <option value="">— select a folder —</option>
                 </select>
-                <button onclick="browseSubfolder()" style="background:var(--surface2);border:1px solid var(--border);border-radius:5px;color:var(--muted);font-family:var(--mono);font-size:.58rem;padding:.3rem .6rem;cursor:pointer;white-space:nowrap;flex-shrink:0" title="Refresh folder list">⟳</button>
+                <button onclick="browseSubfolder()" style="background:var(--teal);border:none;border-radius:5px;color:#000;font-family:var(--mono);font-size:.58rem;font-weight:bold;padding:.3rem .6rem;cursor:pointer;white-space:nowrap;flex-shrink:0" title="Refresh Folder List — click to load your music library subfolders so you can select one to scan">⟳ LOAD</button>
                 <button onclick="addSubfolderToQueue()" style="background:var(--teal);border:none;border-radius:5px;color:#000;font-family:var(--mono);font-size:.58rem;padding:.3rem .6rem;cursor:pointer;white-space:nowrap;flex-shrink:0" title="Add to scan queue">＋ ADD</button>
               </div>
               <div id="subfolderQueue" style="display:none;margin-bottom:.35rem">
@@ -891,6 +895,19 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
               </div>
             </div>
           </div>
+          <!-- CUSTOM TAG MANAGER -->
+          <div id="custom-tag-manager-section">
+            <div class="section-label sl-teal">CUSTOM TAGS</div>
+            <div style="margin-bottom:.35rem">
+              <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted);letter-spacing:1px;margin-bottom:.3rem">GENRES</div>
+              <div id="custom-genre-manager" style="display:flex;flex-wrap:wrap;gap:0"></div>
+            </div>
+            <div>
+              <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted);letter-spacing:1px;margin-bottom:.3rem">MOODS</div>
+              <div id="custom-mood-manager" style="display:flex;flex-wrap:wrap;gap:0"></div>
+            </div>
+          </div>
+
           <div>
             <div class="section-label sl-teal">MAINTENANCE</div>
             <button class="btn btn-outline" onclick="clearCache()" style="font-size:.7rem;font-family:var(--mono);letter-spacing:.5px">🗑 CLEAR METADATA CACHE</button>
@@ -1045,8 +1062,8 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
               </div>
               <!-- Bulk action buttons -->
               <div style="display:flex;gap:.35rem;margin-bottom:.75rem;flex-wrap:wrap">
-                <button class="btn btn-outline btn-sm" onclick="atWriteAllOverrides()">⬇ WRITE ALL OVERRIDES</button>
-                <button class="btn btn-outline btn-sm" onclick="atWriteAllAccepted()">⬇ WRITE ALL ACCEPTED</button>
+                <button class="btn btn-outline btn-sm" onclick="atWriteAllOverrides()" title="Write all albums where you clicked Override and set tags manually">⬇ WRITE ALL OVERRIDES</button>
+                <button class="btn btn-outline btn-sm" onclick="atWriteAllAccepted()" title="Write genres found by 🔍 Lookup — only works after running Lookup on albums">🔍 WRITE ALL LOOKUPS</button>
                 <button class="btn btn-outline btn-sm" onclick="atKeepAll()">✓ KEEP ALL</button>
               </div>
 
@@ -1097,9 +1114,16 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
           <div id="grm-server-section">
             <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--pink);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">MEDIA SERVER<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
             <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem;display:flex;flex-direction:column;gap:.45rem">
-              <label style="display:flex;align-items:center;gap:.6rem;cursor:pointer;font-size:.78rem"><input type="radio" name="grm-server" value="plex" checked style="accent-color:#e5a00d"><span style="color:#e5a00d;font-weight:600">● Plex</span></label>
-              <label style="display:flex;align-items:center;gap:.6rem;cursor:pointer;font-size:.78rem"><input type="radio" name="grm-server" value="emby" style="accent-color:#52b54b"><span style="color:#52b54b;font-weight:600">● Emby</span></label>
-              <label style="display:flex;align-items:center;gap:.6rem;cursor:pointer;font-size:.78rem"><input type="radio" name="grm-server" value="jellyfin" style="accent-color:#00a4dc"><span style="color:#00a4dc;font-weight:600">● Jellyfin</span></label>
+              <label style="display:flex;align-items:center;gap:.6rem;cursor:pointer;font-size:.78rem"><input type="radio" name="grm-server" value="plex" checked onchange="grmLoadLibraries()" style="accent-color:#e5a00d"><span style="color:#e5a00d;font-weight:600">● Plex</span></label>
+              <label style="display:flex;align-items:center;gap:.6rem;cursor:pointer;font-size:.78rem"><input type="radio" name="grm-server" value="emby" onchange="grmLoadLibraries()" style="accent-color:#52b54b"><span style="color:#52b54b;font-weight:600">● Emby</span></label>
+              <label style="display:flex;align-items:center;gap:.6rem;cursor:pointer;font-size:.78rem"><input type="radio" name="grm-server" value="jellyfin" onchange="grmLoadLibraries()" style="accent-color:#00a4dc"><span style="color:#00a4dc;font-weight:600">● Jellyfin</span></label>
+            </div>
+            <!-- Library selector — populated after server is chosen -->
+            <div id="grm-library-section" style="display:none;margin-top:.5rem">
+              <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted);letter-spacing:1px;margin-bottom:.3rem">MUSIC LIBRARY</div>
+              <select id="grm-library-select" style="width:100%;background:var(--bg);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:.65rem;padding:.4rem .55rem;outline:none;cursor:pointer">
+                <option value="">All Libraries</option>
+              </select>
             </div>
           </div>
 
@@ -1109,6 +1133,19 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
             <div style="background:rgba(255,160,0,.06);border:1px solid rgba(255,160,0,.25);border-radius:6px;padding:.6rem;margin-bottom:.5rem">
               <p style="font-family:var(--mono);font-size:.55rem;color:var(--amber);line-height:1.7;margin:0">📁 Local mode outputs M3U only.<br>No media server push available.</p>
             </div>
+
+            <!-- Dropdown + refresh button -->
+            <div style="display:flex;gap:.35rem;margin-bottom:.4rem">
+              <select id="grm-local-browse" onchange="grmBrowseSelect()" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:.68rem;padding:.45rem .55rem;outline:none">
+                <option value="">— click ⟳ to browse /music —</option>
+              </select>
+              <button onclick="grmBrowseRefresh()" title="Browse / drill into selected folder" style="background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--teal);font-family:var(--mono);font-size:.72rem;padding:.45rem .65rem;cursor:pointer">⟳</button>
+            </div>
+
+            <!-- Hint line showing current browse location -->
+            <div id="grm-local-hint" style="font-family:var(--mono);font-size:.52rem;color:var(--muted2);margin-bottom:.4rem;line-height:1.5">Select a subfolder or type a path below.</div>
+
+            <!-- Editable text field — drives the actual scan path -->
             <input type="text" id="grm-local-path" placeholder="/music" value="/music" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:.72rem;padding:.5rem .65rem;outline:none;box-sizing:border-box">
           </div>
 
@@ -1139,18 +1176,21 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
               <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.75rem"><input type="checkbox" id="grm-dance" style="accent-color:var(--pink)"><span>Dance / Electronic</span></label>
               <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.75rem"><input type="checkbox" id="grm-rock" style="accent-color:var(--pink)"><span>Mainstream Rock</span></label>
               <div style="height:1px;background:var(--border);margin:.15rem 0"></div>
-              <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.75rem"><input type="checkbox" id="grm-ccm" style="accent-color:var(--purple)"><span style="color:var(--purple)">CCM / Christian Songs</span></label>
+              <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.75rem"><input type="checkbox" id="grm-ccm" style="accent-color:var(--purple)"><span style="color:var(--purple)">CCM / Christian Songs</span><span style="font-family:var(--mono);font-size:.45rem;color:var(--amber);border:1px solid rgba(255,204,85,.3);border-radius:3px;padding:.05rem .25rem;margin-left:.25rem;vertical-align:middle">~ estimates</span></label>
               <div style="margin-left:1.2rem;padding-left:.6rem;border-left:2px solid var(--border);display:flex;flex-direction:column;gap:.3rem">
-                <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.7rem;color:var(--muted)"><input type="checkbox" id="grm-ccm-ac" style="accent-color:var(--purple)"><span>Christian AC</span></label>
-                <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.7rem;color:var(--muted)"><input type="checkbox" id="grm-ccm-rock" style="accent-color:var(--purple)"><span>Christian Rock</span></label>
-                <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.7rem;color:var(--muted)"><input type="checkbox" id="grm-worship" style="accent-color:var(--purple)"><span>Worship / Praise</span></label>
+                <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.7rem;color:var(--muted)"><input type="checkbox" id="grm-ccm-ac" style="accent-color:var(--purple)"><span>Christian AC</span><span style="font-family:var(--mono);font-size:.45rem;color:var(--amber);border:1px solid rgba(255,204,85,.3);border-radius:3px;padding:.05rem .25rem;margin-left:.25rem;vertical-align:middle">~ estimates</span></label>
+                <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.7rem;color:var(--muted)"><input type="checkbox" id="grm-ccm-rock" style="accent-color:var(--purple)"><span>Christian Rock</span><span style="font-family:var(--mono);font-size:.45rem;color:var(--amber);border:1px solid rgba(255,204,85,.3);border-radius:3px;padding:.05rem .25rem;margin-left:.25rem;vertical-align:middle">~ estimates</span></label>
+                <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.7rem;color:var(--muted)"><input type="checkbox" id="grm-worship" style="accent-color:var(--purple)"><span>Worship / Praise</span><span style="font-family:var(--mono);font-size:.45rem;color:var(--amber);border:1px solid rgba(255,204,85,.3);border-radius:3px;padding:.05rem .25rem;margin-left:.25rem;vertical-align:middle">~ estimates</span></label>
               </div>
-              <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.75rem"><input type="checkbox" id="grm-gospel" style="accent-color:var(--purple)"><span style="color:var(--purple)">Gospel Songs</span></label>
+              <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.75rem"><input type="checkbox" id="grm-gospel" style="accent-color:var(--purple)"><span style="color:var(--purple)">Gospel Songs</span><span style="font-family:var(--mono);font-size:.45rem;color:var(--amber);border:1px solid rgba(255,204,85,.3);border-radius:3px;padding:.05rem .25rem;margin-left:.25rem;vertical-align:middle">~ estimates</span></label>
               <div style="margin-left:1.2rem;padding-left:.6rem;border-left:2px solid var(--border);display:flex;flex-direction:column;gap:.3rem">
-                <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.7rem;color:var(--muted)"><input type="checkbox" id="grm-sgospel" style="accent-color:var(--purple)"><span>Southern Gospel</span></label>
-                <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.7rem;color:var(--muted)"><input type="checkbox" id="grm-ugospel" style="accent-color:var(--purple)"><span>Urban Gospel / R&amp;B</span></label>
-                <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.7rem;color:var(--muted)"><input type="checkbox" id="grm-tgospel" style="accent-color:var(--purple)"><span>Traditional Gospel</span></label>
+                <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.7rem;color:var(--muted)"><input type="checkbox" id="grm-sgospel" style="accent-color:var(--purple)"><span>Southern Gospel</span><span style="font-family:var(--mono);font-size:.45rem;color:var(--amber);border:1px solid rgba(255,204,85,.3);border-radius:3px;padding:.05rem .25rem;margin-left:.25rem;vertical-align:middle">~ estimates</span></label>
+                <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.7rem;color:var(--muted)"><input type="checkbox" id="grm-ugospel" style="accent-color:var(--purple)"><span>Urban Gospel / R&amp;B</span><span style="font-family:var(--mono);font-size:.45rem;color:var(--amber);border:1px solid rgba(255,204,85,.3);border-radius:3px;padding:.05rem .25rem;margin-left:.25rem;vertical-align:middle">~ estimates</span></label>
+                <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.7rem;color:var(--muted)"><input type="checkbox" id="grm-tgospel" style="accent-color:var(--purple)"><span>Traditional Gospel</span><span style="font-family:var(--mono);font-size:.45rem;color:var(--amber);border:1px solid rgba(255,204,85,.3);border-radius:3px;padding:.05rem .25rem;margin-left:.25rem;vertical-align:middle">~ estimates</span></label>
               </div>
+            </div>
+            <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted2);margin-top:.45rem;line-height:1.7">
+              <span style="color:var(--amber)">~ estimates</span> = no Billboard data in DB yet — uses Last.fm listener counts to rank popularity. Results have lower confidence.
             </div>
           </div>
 
@@ -1196,10 +1236,16 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
           <!-- OPTIONS -->
           <div>
             <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--pink);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">OPTIONS<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
-            <label style="display:flex;align-items:flex-start;gap:.6rem;cursor:pointer;font-size:.72rem">
-              <input type="checkbox" id="grm-write-tags" style="accent-color:var(--pink);margin-top:.1rem">
-              <span style="color:var(--muted);line-height:1.6">Write chart data to file COMMENT tags<br><span style="color:var(--muted2);font-size:.6rem">Survives a database wipe. Peak + weeks written permanently.</span></span>
-            </label>
+            <div style="display:flex;flex-direction:column;gap:.6rem">
+              <label style="display:flex;align-items:flex-start;gap:.6rem;cursor:pointer;font-size:.72rem">
+                <input type="checkbox" id="grm-write-tags" style="accent-color:var(--pink);margin-top:.1rem">
+                <span style="color:var(--muted);line-height:1.6">Write chart data to file COMMENT tags<br><span style="color:var(--muted2);font-size:.6rem">Survives a database wipe. Peak + weeks written permanently.</span></span>
+              </label>
+              <label style="display:flex;align-items:flex-start;gap:.6rem;cursor:pointer;font-size:.72rem">
+                <input type="checkbox" id="grm-use-estimates" style="accent-color:var(--amber);margin-top:.1rem">
+                <span style="color:var(--muted);line-height:1.6">Use Last.fm estimates for unmatched tracks<br><span style="color:var(--muted2);font-size:.6rem">⚠ Slower — adds ~0.2s per track. Use for CCM or when static DB misses too many. Charts with <span style="color:var(--amber)">~ estimates</span> badge always use this.</span></span>
+              </label>
+            </div>
           </div>
 
           <!-- ACTIONS -->
@@ -1212,9 +1258,13 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
           </div>
 
           <!-- ACTIVITY LOG -->
-          <div style="flex:1;display:flex;flex-direction:column;min-height:0">
-            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--pink);margin-bottom:.5rem;display:flex;align-items:center;gap:.5rem">ACTIVITY LOG<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
-            <div id="grm-log" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:.7rem;font-family:var(--mono);font-size:.58rem;color:var(--muted);flex:1;min-height:150px;overflow-y:auto;line-height:1.8"></div>
+          <div style="flex:1;display:flex;flex-direction:column;min-height:0;max-height:280px">
+            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--pink);margin-bottom:.5rem;display:flex;align-items:center;gap:.5rem">
+              ACTIVITY LOG
+              <span style="flex:1;height:1px;background:var(--border);display:block"></span>
+              <button onclick="document.getElementById('grm-log').innerHTML=''" style="background:none;border:none;color:var(--muted2);font-family:var(--mono);font-size:.52rem;cursor:pointer;padding:.1rem .3rem;letter-spacing:.5px" title="Clear log" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--muted2)'">✕ CLEAR</button>
+            </div>
+            <div id="grm-log" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:.7rem;font-family:var(--mono);font-size:.58rem;color:var(--muted);flex:1;min-height:120px;max-height:220px;overflow-y:auto;line-height:1.8"></div>
           </div>
         </div>
 
@@ -1231,6 +1281,11 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
             <!-- Progress bar -->
             <div style="background:var(--surface2);border-radius:4px;height:6px;overflow:hidden;border:1px solid var(--border);margin-bottom:.75rem">
               <div id="grm-scan-bar" style="height:100%;width:0%;background:var(--pink);transition:width .4s ease;border-radius:4px"></div>
+            </div>
+            <!-- Phase indicator — hidden by default, shown during scans -->
+            <div id="grm-phase-banner" style="display:none;text-align:center;padding:.6rem 1rem;margin-bottom:.75rem;border-radius:6px;font-family:var(--mono);font-size:.7rem;letter-spacing:1.5px;line-height:1.6">
+              <div id="grm-phase-title" style="font-weight:bold;font-size:.72rem"></div>
+              <div id="grm-phase-sub" style="font-size:.58rem;margin-top:.15rem;opacity:.8"></div>
             </div>
             <!-- Stats row -->
             <div style="display:flex;gap:1rem;flex-wrap:wrap">
@@ -1349,6 +1404,45 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
         <div class="ph-tagline">LOCAL MUSIC VIDEO MANAGER</div>
         <div class="ph-sub">Scan your server's music video collection.<br>Filter by quality · artist · genre · chart.<br>Build MV playlists and push to Plex · Emby · Jellyfin.</div>
         <div class="ph-coming">MILESTONE 10</div>
+      </div>
+    </div>
+
+    <!-- DEBUG LOG PANEL -->
+    <div class="tab-panel" id="panel-debug">
+      <div style="display:flex;flex-direction:column;height:100%;padding:1.25rem 1.75rem;gap:.75rem;overflow:hidden">
+
+        <!-- Header -->
+        <div style="display:flex;align-items:center;gap:1rem;flex-shrink:0">
+          <div style="font-family:var(--display);font-size:1.4rem;letter-spacing:3px;color:#6366f1">🐛 DEBUG LOG</div>
+          <span style="font-family:var(--mono);font-size:.55rem;padding:.2rem .6rem;border-radius:10px;background:rgba(99,102,241,.12);border:1px solid rgba(99,102,241,.3);color:#6366f1" id="dbg-count">0 entries</span>
+          <div style="margin-left:auto;display:flex;gap:.5rem;align-items:center">
+            <!-- Level filter -->
+            <select id="dbg-level" onchange="dbgLoad()" style="background:var(--bg);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:.62rem;padding:.3rem .5rem;outline:none;cursor:pointer">
+              <option value="">All Levels</option>
+              <option value="DEBUG">DEBUG</option>
+              <option value="INFO">INFO</option>
+              <option value="WARNING">WARNING</option>
+              <option value="ERROR">ERROR</option>
+            </select>
+            <!-- Name filter -->
+            <input type="text" id="dbg-name" placeholder="Filter module…" oninput="dbgLoad()" style="background:var(--bg);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:.62rem;padding:.3rem .55rem;outline:none;width:130px">
+            <!-- Auto-refresh toggle -->
+            <label style="display:flex;align-items:center;gap:.35rem;font-family:var(--mono);font-size:.6rem;color:var(--muted);cursor:pointer">
+              <input type="checkbox" id="dbg-auto" checked onchange="dbgToggleAuto()" style="accent-color:#6366f1">
+              Auto
+            </label>
+            <button onclick="dbgLoad()" style="padding:.35rem .75rem;background:rgba(99,102,241,.15);border:1px solid rgba(99,102,241,.4);border-radius:5px;color:#6366f1;font-family:var(--mono);font-size:.62rem;cursor:pointer">⟳ REFRESH</button>
+            <button onclick="dbgClear()" style="padding:.35rem .75rem;background:var(--surface2);border:1px solid var(--border);border-radius:5px;color:var(--muted);font-family:var(--mono);font-size:.62rem;cursor:pointer">🗑 CLEAR</button>
+            <button onclick="dbgDownload()" style="padding:.35rem .75rem;background:rgba(99,102,241,.9);border:none;border-radius:5px;color:#fff;font-family:var(--mono);font-size:.62rem;cursor:pointer;font-weight:bold">⬇ DOWNLOAD</button>
+          </div>
+        </div>
+
+        <!-- Stats bar -->
+        <div id="dbg-stats" style="font-family:var(--mono);font-size:.55rem;color:var(--muted2);flex-shrink:0"></div>
+
+        <!-- Log output -->
+        <div id="dbg-log" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:.75rem;font-family:var(--mono);font-size:.6rem;overflow-y:auto;line-height:1.9;min-height:0"></div>
+
       </div>
     </div>
 
@@ -1474,8 +1568,9 @@ function switchTab(name) {
   document.getElementById(`nav-${name}`).classList.add('active');
   document.getElementById(`panel-${name}`).classList.add('active');
   document.getElementById('vinylIcon').classList.toggle('spinning', ['retriever','sniffer','bloodhound','tracker'].includes(name));
-  if (name === 'retriever') { checkRetrieverBanners(); loadCustomTags(); }
+  if (name === 'retriever') { checkRetrieverBanners(); loadCustomTags(); retInjectScrollNav(); }
   if (name === 'groomer') grmInit();
+  if (name === 'debug') dbgInit();
 }
 function checkRetrieverBanners() {
   const b = document.getElementById('retrieverLfmBanner');
@@ -1708,9 +1803,10 @@ function setMode(mode, el) {
       'Results appear live as they come in. You review and approve before anything writes to your files. ' +
       'You can Override any individual track before writing.',
     album_tagger:
-      '📂 LOCAL FIRST — reads tags straight from your files instantly. No internet. No API calls. ' +
-      'One card per folder. Choose LOOKUP (goes online for that album), OVERRIDE (you set tags manually), ' +
-      'or KEEP (leave as-is). Nothing writes until you say so.',
+      '📂 LOCAL FIRST — Select a subfolder, then click READ FROM FILE to load album cards. ' +
+      'One card per folder. Choose 🔍 LOOKUP (fetches genre from internet for that album), ' +
+      '✏️ OVERRIDE (set all tags yourself), or ✓ KEEP (tags are fine — card disappears). ' +
+      'After Lookup, click 🔍 WRITE ALL LOOKUPS to write all found genres at once.',
     autopilot:
       '⚡ AUTO-PILOT — goes online and writes metadata automatically in the background. ' +
       'Skips tracks you have already manually verified. Low-confidence results go to a Review Queue instead of writing. ' +
@@ -2094,9 +2190,32 @@ async function saveCustomTag(kind, name) {
       method:'POST', headers:authHdrs(),
       body: JSON.stringify({kind, name, action:'add'})
     });
-    if (kind === 'genre' && !_customGenres.includes(name)) _customGenres.push(name);
-    if (kind === 'mood'  && !_customMoods.includes(name))  _customMoods.push(name);
+    if (kind === 'genre' && !_customGenres.includes(name)) {
+      _customGenres.push(name);
+      populateDropdowns();
+    }
+    if (kind === 'mood'  && !_customMoods.includes(name))  {
+      _customMoods.push(name);
+      populateDropdowns();
+    }
   } catch {}
+}
+
+async function deleteCustomTag(kind, name) {
+  if (!confirm(`Remove "${name}" from your custom ${kind} list?`)) return;
+  try {
+    const r = await fetch(`${API}/api/retriever/genres`, {
+      method:'POST', headers:authHdrs(),
+      body: JSON.stringify({kind, name, action:'delete'})
+    });
+    const d = await r.json();
+    if (r.ok) {
+      if (kind === 'genre') _customGenres = _customGenres.filter(g => g !== name);
+      if (kind === 'mood')  _customMoods  = _customMoods.filter(m => m !== name);
+      populateDropdowns();
+      toast(`Removed "${name}" from custom ${kind}s`, 'ok');
+    }
+  } catch(e) { toast(`Delete failed: ${e.message}`, 'error'); }
 }
 
 function populateDropdowns() {
@@ -2118,6 +2237,46 @@ function populateDropdowns() {
       allMoods.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('');
     sel.onchange = () => handleCustomOption(sel, 'mood');
   });
+  // Rebuild custom tag manager list (shows ✕ delete buttons for custom entries only)
+  buildCustomTagManager();
+}
+
+function buildCustomTagManager() {
+  // Genre custom tag manager
+  const gWrap = document.getElementById('custom-genre-manager');
+  const mWrap = document.getElementById('custom-mood-manager');
+  if (gWrap) {
+    gWrap.innerHTML = _customGenres.length
+      ? _customGenres.map(g => `
+          <span style="display:inline-flex;align-items:center;gap:.2rem;
+            background:var(--surface3);border:1px solid var(--border2);
+            border-radius:12px;padding:.15rem .45rem .15rem .55rem;
+            font-family:var(--mono);font-size:.55rem;color:var(--teal);margin:.15rem">
+            ${esc(g)}
+            <button onclick="deleteCustomTag('genre','${esc(g)}')"
+              style="background:none;border:none;color:var(--muted2);cursor:pointer;
+              font-size:.65rem;padding:0;line-height:1;margin-left:.1rem"
+              title="Remove ${esc(g)}" onmouseover="this.style.color='var(--red)'"
+              onmouseout="this.style.color='var(--muted2)'">✕</button>
+          </span>`).join('')
+      : '<span style="font-family:var(--mono);font-size:.55rem;color:var(--muted2)">No custom genres saved</span>';
+  }
+  if (mWrap) {
+    mWrap.innerHTML = _customMoods.length
+      ? _customMoods.map(m => `
+          <span style="display:inline-flex;align-items:center;gap:.2rem;
+            background:var(--surface3);border:1px solid var(--border2);
+            border-radius:12px;padding:.15rem .45rem .15rem .55rem;
+            font-family:var(--mono);font-size:.55rem;color:var(--purple);margin:.15rem">
+            ${esc(m)}
+            <button onclick="deleteCustomTag('mood','${esc(m)}')"
+              style="background:none;border:none;color:var(--muted2);cursor:pointer;
+              font-size:.65rem;padding:0;line-height:1;margin-left:.1rem"
+              title="Remove ${esc(m)}" onmouseover="this.style.color='var(--red)'"
+              onmouseout="this.style.color='var(--muted2)'">✕</button>
+          </span>`).join('')
+      : '<span style="font-family:var(--mono);font-size:.55rem;color:var(--muted2)">No custom moods saved</span>';
+  }
 }
 
 function handleCustomOption(sel, kind) {
@@ -2424,9 +2583,10 @@ function atBuildCard(key, alb) {
             <input type="checkbox" id="at-comp-${safeKey}" ${alb.isCompilation?'checked':''} style="accent-color:var(--amber)">
             Mark as Compilation
           </label>
-          <label style="display:flex;align-items:center;gap:.35rem;font-family:var(--mono);font-size:.5rem;color:var(--muted);cursor:pointer">
+          <label style="display:flex;align-items:center;gap:.35rem;font-family:var(--mono);font-size:.5rem;color:var(--muted);cursor:pointer"
+            title="Recommended: MusicBrainz IDs on files can cause the Retriever to skip re-fetching fresh metadata. Clearing them lets ChartHound do a clean lookup next scan.">
             <input type="checkbox" id="at-mbid-${safeKey}" checked style="accent-color:var(--teal)">
-            Clear MusicBrainz IDs
+            Clear MusicBrainz IDs ⓘ
           </label>
         </div>
       </div>
@@ -2671,8 +2831,9 @@ function atRemoveCard(key) {
 }
 
 function atKeep(key) {
+  // Keep = "tags are fine, nothing to write" — remove card immediately
   atSetState(key, 'keep');
-  // Keep cards visible but styled as done — user may still want to come back
+  setTimeout(() => atRemoveCard(key), 150);
 }
 
 function atSetState(key, state) {
@@ -2770,7 +2931,10 @@ async function atWriteAllAccepted() {
 }
 
 function atKeepAll() {
-  Object.keys(_atAlbums).forEach(k => atSetState(k, 'keep'));
+  Object.keys(_atAlbums).forEach(k => {
+    atSetState(k, 'keep');
+    setTimeout(() => atRemoveCard(k), 150);
+  });
 }
 
 // Legacy stubs
@@ -2988,6 +3152,79 @@ let grmScanPoll      = null;
 let grmScannedServer = null;   // server used in last scan — locks push buttons
 let grmCurrentMode   = 'server';
 let grmLivePoll      = null;   // auto-refresh results during scan
+let grmBrowsePath    = '';     // current relative path being browsed (under /music)
+let grmBrowseBase    = '/music'; // absolute base returned by /browse
+
+// ── Local folder picker ──────────────────────────────────────────
+// Reuses the Retriever's /browse endpoint (it just lists subfolders of /music).
+// Dropdown shows immediate subfolders; selecting one fills the text field.
+// ⟳ button drills into the currently selected folder.
+async function grmBrowseLoad(relPath) {
+  const sel  = document.getElementById('grm-local-browse');
+  const hint = document.getElementById('grm-local-hint');
+  if (!sel || !hint) return;
+  try {
+    const r = await fetch(`${API}/api/retriever/browse?path=${encodeURIComponent(relPath || '')}`, {headers:authHdrs()});
+    if (!r.ok) {
+      hint.textContent = '⚠ Could not browse /music — is the volume mounted?';
+      toast('Browse failed — see hint', 'warn');
+      return;
+    }
+    const data = await r.json();
+    grmBrowsePath = relPath || '';
+    grmBrowseBase = data.base || '/music';
+
+    sel.innerHTML = '<option value="">— select a folder —</option>';
+
+    // Add "go up" option when not at root
+    if (grmBrowsePath) {
+      const up = document.createElement('option');
+      up.value = '__up__'; up.textContent = '⬆ ../ (go up)';
+      sel.appendChild(up);
+    }
+
+    (data.entries || []).forEach(entry => {
+      const opt = document.createElement('option');
+      opt.value = entry.path;        // absolute path
+      opt.textContent = entry.name;
+      opt.dataset.rel = entry.rel_path;
+      sel.appendChild(opt);
+    });
+
+    hint.textContent = `📂 ${data.path} — ${(data.entries || []).length} folder(s). Select one, then ⟳ to drill in.`;
+  } catch(e) {
+    hint.textContent = `⚠ Browse error: ${e.message}`;
+  }
+}
+
+function grmBrowseSelect() {
+  // When user picks from dropdown: auto-fill text field so it's ready to scan as-is.
+  const sel = document.getElementById('grm-local-browse');
+  const txt = document.getElementById('grm-local-path');
+  if (!sel || !txt) return;
+  if (sel.value === '__up__' || sel.value === '') return;
+  txt.value = sel.value;
+}
+
+async function grmBrowseRefresh() {
+  // ⟳ button: drill into selected folder, or (if none selected) re-list current path.
+  const sel = document.getElementById('grm-local-browse');
+  if (!sel) return;
+  if (sel.value === '__up__') {
+    const parentRel = grmBrowsePath.split('/').slice(0, -1).join('/');
+    await grmBrowseLoad(parentRel);
+    return;
+  }
+  if (sel.value) {
+    // Selected folder's rel_path is on the option dataset
+    const opt = sel.options[sel.selectedIndex];
+    const rel = opt?.dataset?.rel || '';
+    await grmBrowseLoad(rel);
+    return;
+  }
+  // Nothing selected — refresh current level
+  await grmBrowseLoad(grmBrowsePath);
+}
 
 // ── Init ──────────────────────────────────────────────────────────
 function grmInit() {
@@ -3021,9 +3258,31 @@ function grmInit() {
   // Inject scroll nav buttons if not already present
   grmInjectScrollNav();
   grmLoadStats();
+  _grmLoadPathSettings();
+  grmLoadLibraries();
 }
 
 // Genre/mood pills replaced by post-scan dropdown (grmBuildGenreDropdown)
+
+function retInjectScrollNav() {
+  if (document.getElementById('ret-scroll-nav')) return;
+  const scroller = document.querySelector('.content-area') || document.documentElement;
+  const nav = document.createElement('div');
+  nav.id = 'ret-scroll-nav';
+  nav.style.cssText = 'position:fixed;right:1.5rem;bottom:5rem;z-index:500;display:flex;flex-direction:column;gap:.4rem;opacity:0;transition:opacity .3s;pointer-events:none;';
+  const btnStyle = 'width:36px;height:36px;border-radius:50%;background:var(--surface2);border:1px solid var(--border2);color:var(--teal);font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;line-height:1;';
+  nav.innerHTML = `
+    <button style="${btnStyle}" title="Scroll to top"
+      onclick="(document.querySelector('.content-area')||document.documentElement).scrollTo({top:0,behavior:'smooth'})">↑</button>
+    <button style="${btnStyle}" title="Scroll to bottom"
+      onclick="(document.querySelector('.content-area')||document.documentElement).scrollTo({top:99999,behavior:'smooth'})">↓</button>`;
+  document.body.appendChild(nav);
+  scroller.addEventListener('scroll', () => {
+    const show = scroller.scrollTop > 200;
+    nav.style.opacity       = show ? '1'    : '0';
+    nav.style.pointerEvents = show ? 'auto' : 'none';
+  }, {passive:true});
+}
 
 function grmInjectScrollNav() {
   if (document.getElementById('grm-scroll-nav')) return;
@@ -3046,17 +3305,81 @@ function grmInjectScrollNav() {
   }, {passive:true});
 }
 
+// Cached path settings for clipboard translation
+let _grmServerPrefix = '';
+let _grmDockerPrefix = '/music';
+async function _grmLoadPathSettings() {
+  if (_grmServerPrefix !== '' || _grmDockerPrefix !== '/music') return; // already loaded
+  try {
+    const r = await fetch(`${API}/api/kennel/path-settings`, {headers:authHdrs()});
+    if (r.ok) {
+      const d = await r.json();
+      _grmServerPrefix = d.server_prefix || '';
+      _grmDockerPrefix = d.docker_prefix || '/music';
+    }
+  } catch {}
+}
+
 function grmCopyPath(path, el) {
   if (!path) return;
-  navigator.clipboard.writeText(path).then(() => {
-    const orig = el.style.background;
-    el.style.background = 'rgba(74,222,128,.15)';
-    el.title = '✓ Copied!';
-    setTimeout(() => {
-      el.style.background = orig;
-      el.title = 'Click to copy path: ' + path;
-    }, 1200);
-  }).catch(() => toast('Copy failed — browser blocked clipboard', 'warn'));
+  // Translate stored path → desktop path for file manager use.
+  // Stored paths can be:
+  //   a) Docker: /music/FULL ALBUMS/...
+  //   b) Server raw: /media/NAS1/MUSIC TAGGED/FULL ALBUMS/...
+  //   c) Desktop: /media/colby/NAS1/MUSIC TAGGED/FULL ALBUMS/... (already correct)
+  let realPath = path;
+  if (_grmServerPrefix) {
+    if (path.startsWith(_grmServerPrefix)) {
+      // Already the desktop path — no change
+      realPath = path;
+    } else if (_grmDockerPrefix && path.startsWith(_grmDockerPrefix)) {
+      // Docker path → desktop path
+      realPath = _grmServerPrefix + path.slice(_grmDockerPrefix.length);
+    } else {
+      // Server raw path — find the common anchor folder and replace
+      // e.g. server_prefix = /media/colby/NAS1/MUSIC TAGGED
+      //      anchor = "MUSIC TAGGED"
+      //      stored = /media/NAS1/MUSIC TAGGED/FULL ALBUMS/...
+      //      result = /media/colby/NAS1/MUSIC TAGGED/FULL ALBUMS/...
+      const anchor = _grmServerPrefix.replace(/\/+$/, '').split('/').pop();
+      if (anchor) {
+        const idx = path.indexOf('/' + anchor + '/');
+        if (idx >= 0) {
+          realPath = _grmServerPrefix + path.slice(idx + anchor.length + 1);
+        }
+      }
+    }
+  }
+  // Try modern clipboard API first; fall back to execCommand for HTTP
+  const doFlash = () => {
+    const orig = el.style.color;
+    el.style.color = 'var(--green)';
+    el.textContent = '✅';
+    setTimeout(() => { el.style.color = orig; el.textContent = '📋'; }, 1500);
+  };
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(realPath).then(doFlash)
+      .catch(() => _grmFallbackCopy(realPath, doFlash));
+  } else {
+    _grmFallbackCopy(realPath, doFlash);
+  }
+}
+
+function _grmFallbackCopy(text, callback) {
+  // HTTP-safe fallback using temporary textarea + execCommand
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;left:-9999px;top:-9999px;opacity:0';
+  document.body.appendChild(ta);
+  ta.focus(); ta.select();
+  try {
+    const ok = document.execCommand('copy');
+    if (ok && callback) callback();
+    else toast('Copy failed — try accessing via HTTPS', 'warn');
+  } catch {
+    toast('Copy not supported on this browser/connection', 'warn');
+  }
+  document.body.removeChild(ta);
 }
 
 function grmToggleGenre(genre) {
@@ -3091,6 +3414,11 @@ function grmSetMode(mode) {
     const b = document.getElementById(id);
     if (b) b.style.display = isServer ? '' : 'none';
   });
+  // Auto-load root folder list first time Local mode is shown
+  if (!isServer) {
+    const sel = document.getElementById('grm-local-browse');
+    if (sel && sel.options.length <= 1) grmBrowseLoad('');
+  }
   grmSyncBar();
 }
 
@@ -3184,6 +3512,28 @@ async function grmLoadCharts() {
 }
 
 // ── Scan controls ─────────────────────────────────────────────────
+async function grmLoadLibraries() {
+  const server = grmGetServer();
+  const sec = document.getElementById('grm-library-section');
+  const sel = document.getElementById('grm-library-select');
+  if (!sec || !sel) return;
+  sel.innerHTML = '<option value="">All Libraries</option>';
+  sec.style.display = 'none';
+  try {
+    const r = await fetch(`${API}/api/groomer/libraries?server=${server}`, {headers:authHdrs()});
+    if (!r.ok) return;
+    const d = await r.json();
+    if (!d.libraries || !d.libraries.length) return;
+    d.libraries.forEach(lib => {
+      const opt = document.createElement('option');
+      opt.value = lib.id;
+      opt.textContent = lib.name + (lib.count ? ` (${lib.count})` : '');
+      sel.appendChild(opt);
+    });
+    sec.style.display = '';
+  } catch {}
+}
+
 function grmGetServer() {
   return document.querySelector('input[name="grm-server"]:checked')?.value || 'plex';
 }
@@ -3211,10 +3561,12 @@ async function grmStartScan() {
       body: JSON.stringify({
         source:      mode === 'server' ? server : 'local',
         charts:      charts,
-        data_source: 'verified',
-        write_tags:  writeTags,
-        folder_path: localPath,
-        limit:       null,
+        data_source:    'auto',
+        use_estimates:  document.getElementById('grm-use-estimates')?.checked || false,
+        write_tags:     writeTags,
+        folder_path:    localPath,
+        library_id:     document.getElementById('grm-library-select')?.value || null,
+        limit:          null,
       }),
     });
     const d = await r.json();
@@ -3232,6 +3584,10 @@ async function grmStartScan() {
     grmStartPoll();
     grmLivePoll = setInterval(() => { if (grmScanJobId) grmSearch(); }, 15000);
     toast(`Groomer scan started on ${scope}`, 'ok');
+    grmLog('⏳ Scanning against static chart database — first results may take a minute to appear…', 'info');
+    if (document.getElementById('grm-use-estimates')?.checked) {
+      grmLog('⚠ Last.fm estimates enabled — scan will be slower (~0.2s per unmatched track)', 'warn');
+    }
   } catch(e) {
     grmLog(`Failed to start: ${e.message}`, 'err');
     toast('Scan failed to start — see log', 'error');
@@ -3273,8 +3629,63 @@ async function grmPollScan() {
     document.getElementById('grm-s-failed').textContent  = failed.toLocaleString();
 
     if (d.status === 'running') {
+      const banner = document.getElementById('grm-phase-banner');
+      const phTitle = document.getElementById('grm-phase-title');
+      const phSub  = document.getElementById('grm-phase-sub');
+
+      if (processed === 0 && d.message) {
+        // ── PHASE 1: Tag reading (processed=0, message has progress) ──
+        document.getElementById('grm-status-sub').textContent = d.message;
+        if (banner) {
+          banner.style.display = 'block';
+          banner.style.background = 'rgba(0,180,216,.1)';
+          banner.style.border = '1px solid rgba(0,180,216,.35)';
+          banner.style.color = 'var(--teal)';
+          phTitle.textContent = '📖 PHASE 1 — READING FILE TAGS';
+          phSub.textContent = d.message + '  ·  Chart lookups begin after all tags are read. Please wait…';
+        }
+        // Pulse the progress bar so user sees movement
+        const bar = document.getElementById('grm-scan-bar');
+        if (bar && total > 0) {
+          // Extract read count from message like "Reading tags: 12,400/33,390"
+          const m = (d.message || '').match(/(\d[\d,]*)\s*\/\s*(\d[\d,]*)/);
+          if (m) {
+            const readDone = parseInt(m[1].replace(/,/g,''));
+            const readTotal = parseInt(m[2].replace(/,/g,''));
+            bar.style.width = Math.round((readDone/readTotal)*100) + '%';
+            bar.style.background = 'var(--teal)';
+          }
+        }
+      } else {
+        // ── PHASE 2: Chart lookups (processed > 0) ──
+        document.getElementById('grm-status-sub').textContent =
+          `${processed.toLocaleString()} / ${total.toLocaleString()} (${pct}%)`;
+        if (banner) {
+          banner.style.display = 'block';
+          banner.style.background = 'rgba(244,114,182,.08)';
+          banner.style.border = '1px solid rgba(244,114,182,.3)';
+          banner.style.color = 'var(--pink)';
+          phTitle.textContent = '🔍 PHASE 2 — LOOKING UP CHART DATA';
+          phSub.textContent = `Searching ${total.toLocaleString()} tracks against chart database…`;
+        }
+        // Restore pink progress bar for lookup phase
+        const bar = document.getElementById('grm-scan-bar');
+        if (bar) bar.style.background = 'var(--pink)';
+      }
+    }
+
+    // Stale: server restarted or job_id no longer active — reset UI automatically
+    // instead of polling forever with "Failed to fetch" errors.
+    if (d.status === 'stale') {
+      clearInterval(grmScanPoll); grmScanPoll = null;
+      clearInterval(grmLivePoll); grmLivePoll = null;
+      grmScanJobId = null;
+      grmLog('⚠ Scan no longer active on server (restart or new scan started). UI reset.', 'warn');
+      document.getElementById('grm-status-title').textContent = 'SCAN INACTIVE';
       document.getElementById('grm-status-sub').textContent =
-        `${processed.toLocaleString()} / ${total.toLocaleString()} (${pct}%)`;
+        'Server no longer tracking this scan — start a new one.';
+      grmScanDone(false);
+      return;
     }
 
     if (['done','stopped','failed'].includes(d.status)) {
@@ -3289,6 +3700,10 @@ async function grmPollScan() {
           `${matched.toLocaleString()} chart hits found in your library`;
         grmSearch();  // populate results table
         grmLoadStats();
+        // If write tags was enabled, verify a sample of written files
+        if (document.getElementById('grm-write-tags')?.checked) {
+          setTimeout(grmVerifyWrittenTags, 2000);
+        }
       } else {
         document.getElementById('grm-status-title').textContent =
           d.status === 'stopped' ? 'SCAN STOPPED' : 'SCAN FAILED';
@@ -3300,12 +3715,43 @@ async function grmPollScan() {
   } catch(e) { grmLog(`Poll error: ${e.message}`, 'err'); }
 }
 
+async function grmVerifyWrittenTags() {
+  grmLog('🔍 Verifying COMMENT tags were written to files…', 'info');
+  try {
+    const r = await fetch(`${API}/api/groomer/verify-tags`, {headers:authHdrs()});
+    if (!r.ok) { grmLog('⚠ Tag verification failed — could not reach endpoint', 'warn'); return; }
+    const d = await r.json();
+    if (!d.verified || !d.verified.length) {
+      grmLog('⚠ Tag verification — no files to check (no chart_data with file paths)', 'warn');
+      return;
+    }
+    let passed = 0; let failed = 0;
+    d.verified.forEach(v => {
+      if (v.ok) {
+        passed++;
+        grmLog(`✓ Tag verified: ${v.file_path.split('/').pop()} — "${v.actual}"`, 'ok');
+      } else {
+        failed++;
+        const reason = v.error || `Expected "${v.expected}" · Got "${v.actual || 'nothing'}"`;
+        grmLog(`✗ Tag missing: ${v.file_path.split('/').pop()} — ${reason}`, 'err');
+      }
+    });
+    const summary = `Tag verification: ${passed}/${d.count} files confirmed written`;
+    grmLog(passed === d.count ? `✓ ${summary}` : `⚠ ${summary}`, passed === d.count ? 'ok' : 'warn');
+  } catch(e) {
+    grmLog(`Tag verification error: ${e.message}`, 'err');
+  }
+}
+
 function grmScanDone(success) {
   const scan = document.getElementById('grm-btn-scan');
   scan.disabled = false; scan.style.opacity = '1';
   const stop = document.getElementById('grm-btn-stop');
   stop.disabled = true;  stop.style.opacity = '.4';
   grmScanJobId = null;
+  // Hide phase banner
+  const banner = document.getElementById('grm-phase-banner');
+  if (banner) banner.style.display = 'none';
   grmSyncBar();
 }
 
@@ -3416,7 +3862,7 @@ function grmUpdateLoadMore() {
     if (wrap) wrap.appendChild(btn);
     else document.getElementById('grm-tbody')?.parentElement?.parentElement?.appendChild(btn);
   }
-  const remaining = _grmTotal - _grmOffset;
+  const remaining = (_grmTotal > 0) ? Math.max(0, _grmTotal - _grmOffset) : 0;
   if (remaining > 0) {
     btn.style.display = 'block';
     const span = document.getElementById('grm-load-count');
@@ -3512,9 +3958,15 @@ function grmRenderResults(results, append = false) {
     tr.innerHTML = `
       <td style="padding:.45rem .75rem"><input type="checkbox" onchange="grmToggleTrack(${t.track_id},this.checked)" style="accent-color:var(--pink)"></td>
       <td style="padding:.45rem .75rem;color:var(--muted)">${esc(artist)}</td>
-      <td style="padding:.45rem .75rem;color:var(--text);cursor:pointer"
-          title="Click to copy path: ${esc(filePath)}"
-          onclick="grmCopyPath('${esc(filePath)}',this)">${esc(t.title||'')}</td>
+      <td style="padding:.45rem .75rem;color:var(--text)">
+        ${esc(t.title||'')}${filePath
+          ? `<button onclick="grmCopyPath('${esc(filePath)}',this)" title="Copy file path to clipboard"
+              style="margin-left:.35rem;background:none;border:none;color:var(--muted2);cursor:pointer;
+              font-size:.65rem;padding:.05rem .2rem;border-radius:3px;vertical-align:middle;
+              transition:color .15s" onmouseover="this.style.color='var(--teal)'"
+              onmouseout="this.style.color='var(--muted2)'">📋</button>`
+          : ''}
+      </td>
       <td style="padding:.45rem .75rem;color:var(--muted)">${t.chart_year||t.year||'—'}</td>
       <td style="padding:.45rem .75rem">${starsHTML}</td>
       <td style="padding:.45rem .75rem">${peakHTML}</td>
@@ -3670,7 +4122,13 @@ async function grmDownloadM3U() {
       method:'POST', headers:authHdrs(),
       body:JSON.stringify({track_ids:trackIds, playlist_name:name}),
     });
-    if (!r.ok) { const d=await r.json(); throw new Error(d.detail||`HTTP ${r.status}`); }
+    if (!r.ok) {
+      const d = await r.json();
+      const msg = typeof d.detail === 'string' ? d.detail
+                : Array.isArray(d.detail) ? d.detail.map(e=>e.msg||JSON.stringify(e)).join('; ')
+                : JSON.stringify(d.detail) || `HTTP ${r.status}`;
+      throw new Error(msg);
+    }
     const blob = await r.blob();
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
@@ -3771,6 +4229,114 @@ function startResize(e, name) {
     } catch(e) {}
   });
 })();
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  DEBUG LOG
+// ══════════════════════════════════════════════════════════════════════════════
+let _dbgPoll = null;
+const DBG_LEVEL_COLOR = {
+  DEBUG:    'color:var(--muted2)',
+  INFO:     'color:var(--text)',
+  WARNING:  'color:var(--amber)',
+  ERROR:    'color:var(--red)',
+  CRITICAL: 'color:var(--red)',
+};
+
+function dbgInit() {
+  dbgLoad();
+  if (document.getElementById('dbg-auto')?.checked) dbgStartPoll();
+}
+
+function dbgToggleAuto() {
+  if (document.getElementById('dbg-auto')?.checked) {
+    dbgStartPoll();
+  } else {
+    if (_dbgPoll) { clearInterval(_dbgPoll); _dbgPoll = null; }
+  }
+}
+
+function dbgStartPoll() {
+  if (_dbgPoll) clearInterval(_dbgPoll);
+  _dbgPoll = setInterval(dbgLoad, 2000);
+}
+
+async function dbgLoad() {
+  const level = document.getElementById('dbg-level')?.value || '';
+  const name  = document.getElementById('dbg-name')?.value || '';
+  const params = new URLSearchParams({n: 500});
+  if (level) params.set('level', level);
+  if (name)  params.set('name', name);
+  try {
+    const r = await fetch(`${API}/api/debug/lines?${params}`, {headers:authHdrs()});
+    if (!r.ok) return;
+    const d = await r.json();
+    const el = document.getElementById('dbg-log');
+    const count = document.getElementById('dbg-count');
+    const stats = document.getElementById('dbg-stats');
+    if (!el) return;
+
+    // Update count badge
+    if (count) count.textContent = `${d.total.toLocaleString()} entries`;
+
+    // Update stats
+    if (stats && d.by_level) {
+      stats.textContent = Object.entries(d.by_level)
+        .map(([l,n]) => `${l}: ${n}`).join('  ·  ');
+    }
+
+    // Render log lines
+    const wasAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+    el.innerHTML = d.lines.map(e => {
+      const style = DBG_LEVEL_COLOR[e.level] || 'color:var(--text)';
+      const nameStyle = 'color:#6366f1;opacity:.7';
+      return `<div style="border-bottom:1px solid var(--border);padding:.15rem 0;${style}">` +
+        `<span style="color:var(--muted2)">[${e.ts}]</span> ` +
+        `<span style="font-weight:bold">[${e.level.padEnd(7)}]</span> ` +
+        `<span style="${nameStyle}">[${e.name.padEnd(10)}]</span> ` +
+        `${esc(e.msg)}</div>`;
+    }).join('');
+
+    // Auto-scroll to bottom if was already at bottom
+    if (wasAtBottom) el.scrollTop = el.scrollHeight;
+
+  } catch(e) {
+    const el = document.getElementById('dbg-log');
+    if (el) el.innerHTML = `<span style="color:var(--red)">Failed to load log: ${esc(e.message)}</span>`;
+  }
+}
+
+async function dbgClear() {
+  if (!confirm('Clear the debug log buffer?')) return;
+  try {
+    await fetch(`${API}/api/debug/clear`, {method:'POST', headers:authHdrs()});
+    dbgLoad();
+    toast('Debug log cleared', 'ok');
+  } catch(e) { toast(`Clear failed: ${e.message}`, 'error'); }
+}
+
+async function dbgDownload() {
+  const level = document.getElementById('dbg-level')?.value || '';
+  const params = level ? `?level=${level}` : '';
+  try {
+    const r = await fetch(`${API}/api/debug/download${params}`, {headers:authHdrs()});
+    if (!r.ok) { toast('Download failed', 'error'); return; }
+    const blob = await r.blob();
+    const cd   = r.headers.get('Content-Disposition') || '';
+    const fn   = cd.match(/filename="([^"]+)"/)?.[1] || 'charthound_debug.txt';
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = fn;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
+    toast('✓ Debug log downloaded', 'ok');
+  } catch(e) { toast(`Download failed: ${e.message}`, 'error'); }
+}
+
+// Stop auto-poll when leaving debug tab
+const _origSwitchTab = switchTab;
+// Patch switchTab to stop debug poll when leaving
+window._dbgTabPatch = true;
 
 </script>
 </body>

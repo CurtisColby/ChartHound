@@ -50,7 +50,6 @@ from app.deps import require_auth
 from app.security import decrypt_token
 
 from app.routers.retriever import (
-    write_tags as _write_tags_fn,
     peak_to_stars,
     format_chart_comment,
 )
@@ -116,9 +115,20 @@ def _listeners_to_stars(listeners: int, bucket: str) -> int:
 
 
 def _listeners_to_est_peak(listeners: int, bucket: str) -> int:
-    if bucket == "ccm": return 0
+    """
+    Estimates a chart peak position from Last.fm listener count.
+    All results stored with confidence='low' so users know these
+    are popularity estimates, not real Billboard positions.
+    CCM uses tighter thresholds since the CCM audience is smaller.
+    """
     import random
     t = _LFM_THRESHOLDS.get(bucket, _LFM_THRESHOLDS["default"])
+    if bucket == "ccm":
+        # CCM-specific tiers — smaller market, tighter thresholds
+        if listeners >= t[0]: return random.randint(1, 10)   # >= 100k → top CCM
+        if listeners >= t[1]: return random.randint(11, 20)  # >= 40k  → solid
+        if listeners >= t[2]: return random.randint(21, 40)  # >= 15k  → known
+        return random.randint(41, 100)                        # >= 5k   → minor
     if listeners >= t[0]: return random.randint(1, 5)
     if listeners >= t[1]: return random.randint(6, 15)
     if listeners >= t[2]: return random.randint(16, 30)
@@ -340,6 +350,165 @@ async def charts_status(_=Depends(require_auth)):
 #  DB STATS
 # ══════════════════════════════════════════════════════════════════════════════
 
+@router.get("/verify-tags")
+async def verify_tags(_=Depends(require_auth)):
+    """
+    Samples up to 5 recently written chart_data rows and verifies the
+    COMMENT tag was actually written to the physical file.
+    Returns list of {file_path, expected, actual, ok} per file checked.
+    """
+    import json as _json
+    results = []
+
+    # Get path translation settings
+    server_prefix = ""
+    docker_prefix = "/music"
+    try:
+        async with aiosqlite.connect(_DYNAMIC_DB) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT key, value FROM app_settings "
+                "WHERE key IN ('path_server_prefix','path_docker_prefix')"
+            ) as cur:
+                rows = await cur.fetchall()
+            for r in rows:
+                if r["key"] == "path_server_prefix":
+                    server_prefix = r["value"] or ""
+                elif r["key"] == "path_docker_prefix":
+                    docker_prefix = r["value"] or "/music"
+    except Exception:
+        pass
+
+    # Sample up to 5 chart_data rows with comment_string and file_path
+    try:
+        async with aiosqlite.connect(_DYNAMIC_DB) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute("""
+                SELECT cd.comment_string, t.file_path
+                FROM chart_data cd
+                JOIN tracks t ON cd.track_id = t.track_id
+                WHERE cd.comment_string IS NOT NULL
+                  AND cd.comment_string != ''
+                  AND t.file_path IS NOT NULL
+                  AND t.file_path != ''
+                ORDER BY cd.fetched_at DESC
+                LIMIT 5
+            """) as cur:
+                rows = await cur.fetchall()
+    except Exception as e:
+        raise HTTPException(500, f"DB error: {e}")
+
+    for row in rows:
+        fp       = row["file_path"]
+        expected = row["comment_string"]
+
+        # Translate server path → docker path if needed
+        docker_fp = fp
+        if server_prefix and fp.startswith(server_prefix):
+            docker_fp = docker_prefix + fp[len(server_prefix):]
+        elif fp.startswith("/music") or fp.startswith(docker_prefix):
+            docker_fp = fp  # already docker path
+
+        if not os.path.exists(docker_fp):
+            results.append({
+                "file_path": fp,
+                "expected":  expected,
+                "actual":    None,
+                "ok":        False,
+                "error":     "File not found at docker path"
+            })
+            continue
+
+        try:
+            from mutagen import File as MutagenFile
+            mf = MutagenFile(docker_fp, easy=False)
+            actual = None
+            if mf:
+                # FLAC / Vorbis comment
+                if hasattr(mf, 'tags') and mf.tags:
+                    actual = (
+                        mf.tags.get("COMMENT", [None])[0]
+                        or mf.tags.get("comment", [None])[0]
+                        # ID3 COMM frame
+                        or str(next((v for k,v in mf.tags.items()
+                                     if k.startswith("COMM")), None) or "")
+                        or None
+                    )
+                    # Handle ID3 COMM object
+                    if actual and hasattr(actual, 'text'):
+                        actual = actual.text[0] if actual.text else str(actual)
+            results.append({
+                "file_path": fp,
+                "expected":  expected,
+                "actual":    actual,
+                "ok":        actual is not None and expected in str(actual),
+            })
+        except Exception as e:
+            results.append({
+                "file_path": fp,
+                "expected":  expected,
+                "actual":    None,
+                "ok":        False,
+                "error":     str(e)
+            })
+
+    return {"verified": results, "count": len(results)}
+
+
+@router.get("/libraries")
+async def get_libraries(server: str, _=Depends(require_auth)):
+    """
+    Returns music libraries from the selected media server.
+    Used to populate the library selector dropdown in the UI.
+    """
+    try:
+        async with aiosqlite.connect(_DYNAMIC_DB) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT base_url, token_enc, extra_json FROM connections WHERE service=?",
+                (server,)
+            ) as cur:
+                conn = await cur.fetchone()
+    except Exception:
+        conn = None
+
+    if not conn:
+        raise HTTPException(400, f"No {server} connection configured")
+
+    base_url = conn["base_url"]
+    token    = decrypt_token(conn["token_enc"]) if conn["token_enc"] else ""
+    extra    = json.loads(conn["extra_json"] or "{}") if conn["extra_json"] else {}
+    libraries = []
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            if server == "plex":
+                r = await client.get(f"{base_url}/library/sections?X-Plex-Token={token}",
+                    headers={"Accept":"application/json"})
+                if r.is_success:
+                    sections = r.json().get("MediaContainer",{}).get("Directory",[])
+                    libraries = [{"id": s["key"], "name": s.get("title","Unknown"),
+                                  "count": s.get("count", 0)}
+                                 for s in sections if s.get("type") == "artist"]
+            elif server in ("emby", "jellyfin"):
+                user_id = extra.get("user_id","")
+                hdrs = {"Accept":"application/json"}
+                if server == "emby":
+                    hdrs["X-Emby-Token"] = token
+                r = await client.get(f"{base_url}/Users/{user_id}/Views",
+                    params={"api_key": token}, headers=hdrs)
+                if r.is_success:
+                    items = r.json().get("Items", [])
+                    libraries = [{"id": i["Id"], "name": i.get("Name","Unknown")}
+                                 for i in items
+                                 if i.get("CollectionType") in ("music", "Music") or
+                                    "music" in i.get("Name","").lower()]
+    except Exception as e:
+        log.warning(f"Library fetch error for {server}: {e}")
+
+    return {"libraries": libraries, "server": server}
+
+
 @router.get("/tagged_count")
 async def tagged_count(_=Depends(require_auth)):
     """Returns count of tracks with genre_1 populated (Retriever-tagged)."""
@@ -391,10 +560,12 @@ async def db_stats(_=Depends(require_auth)):
 class ScanRequest(BaseModel):
     source:        str            # 'plex' | 'emby' | 'jellyfin' | 'local'
     charts:        List[str]      # ['hot100', 'country', ...]
-    data_source:   str = "verified"   # 'verified' | 'all_matched' | 'estimates'
+    data_source:   str = "auto"   # kept for backward compat
+    use_estimates: bool = False   # if True, use Last.fm for tracks not in static DB
     write_tags:    bool = False
     limit:         Optional[int] = None
     folder_path:   Optional[str] = None
+    library_id:    Optional[str] = None   # media server library ID filter
 
 
 class StopRequest(BaseModel):
@@ -431,7 +602,7 @@ async def _migrate_chart_data():
 
 
 @router.post("/scan/start")
-async def scan_start(req: ScanRequest, bg: BackgroundTasks, _=Depends(require_auth)):
+async def scan_start(req: ScanRequest, _=Depends(require_auth)):
     if _scan_job["status"] == "running":
         raise HTTPException(409, "A scan is already running. Stop it first.")
 
@@ -453,12 +624,31 @@ async def scan_start(req: ScanRequest, bg: BackgroundTasks, _=Depends(require_au
         "started_at": time.time(), "stop_requested": False, "job_id": int(time.time()),
     })
 
-    bg.add_task(_run_scan, req)
+    # CRITICAL: asyncio.create_task instead of bg.add_task.
+    # bg.add_task (FastAPI BackgroundTasks) does not reliably yield control
+    # back to the event loop during heavy I/O on this NAS — it freezes
+    # uvicorn and blocks all poll requests. create_task runs as a proper
+    # concurrent coroutine on the event loop.
+    asyncio.create_task(_run_scan(req))
     return {"ok": True, "job_id": _scan_job["job_id"]}
 
 
 @router.get("/scan/status/{job_id}")
 async def scan_status(job_id: int, _=Depends(require_auth)):
+    """
+    Return current scan state. If the polled job_id doesn't match the in-memory
+    job_id, the client is polling a dead scan (e.g. after container restart or
+    a new scan started in another tab) — return status='stale' so the frontend
+    can reset its UI instead of polling forever.
+    """
+    current_id = _scan_job.get("job_id")
+    if current_id is None or current_id != job_id:
+        return {
+            "status": "stale",
+            "message": "This scan is no longer active (server restart or new scan started).",
+            "job_id": job_id,
+            "total": 0, "processed": 0, "matched": 0, "failed": 0, "cached": 0,
+        }
     return dict(_scan_job)
 
 
@@ -474,6 +664,13 @@ async def scan_stop(_=Depends(require_auth)):
 # ══════════════════════════════════════════════════════════════════════════════
 
 async def _run_scan(req: ScanRequest):
+    # Early log — ALWAYS hits before any heavy I/O so we have proof the
+    # background task started, even if something catastrophic happens next.
+    log.info(
+        f"Scan task entered — source={req.source} charts={req.charts} "
+        f"folder={req.folder_path or '(n/a)'} library={req.library_id or '(all)'} "
+        f"job_id={_scan_job.get('job_id')}"
+    )
     _scan_job["status"] = "running"
     try:
         # Get Last.fm key for fallback
@@ -500,6 +697,17 @@ async def _run_scan(req: ScanRequest):
         tracks = tracks[:limit]
         _scan_job["total"] = len(tracks)
         _scan_job["message"] = f"Scanning {len(tracks):,} tracks..."
+
+        # Pre-compute which requested charts have static DB entries — done ONCE
+        # Charts with no static data automatically fall through to Last.fm
+        charts_with_static = _get_charts_with_static_data(req.charts)
+        estimate_only_charts = [c for c in req.charts if c not in charts_with_static]
+        log.info(f"Static DB charts: {charts_with_static} | Estimate-only: {estimate_only_charts}")
+        if estimate_only_charts:
+            _scan_job["message"] = (
+                f"Note: {', '.join(estimate_only_charts)} have no static chart data — "
+                f"will use Last.fm listener estimates for these charts"
+            )
 
         loop = asyncio.get_event_loop()
 
@@ -533,41 +741,60 @@ async def _run_scan(req: ScanRequest):
                 if track_id:
                     track["track_id"] = track_id
 
-                # Static DB lookup (runs in thread — synchronous sqlite3)
-                static_result = await loop.run_in_executor(
-                    None, _lookup_static, artist, title, req.charts
-                )
+                # ── SMART WATERFALL ───────────────────────────────────────────
+                # Step 1: Static DB lookup (only for charts that have data)
+                static_charts = [c for c in req.charts if c in charts_with_static]
+                static_result = None
+                if static_charts:
+                    static_result = await loop.run_in_executor(
+                        None, _lookup_static, artist, title, static_charts
+                    )
 
-                if static_result and req.data_source in ("verified", "all_matched"):
+                if static_result:
+                    # Real chart data found — store it, then read genre from file
                     await _store_result(db, track, static_result, req)
+                    await _enrich_genre_from_file(db, track, loop)
                     _scan_job["matched"] += 1
 
-                elif req.data_source == "estimates":
-                    # Last.fm fallback
-                    listeners = await _lastfm_listeners(artist, title, lfm_key)
-                    genre_tags = [track.get("genre_1",""), track.get("genre_2","")]
-                    bucket = _detect_genre_bucket(genre_tags, req.charts)
+                else:
+                    # Step 2: Last.fm fallback — only fires when:
+                    #   a) use_estimates=True (user opted in), OR
+                    #   b) All selected charts are estimate-only (no static data at all)
+                    # This prevents 33k Last.fm calls on a Hot 100 scan
+                    all_estimate_only = len(estimate_only_charts) == len(req.charts)
+                    should_estimate = (req.use_estimates or all_estimate_only) and lfm_key
 
-                    if _meets_min_threshold(listeners, bucket):
-                        est_peak = _listeners_to_est_peak(listeners, bucket)
-                        stars    = _listeners_to_stars(listeners, bucket)
-                        result = {
-                            "peak_position":  est_peak,
-                            "weeks_on_chart": 1,
-                            "chart_name":     req.charts[0] if req.charts else "hot100",
-                            "chart_year":     None,
-                            "confidence":     "low",
-                            "data_source":    "lastfm_estimate",
-                            "all_charts":     [],
-                            "star_rating":    stars,
-                            "listener_count": listeners,
-                        }
-                        await _store_result(db, track, result, req)
-                        _scan_job["matched"] += 1
+                    if should_estimate:
+                        await asyncio.sleep(0.2)  # rate limit: max 5 req/sec to Last.fm
+                        listeners = await _lastfm_listeners(artist, title, lfm_key)
+                        genre_tags = [track.get("genre_1",""), track.get("genre_2","")]
+                        bucket_charts = estimate_only_charts or req.charts
+                        bucket = _detect_genre_bucket(genre_tags, bucket_charts)
+
+                        if _meets_min_threshold(listeners, bucket):
+                            est_peak = _listeners_to_est_peak(listeners, bucket)
+                            stars    = _listeners_to_stars(listeners, bucket)
+                            chart_name = (estimate_only_charts[0]
+                                         if estimate_only_charts
+                                         else (req.charts[0] if req.charts else "hot100"))
+                            result = {
+                                "peak_position":  est_peak,
+                                "weeks_on_chart": 1,
+                                "chart_name":     chart_name,
+                                "chart_year":     None,
+                                "confidence":     "low",
+                                "data_source":    "lastfm_estimate",
+                                "all_charts":     [],
+                                "star_rating":    stars,
+                                "listener_count": listeners,
+                            }
+                            await _store_result(db, track, result, req)
+                            await _enrich_genre_from_file(db, track, loop)
+                            _scan_job["matched"] += 1
+                        else:
+                            _scan_job["failed"] += 1
                     else:
                         _scan_job["failed"] += 1
-                else:
-                    _scan_job["failed"] += 1
 
                 _scan_job["processed"] += 1
                 await asyncio.sleep(0)  # yield to event loop
@@ -584,6 +811,82 @@ async def _run_scan(req: ScanRequest):
     except Exception as e:
         log.exception("Groomer scan error")
         _scan_job.update({"status": "error", "message": str(e)})
+
+
+async def _enrich_genre_from_file(db: aiosqlite.Connection, track: dict, loop) -> None:
+    """
+    For a matched track, read genre tags from the physical file via Mutagen
+    and update the tracks table. Only fires on matched tracks (~800 files),
+    not on all 33k scanned tracks.
+    Handles server path → docker path translation using app_settings.
+    """
+    track_id = track.get("track_id")
+    if not track_id:
+        return
+
+    file_path = track.get("file_path", "")
+    if not file_path:
+        return
+
+    # Path translation: server path → docker path
+    try:
+        async with db.execute(
+            "SELECT key, value FROM app_settings "
+            "WHERE key IN ('path_server_prefix','path_docker_prefix')"
+        ) as cur:
+            rows = await cur.fetchall()
+        server_prefix = ""
+        docker_prefix = "/music"
+        for r in rows:
+            if r[0] == "path_server_prefix":   server_prefix = r[1] or ""
+            elif r[0] == "path_docker_prefix":  docker_prefix = r[1] or "/music"
+    except Exception:
+        server_prefix = ""
+        docker_prefix = "/music"
+
+    docker_path = file_path
+    if server_prefix and file_path.startswith(server_prefix):
+        docker_path = docker_prefix + file_path[len(server_prefix):]
+    elif not file_path.startswith(docker_prefix) and not file_path.startswith("/music"):
+        return  # can't translate — skip
+
+    if not os.path.exists(docker_path):
+        return
+
+    def _read_genre(path: str):
+        try:
+            from mutagen import File as MutagenFile
+            mf = MutagenFile(path, easy=True)
+            if not mf:
+                return []
+            raw = mf.get("genre", [])
+            if not raw:
+                return []
+            # Split on semicolons, slashes, or newlines — common separators
+            import re as _re
+            genres = []
+            for g in raw:
+                parts = _re.split('[;/\n]', str(g))
+                genres.extend(p.strip() for p in parts if p.strip())
+            return genres[:3]  # max 3
+        except Exception:
+            return []
+
+    genres = await loop.run_in_executor(None, _read_genre, docker_path)
+    if not genres:
+        return
+
+    try:
+        g1 = genres[0] if len(genres) > 0 else None
+        g2 = genres[1] if len(genres) > 1 else None
+        g3 = genres[2] if len(genres) > 2 else None
+        await db.execute(
+            "UPDATE tracks SET genre_1=?, genre_2=?, genre_3=? WHERE track_id=?",
+            (g1, g2, g3, track_id)
+        )
+        await db.commit()
+    except Exception as e:
+        log.debug(f"_enrich_genre_from_file update failed: {e}")
 
 
 async def _resolve_track_id(db: aiosqlite.Connection, track: dict) -> Optional[int]:
@@ -630,8 +933,11 @@ async def _resolve_track_id(db: aiosqlite.Connection, track: dict) -> Optional[i
     if not file_path and not title:
         return None  # nothing to anchor on — skip
 
-    # Use a placeholder path if none available
-    anchor_path = file_path or f"__groomer__/{artist}/{title}"
+    # Always use the real file path as anchor — fake paths break M3U generation
+    if not file_path:
+        log.debug(f"_resolve_track_id: no file_path for '{title}' — skipping insert")
+        return None
+    anchor_path = file_path
 
     try:
         # Resolve or create artist row
@@ -682,6 +988,28 @@ async def _resolve_track_id(db: aiosqlite.Connection, track: dict) -> Optional[i
         return None
 
 
+def _get_charts_with_static_data(charts: list) -> set:
+    """
+    Returns the subset of requested charts that have entries in charthound_static.db.
+    Called once at scan start — not per track.
+    Result used to decide whether Last.fm fallback is appropriate.
+    """
+    if not charts or not os.path.exists(_STATIC_DB):
+        return set()
+    try:
+        conn = sqlite3.connect(_STATIC_DB, check_same_thread=False)
+        placeholders = ",".join("?" * len(charts))
+        rows = conn.execute(
+            f"SELECT DISTINCT chart_name FROM chart_reference WHERE chart_name IN ({placeholders})",
+            charts
+        ).fetchall()
+        conn.close()
+        return {r[0] for r in rows}
+    except Exception as e:
+        log.warning(f"_get_charts_with_static_data error: {e}")
+        return set()
+
+
 async def _check_cache(db: aiosqlite.Connection, track: dict, charts: list) -> bool:
     """Returns True if this track already has chart_data rows for the requested charts."""
     track_id = track.get("track_id")
@@ -697,8 +1025,74 @@ async def _check_cache(db: aiosqlite.Connection, track: dict, charts: list) -> b
         return bool(row and row[0] > 0)
 
 
+def write_chart_tags(file_path: str, comment_string: str, star_rating: int) -> None:
+    """
+    Groomer-only tag writer. Touches ONLY two fields — leaves all other tags untouched.
+      - COMMENT / COMM  — formatted chart string e.g. "Hot 100: #4 (22 wks) | Adult Pop: #1"
+      - RATING / POPM   — star rating 1–5 (identifier: 'ChartHound')
+
+    MP3  → ID3 COMM frame + POPM frame (0–255 scaled: 1★=51, 2★=102, 3★=153, 4★=204, 5★=255)
+    FLAC → Vorbis COMMENT tag + RATING tag (stored as plain integer string '1'–'5')
+    M4A  → ©cmt atom + rated via freeform ----:com.ChartHound:RATING atom
+    """
+    import mutagen
+    from mutagen import File as MutagenFile
+    from mutagen.flac import FLAC
+    from mutagen.mp3 import MP3
+    from mutagen.id3 import ID3, COMM, POPM
+    from mutagen.mp4 import MP4
+
+    if not file_path or not os.path.exists(file_path):
+        raise FileNotFoundError(f"File not found: {file_path}")
+
+    ext = os.path.splitext(file_path)[1].lower()
+
+    # Star → POPM byte scale (ID3 spec: 0–255)
+    popm_scale = {1: 51, 2: 102, 3: 153, 4: 204, 5: 255}
+    popm_val   = popm_scale.get(max(1, min(5, star_rating)), 153)
+
+    if ext == ".mp3":
+        try:
+            tags = ID3(file_path)
+        except mutagen.id3.ID3NoHeaderError:
+            tags = ID3()
+
+        # COMMENT frame — lang='eng', desc='' keeps it compatible with most players
+        tags.delall("COMM:ChartHound:eng")
+        tags.add(COMM(encoding=3, lang="eng", desc="ChartHound", text=comment_string))
+
+        # POPM frame — identifier 'ChartHound'
+        tags.delall("POPM:ChartHound")
+        tags.add(POPM(email="ChartHound", rating=popm_val, count=0))
+
+        tags.save(file_path)
+
+    elif ext == ".flac":
+        audio = FLAC(file_path)
+        audio["COMMENT"] = comment_string
+        audio["RATING"]  = str(star_rating)
+        audio.save()
+
+    elif ext in (".m4a", ".mp4", ".aac"):
+        audio = MP4(file_path)
+        audio.tags["©cmt"] = [comment_string]
+        # Store rating as freeform atom
+        from mutagen.mp4 import MP4FreeForm
+        audio.tags["----:com.ChartHound:RATING"] = [
+            MP4FreeForm(str(star_rating).encode("utf-8"))
+        ]
+        audio.save()
+
+    else:
+        # Generic fallback via easy=False Mutagen
+        mf = MutagenFile(file_path, easy=False)
+        if mf is not None and mf.tags is not None:
+            mf.tags["COMMENT"] = comment_string
+            mf.save()
+
+
 async def _store_result(db: aiosqlite.Connection, track: dict, result: dict, req: ScanRequest):
-    """Upserts chart_data row and optionally writes COMMENT tag to file."""
+    """Upserts chart_data row and optionally writes COMMENT + RATING tags to file."""
     track_id = track.get("track_id")
     if not track_id:
         return
@@ -748,15 +1142,16 @@ async def _store_result(db: aiosqlite.Connection, track: dict, result: dict, req
     """, (track_id, chart, peak, weeks, stars, conf, listeners, comment_string, chart_year))
     await db.commit()
 
-    # Write COMMENT tag to physical file
+    # Write COMMENT + RATING tags to physical file
     if req.write_tags:
         file_path = track.get("file_path", "")
         if file_path and os.path.exists(file_path):
             loop = asyncio.get_event_loop()
             try:
                 await loop.run_in_executor(
-                    None, _write_tags_fn, file_path, {"comment": comment_string}
+                    None, write_chart_tags, file_path, comment_string, stars
                 )
+                log.info(f"Chart tags written: {os.path.basename(file_path)} | {comment_string} | ★{stars}")
             except Exception as e:
                 log.warning(f"Tag write failed for {file_path}: {e}")
 
@@ -772,26 +1167,100 @@ async def _fetch_tracks(req: ScanRequest) -> list:
 
 
 async def _fetch_local(folder: str) -> list:
-    tracks = []
+    """
+    Walk a local folder tree and collect audio tracks with basic tags.
+
+    Uses a DEDICATED ThreadPoolExecutor (max 2 threads) so Mutagen reads
+    cannot starve uvicorn's default executor. Batches of 50 with a real
+    asyncio.sleep between each to guarantee the event loop stays responsive
+    for /scan/status polls even during a 33k-track NAS walk.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+    from mutagen import File as MutagenFile
+
+    log.info(f"Local scan: enumerating files under {folder}")
+    _scan_job["message"] = f"Enumerating files in {folder}..."
+
+    if not os.path.isdir(folder):
+        log.warning(f"Local scan: folder does not exist or is not a directory: {folder}")
+        _scan_job["message"] = f"Folder not found: {folder}"
+        return []
+
     EXTS = {".flac", ".mp3", ".m4a", ".ogg", ".wav", ".aiff"}
-    for root, _, files in os.walk(folder):
-        for f in files:
-            if os.path.splitext(f)[1].lower() in EXTS:
-                fp = os.path.join(root, f)
-                # Read basic tags
-                try:
-                    from mutagen import File as MutagenFile
-                    mf = MutagenFile(fp, easy=True)
-                    if mf:
-                        tracks.append({
-                            "file_path": fp,
-                            "artist":    str(mf.get("artist", [""])[0]),
-                            "title":     str(mf.get("title",  [""])[0]),
-                            "album":     str(mf.get("album",  [""])[0]),
-                            "track_id":  None,
-                        })
-                except Exception:
-                    pass
+    loop = asyncio.get_event_loop()
+
+    # ── Step 1: fast enumeration (default executor, no file reads) ───────────
+    def _collect_paths() -> list:
+        paths = []
+        for root, _, files in os.walk(folder):
+            for f in files:
+                if os.path.splitext(f)[1].lower() in EXTS:
+                    paths.append(os.path.join(root, f))
+        return paths
+
+    try:
+        file_paths = await loop.run_in_executor(None, _collect_paths)
+    except Exception as e:
+        log.exception(f"Local scan: walk failed: {e}")
+        _scan_job["message"] = f"Walk failed: {e}"
+        return []
+
+    log.info(f"Local scan: found {len(file_paths):,} audio files — now reading tags")
+    _scan_job["message"] = f"Found {len(file_paths):,} files — reading tags..."
+    _scan_job["total"] = len(file_paths)
+
+    # ── Step 2: read tags in DEDICATED executor, small batches ───────────────
+    # Dedicated pool (2 threads) so we never starve uvicorn's default executor.
+    # Batch size 50 + real sleep(0.05) between batches = event loop stays alive.
+    tag_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="tag_read")
+
+    def _read_one(fp: str) -> Optional[dict]:
+        try:
+            mf = MutagenFile(fp, easy=True)
+            if not mf:
+                return None
+            return {
+                "file_path": fp,
+                "artist":    str(mf.get("artist", [""])[0]),
+                "title":     str(mf.get("title",  [""])[0]),
+                "album":     str(mf.get("album",  [""])[0]),
+                "track_id":  None,
+            }
+        except Exception:
+            return None
+
+    def _read_batch(paths: list) -> list:
+        return [_read_one(fp) for fp in paths]
+
+    tracks: list = []
+    BATCH = 50
+    total_files = len(file_paths)
+
+    try:
+        for i in range(0, total_files, BATCH):
+            if _scan_job["stop_requested"]:
+                log.info(f"Local scan: stop requested at tag-read {i}/{total_files}")
+                _scan_job["message"] = f"Stopped during tag read ({i}/{total_files})"
+                return tracks
+
+            batch = file_paths[i:i+BATCH]
+            results = await loop.run_in_executor(tag_executor, _read_batch, batch)
+            tracks.extend([r for r in results if r is not None])
+
+            # Update message so UI shows progress during tag-read phase
+            done = i + len(batch)
+            _scan_job["message"] = f"Reading tags: {done:,}/{total_files:,}"
+
+            # Periodic log every 5,000 files so debug log shows progress
+            if done % 5000 < BATCH:
+                log.info(f"Local scan: tag-read progress {done:,}/{total_files:,} ({len(tracks):,} valid)")
+
+            # Real yield — NOT sleep(0). Gives uvicorn time to serve polls.
+            await asyncio.sleep(0.05)
+    finally:
+        tag_executor.shutdown(wait=False)
+
+    log.info(f"Local scan: collected {len(tracks):,} taggable tracks from {total_files:,} files")
     return tracks
 
 
@@ -811,19 +1280,20 @@ async def _fetch_media_server(req: ScanRequest) -> list:
     if not conn:
         raise HTTPException(400, f"No {req.source} connection configured in The Kennel.")
 
-    base_url = conn["base_url"]
-    token    = decrypt_token(conn["token_enc"]) if conn["token_enc"] else ""
-    extra    = json.loads(conn["extra_json"] or "{}") if conn["extra_json"] else {}
+    base_url   = conn["base_url"]
+    token      = decrypt_token(conn["token_enc"]) if conn["token_enc"] else ""
+    extra      = json.loads(conn["extra_json"] or "{}") if conn["extra_json"] else {}
+    library_id = req.library_id or None
 
     if req.source == "plex":
-        return await _fetch_plex_tracks(base_url, token)
+        return await _fetch_plex_tracks(base_url, token, library_id=library_id)
     elif req.source == "emby":
-        return await _fetch_emby_tracks(base_url, token, extra.get("user_id",""))
+        return await _fetch_emby_tracks(base_url, token, extra.get("user_id",""), library_id=library_id)
     else:
-        return await _fetch_jellyfin_tracks(base_url, token, extra.get("user_id",""))
+        return await _fetch_jellyfin_tracks(base_url, token, extra.get("user_id",""), library_id=library_id)
 
 
-async def _fetch_plex_tracks(base: str, token: str) -> list:
+async def _fetch_plex_tracks(base: str, token: str, library_id: str = None) -> list:
     tracks = []
     prefix_server = os.environ.get("MEDIA_SERVER_MUSIC_PREFIX", "")
     prefix_docker = os.environ.get("DOCKER_MUSIC_PREFIX", "/music")
@@ -833,7 +1303,10 @@ async def _fetch_plex_tracks(base: str, token: str) -> list:
             r = await client.get(f"{base}/library/sections?X-Plex-Token={token}",
                                  headers={"Accept":"application/json"})
             sections = r.json().get("MediaContainer",{}).get("Directory",[])
-            music_sections = [s["key"] for s in sections if s.get("type") == "artist"]
+            music_sections = (
+                [library_id] if library_id
+                else [s["key"] for s in sections if s.get("type") == "artist"]
+            )
 
             for sec in music_sections:
                 offset = 0
@@ -872,7 +1345,7 @@ async def _fetch_plex_tracks(base: str, token: str) -> list:
     return tracks
 
 
-async def _fetch_emby_tracks(base: str, token: str, user_id: str) -> list:
+async def _fetch_emby_tracks(base: str, token: str, user_id: str, library_id: str = None) -> list:
     tracks = []
     headers = {"Accept":"application/json","X-Emby-Token":token}
     try:
@@ -880,9 +1353,12 @@ async def _fetch_emby_tracks(base: str, token: str, user_id: str) -> list:
             start = 0
             while True:
                 r = await client.get(f"{base}/Users/{user_id}/Items",
-                    params={"IncludeItemTypes":"Audio","Recursive":"true",
+                    params={k:v for k,v in {
+                            "IncludeItemTypes":"Audio","Recursive":"true",
                             "Fields":"Path,MediaSources","api_key":token,
-                            "StartIndex":start,"Limit":500},
+                            "StartIndex":start,"Limit":500,
+                            "ParentId": library_id if library_id else None,
+                        }.items() if v is not None},
                     headers=headers)
                 items = r.json().get("Items",[]) if r.is_success else []
                 if not items:
@@ -905,7 +1381,7 @@ async def _fetch_emby_tracks(base: str, token: str, user_id: str) -> list:
     return tracks
 
 
-async def _fetch_jellyfin_tracks(base: str, token: str, user_id: str) -> list:
+async def _fetch_jellyfin_tracks(base: str, token: str, user_id: str, library_id: str = None) -> list:
     tracks = []
     headers = {"Accept":"application/json"}
     try:
@@ -913,9 +1389,12 @@ async def _fetch_jellyfin_tracks(base: str, token: str, user_id: str) -> list:
             start = 0
             while True:
                 r = await client.get(f"{base}/Users/{user_id}/Items",
-                    params={"IncludeItemTypes":"Audio","Recursive":"true",
+                    params={k:v for k,v in {
+                            "IncludeItemTypes":"Audio","Recursive":"true",
                             "Fields":"Path,MediaSources","api_key":token,
-                            "StartIndex":start,"Limit":500},
+                            "StartIndex":start,"Limit":500,
+                            "ParentId": library_id if library_id else None,
+                        }.items() if v is not None},
                     headers=headers)
                 items = r.json().get("Items",[]) if r.is_success else []
                 if not items:
@@ -1005,8 +1484,16 @@ async def get_results(
                 total_row   = await cur.fetchone()
                 total_count = total_row[0] if total_row else 0
 
-            # Dedup: one row per artist+title, best format wins
-            # Outer query filters the ranked inner set then paginates
+            # Dedup: one row per title, best non-compilation artist wins.
+            #
+            # Compilation fix (M4 bug): Previously partitioned by artist+title,
+            # which meant "Various Artists - Boogie Wonderland" and
+            # "Earth, Wind & Fire - Boogie Wonderland" survived as TWO rows
+            # because their artist strings differed. New logic:
+            #   1. Partition by title only
+            #   2. Rank compilation rows (VA / Various / blank) BELOW real
+            #      artist rows for the same title
+            #   3. Then rank by audio format (FLAC > M4A > ... > MP3)
             dedup_where = ("AND " + " AND ".join(conditions)) if conditions else ""
             async with db.execute(f"""
                 SELECT * FROM (
@@ -1021,10 +1508,16 @@ async def get_results(
                         COALESCE(t.tag_artist, a.name, '') AS tag_artist,
                         COALESCE(t.tag_album,  al.title, '') AS tag_album,
                         ROW_NUMBER() OVER (
-                            PARTITION BY
-                                LOWER(COALESCE(t.tag_artist, a.name, '')),
-                                LOWER(t.title)
+                            PARTITION BY LOWER(t.title)
                             ORDER BY
+                                -- Compilation rows rank below real-artist rows
+                                CASE
+                                    WHEN LOWER(TRIM(COALESCE(t.tag_artist, a.name, '')))
+                                         IN ('', 'various artists', 'various',
+                                             'va', 'v.a.', 'compilation') THEN 2
+                                    ELSE 1
+                                END ASC,
+                                -- Then prefer lossless
                                 CASE LOWER(t.file_format)
                                     WHEN 'flac' THEN 1 WHEN 'm4a'  THEN 2
                                     WHEN 'wav'  THEN 3 WHEN 'aiff' THEN 4
@@ -1061,7 +1554,7 @@ async def get_results(
 # ══════════════════════════════════════════════════════════════════════════════
 
 class PlaylistPushRequest(BaseModel):
-    server:        str
+    server:        Optional[str] = None   # Required for push, optional for M3U
     playlist_name: str = "Chart Hits"
     track_ids:     Optional[List[int]] = None
     charts:        Optional[List[str]] = None
@@ -1071,6 +1564,8 @@ class PlaylistPushRequest(BaseModel):
 
 @router.post("/playlist/push")
 async def playlist_push(req: PlaylistPushRequest, _=Depends(require_auth)):
+    if not req.server:
+        raise HTTPException(400, "server is required for playlist push (plex/emby/jellyfin)")
     tracks = await _get_playlist_tracks(req)
     if not tracks:
         raise HTTPException(404, "No tracks found for playlist.")
@@ -1112,11 +1607,69 @@ async def playlist_m3u(req: PlaylistPushRequest, _=Depends(require_auth)):
     if not tracks:
         raise HTTPException(404, "No tracks found.")
 
+    # ── Path translation for M3U ─────────────────────────────────────────────
+    # Track paths in the DB can be:
+    #   a) Docker paths:  /music/FULL ALBUMS/...
+    #   b) Server paths:  /media/NAS1/MUSIC TAGGED/FULL ALBUMS/...
+    #   c) Desktop paths: /media/colby/NAS1/MUSIC TAGGED/FULL ALBUMS/...
+    #
+    # The M3U needs the DESKTOP path (what the user's machine can open).
+    # We read the Kennel path settings (server_prefix = desktop path) and
+    # the Docker env vars (MEDIA_SERVER_MUSIC_PREFIX = server's raw mount).
+    # Then we try each known prefix and replace with the desktop path.
+    desktop_prefix = ""
+    docker_prefix  = os.environ.get("DOCKER_MUSIC_PREFIX", "/music")
+    server_raw     = ""  # server's own mount (from env, e.g. /media/colby/NAS1/MUSIC TAGGED)
+    try:
+        async with aiosqlite.connect(_DYNAMIC_DB) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT key, value FROM app_settings "
+                "WHERE key IN ('path_server_prefix','path_docker_prefix')"
+            ) as cur:
+                rows = await cur.fetchall()
+            ps = {r["key"]: r["value"] for r in rows}
+            desktop_prefix = ps.get("path_server_prefix", "")
+            # The docker_prefix from Kennel settings (if set) overrides env
+            kp = ps.get("path_docker_prefix", "")
+            if kp:
+                docker_prefix = kp
+    except Exception:
+        pass
+    # The env var MEDIA_SERVER_MUSIC_PREFIX is the path the media server
+    # reports — also the second Docker volume mount's real path
+    server_raw = os.environ.get("MEDIA_SERVER_MUSIC_PREFIX", "")
+
+    def _translate_path(fp: str) -> str:
+        if not desktop_prefix or not fp:
+            return fp
+        # Already the desktop path — no translation needed
+        if fp.startswith(desktop_prefix):
+            return fp
+        # Docker path (/music/...) → desktop path
+        if fp.startswith(docker_prefix):
+            return desktop_prefix + fp[len(docker_prefix):]
+        # Server raw path (from media server, may differ from desktop mount)
+        # e.g. /media/NAS1/... vs /media/colby/NAS1/...
+        if server_raw and fp.startswith(server_raw):
+            return desktop_prefix + fp[len(server_raw):]
+        # Last resort: try to find common suffix
+        # e.g. stored = /media/NAS1/MUSIC TAGGED/FULL ALBUMS/...
+        #      desktop = /media/colby/NAS1/MUSIC TAGGED
+        # Look for the music root folder name in the stored path
+        if desktop_prefix:
+            # Extract the last folder name from desktop_prefix as anchor
+            anchor = desktop_prefix.rstrip("/").rsplit("/", 1)[-1]
+            idx = fp.find(f"/{anchor}/")
+            if idx >= 0:
+                return desktop_prefix + fp[idx + len(anchor) + 1:]
+        return fp
+
     lines = ["#EXTM3U", f"#PLAYLIST:{req.playlist_name}"]
     for t in tracks:
         artist = t.get("tag_artist", "")
         title  = t.get("title", "")
-        fp     = t.get("file_path", "")
+        fp     = _translate_path(t.get("file_path", ""))
         lines.append(f"#EXTINF:-1,{artist} - {title}")
         lines.append(fp)
 
@@ -1128,6 +1681,20 @@ async def playlist_m3u(req: PlaylistPushRequest, _=Depends(require_auth)):
 
 
 async def _get_playlist_tracks(req: PlaylistPushRequest) -> list:
+    """
+    Resolve the final ordered track list to push to a media server.
+
+    FIX (M4 bug): When the frontend sends explicit track_ids (user selected
+    rows from the already-deduped results table), TRUST them. Previously we
+    ran a second global dedup that filtered some of the selected IDs out
+    because a higher-ranked dupe existed elsewhere in chart_data — this
+    caused push counts to be lower than selected counts (e.g. pushed 900 of
+    1500 selected, 977 of 1000).
+
+    Dedup only fires when no track_ids were provided (e.g. "push everything
+    matching peak<=N and charts=X" mode). When it does, it uses the same
+    compilation-aware ranking as get_results() so the two paths agree.
+    """
     conditions = []
     params: list = []
 
@@ -1145,10 +1712,28 @@ async def _get_playlist_tracks(req: PlaylistPushRequest) -> list:
 
     async with aiosqlite.connect(_DYNAMIC_DB) as db:
         db.row_factory = aiosqlite.Row
-        # Dedup: for each unique artist+title keep the highest-quality format.
-        # Done via subquery — pick the track_id with the lowest format rank
-        # per artist+title group, then join back for the full row.
+
+        # ── Path A: explicit track_ids — no dedup, trust the frontend ───────
+        if req.track_ids:
+            async with db.execute(f"""
+                SELECT
+                    t.track_id, t.title, t.file_path, t.file_format,
+                    t.plex_rating_key, t.emby_id, t.jf_id,
+                    COALESCE(t.tag_artist, a.name, '') AS tag_artist,
+                    cd.peak_position, cd.chart_name
+                FROM chart_data cd
+                JOIN tracks t  ON cd.track_id = t.track_id
+                LEFT JOIN artists a ON t.artist_id = a.artist_id
+                {where}
+                ORDER BY cd.peak_position ASC
+                LIMIT ?
+            """, params) as cur:
+                rows = await cur.fetchall()
+            return [dict(r) for r in rows]
+
+        # ── Path B: no explicit IDs — run compilation-aware dedup ───────────
         # Format rank: FLAC=1, M4A=2, WAV=3, AIFF=4, OGG=5, MP3=6, other=7
+        # Compilation rank: VA/blank=2, real artist=1 (real artist wins)
         async with db.execute(f"""
             SELECT
                 t.track_id, t.title, t.file_path, t.file_format,
@@ -1162,19 +1747,15 @@ async def _get_playlist_tracks(req: PlaylistPushRequest) -> list:
                 SELECT track_id FROM (
                     SELECT
                         t2.track_id,
-                        LOWER(COALESCE(t2.tag_artist, a2.name, '')) AS norm_artist,
-                        LOWER(t2.title) AS norm_title,
-                        CASE LOWER(t2.file_format)
-                            WHEN 'flac' THEN 1 WHEN 'm4a'  THEN 2
-                            WHEN 'wav'  THEN 3 WHEN 'aiff' THEN 4
-                            WHEN 'ogg'  THEN 5 WHEN 'mp3'  THEN 6
-                            ELSE 7
-                        END AS fmt_rank,
                         ROW_NUMBER() OVER (
-                            PARTITION BY
-                                LOWER(COALESCE(t2.tag_artist, a2.name, '')),
-                                LOWER(t2.title)
+                            PARTITION BY LOWER(t2.title)
                             ORDER BY
+                                CASE
+                                    WHEN LOWER(TRIM(COALESCE(t2.tag_artist, a2.name, '')))
+                                         IN ('', 'various artists', 'various',
+                                             'va', 'v.a.', 'compilation') THEN 2
+                                    ELSE 1
+                                END ASC,
                                 CASE LOWER(t2.file_format)
                                     WHEN 'flac' THEN 1 WHEN 'm4a'  THEN 2
                                     WHEN 'wav'  THEN 3 WHEN 'aiff' THEN 4
@@ -1315,14 +1896,29 @@ async def _push_to_emby(base: str, token: str, user_id: str, name: str, tracks: 
         if not emby_ids:
             raise HTTPException(404, "No tracks found in Emby")
 
-        # Delete existing playlist
-        sr = await client.get(f"{base}/Users/{user_id}/Items",
-            params={"SearchTerm":name,"IncludeItemTypes":"Playlist","api_key":token},
-            headers=ah)
-        if sr.is_success:
-            ex = next((p for p in sr.json().get("Items",[]) if p.get("Name")==name),None)
-            if ex:
-                await client.delete(f"{base}/Items/{ex['Id']}?api_key={token}", headers=ah)
+        # Delete existing playlist — paginated fetch + exact name match (no fuzzy SearchTerm)
+        try:
+            pl_start = 0
+            while True:
+                pr = await client.get(f"{base}/Users/{user_id}/Items",
+                    params={"IncludeItemTypes":"Playlist","Recursive":"true",
+                            "api_key":token,"StartIndex":pl_start,"Limit":200},
+                    headers=ah)
+                if not pr.is_success:
+                    break
+                pl_items = pr.json().get("Items", [])
+                matched = next((p for p in pl_items if p.get("Name") == name), None)
+                if matched:
+                    dr = await client.delete(
+                        f"{base}/Items/{matched['Id']}?api_key={token}", headers=ah)
+                    log.info(f"Emby playlist delete: {dr.status_code}")
+                    await asyncio.sleep(0.5)  # brief pause so Emby registers delete before create
+                    break
+                if len(pl_items) < 200:
+                    break
+                pl_start += len(pl_items)
+        except Exception as e:
+            log.warning(f"Emby playlist delete warning: {e}")
 
         # Create with first batch of max 50 IDs (fixes 414 error)
         first_batch = emby_ids[:50]
@@ -1473,11 +2069,16 @@ async def _push_to_jellyfin(base: str, token: str, user_id: str, name: str, trac
             raise HTTPException(502, "No playlist ID from Jellyfin")
 
         # ── Add remaining in batches of 200 ───────────────────────────────────────
+        # NOTE: /Playlists/{id}/Items requires Ids as query param, not JSON body
         for i in range(200, len(jf_ids), 200):
             batch = jf_ids[i:i+200]
-            await client.post(f"{base}/Playlists/{pl_id}/Items?api_key={token}",
-                headers=hdrs,
-                json={"Ids":batch,"UserId":user_id})
+            add_r = await client.post(
+                f"{base}/Playlists/{pl_id}/Items",
+                params={"api_key": token, "Ids": ",".join(batch), "UserId": user_id},
+                headers=hdrs
+            )
+            if not add_r.is_success:
+                log.warning(f"JF batch add failed: {add_r.status_code} — {add_r.text[:200]}")
 
     added = len(jf_ids)
     return {"ok":True,"server":"jellyfin","playlist":name,

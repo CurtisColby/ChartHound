@@ -1487,9 +1487,21 @@ async def start_scan(req: ScanRequest, background_tasks: BackgroundTasks,
             raise HTTPException(409, "A scan is already running. Stop it first.")
 
     # Determine and validate scan path
-    if req.scope == "subfolder" and req.subfolder:
+    if req.scope == "subfolder" and req.subfolders:
+        # Multi-folder queue — validate all and join with | separator
+        validated = []
+        for sf in req.subfolders:
+            p = sf.strip()
+            if not p.startswith("/"):
+                p = os.path.join(settings.docker_music_prefix, p)
+            if not os.path.exists(p):
+                raise HTTPException(404,
+                    f"Subfolder not found: {p}. "
+                    f"Use the Docker path starting with {settings.docker_music_prefix}")
+            validated.append(p)
+        scan_path = "|".join(validated)
+    elif req.scope == "subfolder" and req.subfolder:
         scan_path = req.subfolder.strip()
-        # Ensure it starts with /music
         if not scan_path.startswith("/"):
             scan_path = os.path.join(settings.docker_music_prefix, scan_path)
         if not os.path.exists(scan_path):
@@ -1863,6 +1875,61 @@ async def album_lookup(req: AlbumTagRequest, user: dict = Depends(require_auth))
     }
 
 
+@router.get("/genres")
+async def get_custom_genres(user: dict = Depends(require_auth)):
+    """Returns custom genre and mood tags saved by the user."""
+    import json as _json
+    async with aiosqlite.connect(settings.database_url) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT key, value FROM app_settings WHERE key IN ('custom_genres','custom_moods')"
+        ) as cur:
+            rows = await cur.fetchall()
+    data = {r["key"]: _json.loads(r["value"] or "[]") for r in rows}
+    return {
+        "genres": data.get("custom_genres", []),
+        "moods":  data.get("custom_moods",  []),
+    }
+
+
+@router.post("/genres")
+async def save_custom_genre(req: dict, user: dict = Depends(require_auth)):
+    """Add or delete a custom genre or mood tag."""
+    import json as _json
+    kind   = req.get("kind", "")    # 'genre' | 'mood'
+    name   = (req.get("name") or "").strip()
+    action = req.get("action", "add")  # 'add' | 'delete'
+
+    if kind not in ("genre", "mood") or not name:
+        raise HTTPException(400, "Invalid kind or empty name")
+
+    key = "custom_genres" if kind == "genre" else "custom_moods"
+    now = datetime.now(timezone.utc).isoformat()
+
+    async with aiosqlite.connect(settings.database_url) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT value FROM app_settings WHERE key = ?", (key,)
+        ) as cur:
+            row = await cur.fetchone()
+        current = _json.loads(row["value"] or "[]") if row else []
+
+        if action == "add":
+            if name not in current:
+                current.append(name)
+        elif action == "delete":
+            current = [v for v in current if v != name]
+
+        await db.execute(
+            "INSERT INTO app_settings (key, value, updated_at) VALUES (?,?,?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
+            (key, _json.dumps(current), now)
+        )
+        await db.commit()
+
+    return {"ok": True, "kind": kind, "action": action, "name": name, "current": current}
+
+
 @router.get("/write-log")
 async def get_write_log(limit: int = 50, user: dict = Depends(require_auth)):
     async with aiosqlite.connect(settings.database_url) as db:
@@ -1879,9 +1946,11 @@ async def get_write_log(limit: int = 50, user: dict = Depends(require_auth)):
 # ══════════════════════════════════════════════════════════════════════════════
 
 async def run_scan_job(job_id: int, scan_path: str, mode: str, chunk_size: int):
-    log.info(f"[Job {job_id}] Starting scan: {scan_path} | mode={mode}")
+    # scan_path may be pipe-separated list for multi-folder queue
+    scan_paths = [p.strip() for p in scan_path.split('|') if p.strip()]
+    log.info(f"[Job {job_id}] Starting scan: {scan_paths} | mode={mode}")
     log.info(f"[Job {job_id}] 🐾 ChartHound Retriever starting up...")
-    log.info(f"[Job {job_id}] 📂 Scan path: {scan_path}")
+    log.info(f"[Job {job_id}] 📂 Scan path(s): {scan_paths}")
     log.info(f"[Job {job_id}] ⚙️  Mode: {mode.upper()} | Chunk size: {chunk_size}")
 
     # Capture start time for autopilot post-scan write
@@ -1901,7 +1970,11 @@ async def run_scan_job(job_id: int, scan_path: str, mode: str, chunk_size: int):
         pass
 
     # Index files
-    file_list = index_audio_files(scan_path)
+    # Handle | separated multi-folder paths
+    file_list = []
+    for sp in scan_paths:
+        file_list.extend(index_audio_files(sp))
+    file_list = sorted(set(file_list))  # deduplicate, keep sorted
     total = len(file_list)
     log.info(f"[Job {job_id}] 🎵 Found {total} audio files — beginning waterfall scan...")
     log.info(f"[Job {job_id}] 📡 Waterfall order: MusicBrainz → Last.fm → ListenBrainz → Deezer → Discogs → iTunes")
