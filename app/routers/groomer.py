@@ -554,6 +554,48 @@ async def db_stats(_=Depends(require_auth)):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+#  SKIP CACHE (chart_status on tracks table)
+# ══════════════════════════════════════════════════════════════════════════════
+
+@router.get("/skip_cache/stats")
+async def skip_cache_stats(_=Depends(require_auth)):
+    """Returns counts of chart_status values: hit, miss, null (unchecked)."""
+    try:
+        async with aiosqlite.connect(_DYNAMIC_DB) as db:
+            rows = {}
+            async with db.execute(
+                "SELECT chart_status, COUNT(*) FROM tracks GROUP BY chart_status"
+            ) as cur:
+                async for row in cur:
+                    key = row[0] or "unchecked"
+                    rows[key] = row[1]
+        return {
+            "hit":       rows.get("hit", 0),
+            "miss":      rows.get("miss", 0),
+            "unchecked": rows.get("unchecked", 0),
+            "total":     sum(rows.values()),
+        }
+    except Exception as e:
+        raise HTTPException(500, f"DB error: {e}")
+
+
+@router.post("/skip_cache/reset")
+async def skip_cache_reset(_=Depends(require_auth)):
+    """Clears all chart_status values — forces full re-scan on next run."""
+    try:
+        async with aiosqlite.connect(_DYNAMIC_DB) as db:
+            result = await db.execute(
+                "UPDATE tracks SET chart_status=NULL, chart_last_checked=NULL"
+            )
+            count = result.rowcount
+            await db.commit()
+        log.info(f"Skip cache reset: {count} tracks cleared")
+        return {"ok": True, "cleared": count}
+    except Exception as e:
+        raise HTTPException(500, f"DB error: {e}")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 #  SCAN — REQUEST MODELS
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -579,8 +621,10 @@ class StopRequest(BaseModel):
 async def _migrate_chart_data():
     """
     Schema migrations — safe no-ops if columns already exist.
-    1. chart_data.chart_year  — added in this pass
-    2. tracks.tag_artist      — needed for Groomer-inserted minimal rows
+    1. chart_data.chart_year    — chart year from static DB
+    2. tracks.tag_artist        — needed for Groomer-inserted minimal rows
+    3. tracks.chart_status      — skip cache: NULL=never checked, 'hit'=charted, 'miss'=not charted
+    4. tracks.chart_last_checked — ISO timestamp of last chart lookup (age-gate stale misses)
     """
     try:
         async with aiosqlite.connect(_DYNAMIC_DB) as db:
@@ -595,6 +639,12 @@ async def _migrate_chart_data():
             if "tag_artist" not in tr_cols:
                 await db.execute("ALTER TABLE tracks ADD COLUMN tag_artist TEXT")
                 log.info("tracks: tag_artist column added via migration")
+            if "chart_status" not in tr_cols:
+                await db.execute("ALTER TABLE tracks ADD COLUMN chart_status TEXT")
+                log.info("tracks: chart_status column added via migration")
+            if "chart_last_checked" not in tr_cols:
+                await db.execute("ALTER TABLE tracks ADD COLUMN chart_last_checked TEXT")
+                log.info("tracks: chart_last_checked column added via migration")
 
             await db.commit()
     except Exception as e:
@@ -715,6 +765,11 @@ async def _run_scan(req: ScanRequest):
             db.row_factory = aiosqlite.Row
             await db.execute("PRAGMA journal_mode=WAL")
 
+            # ── SKIP CACHE AGE GATE ──────────────────────────────────────
+            # Misses older than 6 months are re-checked. Configurable.
+            _MISS_AGE_SECONDS = 6 * 30 * 24 * 3600   # ~6 months
+            skipped_miss = 0   # counter for skip-cached misses
+
             for idx, track in enumerate(tracks):
                 if _scan_job["stop_requested"]:
                     _scan_job["status"] = "stopped"
@@ -729,7 +784,7 @@ async def _run_scan(req: ScanRequest):
 
                 _scan_job["message"] = f"[{idx+1}/{len(tracks)}] {artist} — {title}"
 
-                # Check dynamic cache first
+                # Check dynamic cache first (chart_data rows from THIS scan)
                 cached = await _check_cache(db, track, req.charts)
                 if cached:
                     _scan_job["cached"]    += 1
@@ -740,6 +795,41 @@ async def _run_scan(req: ScanRequest):
                 track_id = await _resolve_track_id(db, track)
                 if track_id:
                     track["track_id"] = track_id
+
+                # ── CHART STATUS SKIP CACHE ───────────────────────────────────
+                # Check tracks.chart_status before doing expensive lookups.
+                # 'miss' within age gate → skip instantly (no DB query, no API)
+                # 'hit' → still do the lookup (fast static DB) to re-populate
+                #         chart_data since we wiped it at scan start
+                # NULL  → first time, do full waterfall
+                if track_id:
+                    cs_row = None
+                    try:
+                        async with db.execute(
+                            "SELECT chart_status, chart_last_checked FROM tracks WHERE track_id=?",
+                            (track_id,)
+                        ) as cur:
+                            cs_row = await cur.fetchone()
+                    except Exception:
+                        pass
+
+                    if cs_row and cs_row["chart_status"] == "miss":
+                        # Age-gate: only trust recent misses
+                        last_checked = cs_row["chart_last_checked"] or ""
+                        is_fresh = False
+                        if last_checked:
+                            try:
+                                checked_ts = datetime.fromisoformat(last_checked)
+                                age = time.time() - checked_ts.timestamp()
+                                is_fresh = age < _MISS_AGE_SECONDS
+                            except Exception:
+                                pass
+                        if is_fresh:
+                            skipped_miss += 1
+                            _scan_job["cached"]    += 1
+                            _scan_job["processed"] += 1
+                            continue
+                        # Stale miss — fall through to re-check
 
                 # ── SMART WATERFALL ───────────────────────────────────────────
                 # Step 1: Static DB lookup (only for charts that have data)
@@ -755,6 +845,16 @@ async def _run_scan(req: ScanRequest):
                     await _store_result(db, track, static_result, req)
                     await _enrich_genre_from_file(db, track, loop)
                     _scan_job["matched"] += 1
+                    # Mark as hit in skip cache
+                    if track_id:
+                        try:
+                            await db.execute(
+                                "UPDATE tracks SET chart_status='hit', "
+                                "chart_last_checked=datetime('now') WHERE track_id=?",
+                                (track_id,)
+                            )
+                        except Exception:
+                            pass
 
                 else:
                     # Step 2: Last.fm fallback — only fires when:
@@ -764,6 +864,7 @@ async def _run_scan(req: ScanRequest):
                     all_estimate_only = len(estimate_only_charts) == len(req.charts)
                     should_estimate = (req.use_estimates or all_estimate_only) and lfm_key
 
+                    matched_via_lfm = False
                     if should_estimate:
                         await asyncio.sleep(0.2)  # rate limit: max 5 req/sec to Last.fm
                         listeners = await _lastfm_listeners(artist, title, lfm_key)
@@ -791,10 +892,23 @@ async def _run_scan(req: ScanRequest):
                             await _store_result(db, track, result, req)
                             await _enrich_genre_from_file(db, track, loop)
                             _scan_job["matched"] += 1
+                            matched_via_lfm = True
                         else:
                             _scan_job["failed"] += 1
                     else:
                         _scan_job["failed"] += 1
+
+                    # Mark skip cache: hit if Last.fm matched, miss if not
+                    if track_id:
+                        try:
+                            status = "hit" if matched_via_lfm else "miss"
+                            await db.execute(
+                                "UPDATE tracks SET chart_status=?, "
+                                "chart_last_checked=datetime('now') WHERE track_id=?",
+                                (status, track_id)
+                            )
+                        except Exception:
+                            pass
 
                 _scan_job["processed"] += 1
                 await asyncio.sleep(0)  # yield to event loop
@@ -803,10 +917,12 @@ async def _run_scan(req: ScanRequest):
         _scan_job.update({
             "status":  "done",
             "message": (f"Scan complete — {_scan_job['matched']:,} matched, "
-                        f"{_scan_job['cached']:,} cached, "
+                        f"{_scan_job['cached']:,} cached "
+                        f"({skipped_miss:,} skip-cached misses), "
                         f"{_scan_job['failed']:,} unmatched "
                         f"in {elapsed:.0f}s"),
         })
+        log.info(f"Skip cache stats: {skipped_miss:,} misses skipped instantly")
 
     except Exception as e:
         log.exception("Groomer scan error")
