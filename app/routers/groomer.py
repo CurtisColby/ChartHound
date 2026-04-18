@@ -596,8 +596,101 @@ async def skip_cache_reset(_=Depends(require_auth)):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  SCAN — REQUEST MODELS
+#  VETERINARIAN — DB Health & Maintenance
 # ══════════════════════════════════════════════════════════════════════════════
+
+def _fmt_size(path: str) -> str:
+    """Format file size as human-readable string."""
+    try:
+        size = os.path.getsize(path)
+        if size < 1024:
+            return f"{size} B"
+        elif size < 1024 * 1024:
+            return f"{size / 1024:.1f} KB"
+        else:
+            return f"{size / (1024 * 1024):.1f} MB"
+    except Exception:
+        return "—"
+
+
+@router.get("/vet/db_health")
+async def vet_db_health(_=Depends(require_auth)):
+    """Returns row counts and file sizes for both databases."""
+    result = {
+        "dynamic_size": _fmt_size(_DYNAMIC_DB),
+        "static_size":  _fmt_size(_STATIC_DB) if os.path.exists(_STATIC_DB) else "Not found",
+        "tracks": 0, "artists": 0, "albums": 0,
+        "chart_data": 0, "connections": 0,
+        "chart_reference": 0, "billboard_pop": 0,
+    }
+    try:
+        async with aiosqlite.connect(_DYNAMIC_DB) as db:
+            for table, key in [
+                ("tracks", "tracks"), ("artists", "artists"),
+                ("albums", "albums"), ("chart_data", "chart_data"),
+                ("connections", "connections"),
+            ]:
+                try:
+                    async with db.execute(f"SELECT COUNT(*) FROM {table}") as cur:
+                        row = await cur.fetchone()
+                        result[key] = row[0] if row else 0
+                except Exception:
+                    pass
+    except Exception as e:
+        log.warning(f"vet_db_health dynamic error: {e}")
+
+    if os.path.exists(_STATIC_DB):
+        try:
+            conn = sqlite3.connect(_STATIC_DB, check_same_thread=False)
+            try:
+                result["chart_reference"] = conn.execute(
+                    "SELECT COUNT(*) FROM chart_reference"
+                ).fetchone()[0]
+            except Exception:
+                pass
+            try:
+                result["billboard_pop"] = conn.execute(
+                    "SELECT COUNT(*) FROM billboard_pop"
+                ).fetchone()[0]
+            except Exception:
+                pass
+            conn.close()
+        except Exception as e:
+            log.warning(f"vet_db_health static error: {e}")
+
+    return result
+
+
+@router.post("/vet/vacuum")
+async def vet_vacuum(_=Depends(require_auth)):
+    """Run VACUUM on the dynamic database to reclaim disk space."""
+    before = _fmt_size(_DYNAMIC_DB)
+    try:
+        conn = sqlite3.connect(_DYNAMIC_DB)
+        conn.execute("VACUUM")
+        conn.close()
+        after = _fmt_size(_DYNAMIC_DB)
+        log.info(f"VACUUM complete: {before} → {after}")
+        return {"ok": True, "before_size": before, "after_size": after}
+    except Exception as e:
+        log.error(f"VACUUM failed: {e}")
+        raise HTTPException(500, f"VACUUM failed: {e}")
+
+
+@router.post("/vet/integrity_check")
+async def vet_integrity_check(_=Depends(require_auth)):
+    """Run PRAGMA integrity_check on the dynamic database."""
+    try:
+        conn = sqlite3.connect(_DYNAMIC_DB, check_same_thread=False)
+        rows = conn.execute("PRAGMA integrity_check").fetchall()
+        conn.close()
+        result_text = rows[0][0] if rows else "unknown"
+        is_ok = result_text.lower() == "ok"
+        log.info(f"Integrity check: {result_text}")
+        return {"ok": is_ok, "result": result_text}
+    except Exception as e:
+        log.error(f"Integrity check failed: {e}")
+        raise HTTPException(500, f"Integrity check failed: {e}")
 
 class ScanRequest(BaseModel):
     source:        str            # 'plex' | 'emby' | 'jellyfin' | 'local'

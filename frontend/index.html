@@ -490,6 +490,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
       <div class="conn-dot-wrap"><div class="dot" id="hDotJellyfin"></div><span>JF</span></div>
       <div class="conn-dot-wrap"><div class="dot" id="hDotLastfm"></div><span>LFM</span></div>
       <div class="conn-dot-wrap"><div class="dot" id="hDotProwlarr"></div><span>PWL</span></div>
+      <div class="conn-dot-wrap"><div class="dot" id="hDotDiscogs"></div><span>DISC</span></div>
     </div>
     <div class="user-badge" id="userBadge" onclick="doLogout()"></div>
   </div>
@@ -533,15 +534,12 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
       <span class="nav-icon">🎬</span>
       <div class="nav-text"><div class="nav-name">THE LOOKOUT</div><div class="nav-desc">Local music video manager</div></div>
     </div>
-    <div class="nav-item" id="nav-debug" style="--tab-color:#6366f1" onclick="switchTab('debug')">
-      <span class="nav-icon">🐛</span>
-      <div class="nav-text"><div class="nav-name" style="color:#6366f1">DEBUG LOG</div><div class="nav-desc">Live log · download</div></div>
+    <div class="nav-item" id="nav-vet" style="--tab-color:var(--red)" onclick="switchTab('vet')">
+      <span class="nav-icon">🩺</span>
+      <div class="nav-text"><div class="nav-name">THE VETERINARIAN</div><div class="nav-desc">Database health & admin tools</div></div>
     </div>
     <div class="nav-spacer"></div>
     <div class="nav-heartbeat" id="navHeartbeat">⟳ —</div>
-    <div class="nav-wizard">
-      <button onclick="showWizard()" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:5px;color:var(--muted);font-family:var(--mono);font-size:.52rem;padding:.35rem .5rem;cursor:pointer;letter-spacing:1px;text-align:left;transition:all .15s" onmouseover="this.style.borderColor='var(--gold)';this.style.color='var(--gold)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">⚙ SETUP WIZARD</button>
-    </div>
     <div class="nav-version">v1.0.0 · MILESTONE 4</div>
   </nav>
 
@@ -1407,42 +1405,127 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
       </div>
     </div>
 
-    <!-- DEBUG LOG PANEL -->
-    <div class="tab-panel" id="panel-debug">
-      <div style="display:flex;flex-direction:column;height:100%;padding:1.25rem 1.75rem;gap:.75rem;overflow:hidden">
+    <!-- THE VETERINARIAN -->
+    <div class="tab-panel" id="panel-vet">
+      <div class="pane" id="pane-vet">
+        <div class="pane-aside" id="aside-vet">
+          <button class="pane-collapse-btn" onclick="toggleAside('vet')" title="Collapse/expand panel">◀</button>
+          <div>
 
-        <!-- Header -->
-        <div style="display:flex;align-items:center;gap:1rem;flex-shrink:0">
-          <div style="font-family:var(--display);font-size:1.4rem;letter-spacing:3px;color:#6366f1">🐛 DEBUG LOG</div>
-          <span style="font-family:var(--mono);font-size:.55rem;padding:.2rem .6rem;border-radius:10px;background:rgba(99,102,241,.12);border:1px solid rgba(99,102,241,.3);color:#6366f1" id="dbg-count">0 entries</span>
-          <div style="margin-left:auto;display:flex;gap:.5rem;align-items:center">
-            <!-- Level filter -->
-            <select id="dbg-level" onchange="dbgLoad()" style="background:var(--bg);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:.62rem;padding:.3rem .5rem;outline:none;cursor:pointer">
-              <option value="">All Levels</option>
-              <option value="DEBUG">DEBUG</option>
-              <option value="INFO">INFO</option>
-              <option value="WARNING">WARNING</option>
-              <option value="ERROR">ERROR</option>
-            </select>
-            <!-- Name filter -->
-            <input type="text" id="dbg-name" placeholder="Filter module…" oninput="dbgLoad()" style="background:var(--bg);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:.62rem;padding:.3rem .55rem;outline:none;width:130px">
-            <!-- Auto-refresh toggle -->
-            <label style="display:flex;align-items:center;gap:.35rem;font-family:var(--mono);font-size:.6rem;color:var(--muted);cursor:pointer">
-              <input type="checkbox" id="dbg-auto" checked onchange="dbgToggleAuto()" style="accent-color:#6366f1">
-              Auto
-            </label>
-            <button onclick="dbgLoad()" style="padding:.35rem .75rem;background:rgba(99,102,241,.15);border:1px solid rgba(99,102,241,.4);border-radius:5px;color:#6366f1;font-family:var(--mono);font-size:.62rem;cursor:pointer">⟳ REFRESH</button>
-            <button onclick="dbgClear()" style="padding:.35rem .75rem;background:var(--surface2);border:1px solid var(--border);border-radius:5px;color:var(--muted);font-family:var(--mono);font-size:.62rem;cursor:pointer">🗑 CLEAR</button>
-            <button onclick="dbgDownload()" style="padding:.35rem .75rem;background:rgba(99,102,241,.9);border:none;border-radius:5px;color:#fff;font-family:var(--mono);font-size:.62rem;cursor:pointer;font-weight:bold">⬇ DOWNLOAD</button>
+            <!-- DB Health -->
+            <div class="section-label" style="color:var(--red)">DATABASE HEALTH</div>
+            <div class="card" style="padding:.65rem 1rem">
+              <div class="vault-row"><div class="vault-row-label">Dynamic DB</div><div class="vault-row-status" id="vet-dyn-size" style="color:var(--teal)">—</div></div>
+              <div class="vault-row"><div class="vault-row-label">Tracks</div><div class="vault-row-status" id="vet-tracks-count" style="color:var(--text)">—</div></div>
+              <div class="vault-row"><div class="vault-row-label">Artists</div><div class="vault-row-status" id="vet-artists-count" style="color:var(--text)">—</div></div>
+              <div class="vault-row"><div class="vault-row-label">Albums</div><div class="vault-row-status" id="vet-albums-count" style="color:var(--text)">—</div></div>
+              <div class="vault-row"><div class="vault-row-label">Chart Data</div><div class="vault-row-status" id="vet-chartdata-count" style="color:var(--text)">—</div></div>
+              <div class="vault-row"><div class="vault-row-label">Connections</div><div class="vault-row-status" id="vet-conn-count" style="color:var(--text)">—</div></div>
+              <div style="height:1px;background:var(--border);margin:.5rem 0"></div>
+              <div class="vault-row"><div class="vault-row-label">Static DB</div><div class="vault-row-status" id="vet-static-size" style="color:var(--teal)">—</div></div>
+              <div class="vault-row"><div class="vault-row-label">Chart Reference</div><div class="vault-row-status" id="vet-chartref-count" style="color:var(--text)">—</div></div>
+              <div class="vault-row"><div class="vault-row-label">Billboard Pop</div><div class="vault-row-status" id="vet-billpop-count" style="color:var(--text)">—</div></div>
+            </div>
+
+            <!-- Skip Cache -->
+            <div class="section-label" style="color:var(--red)">SKIP CACHE</div>
+            <div class="card" style="padding:.65rem 1rem">
+              <div class="vault-row"><div class="vault-row-label">✓ Hits (charted)</div><div class="vault-row-status ok" id="vet-sc-hit">—</div></div>
+              <div class="vault-row"><div class="vault-row-label">✗ Misses (not charted)</div><div class="vault-row-status" id="vet-sc-miss" style="color:var(--muted)">—</div></div>
+              <div class="vault-row"><div class="vault-row-label">? Unchecked</div><div class="vault-row-status" id="vet-sc-unchecked" style="color:var(--amber)">—</div></div>
+              <div style="margin-top:.6rem">
+                <button class="btn btn-outline btn-sm" onclick="vetResetSkipCache()" style="width:100%;font-size:.6rem">🔄 RESET SKIP CACHE</button>
+              </div>
+              <div class="field-hint" style="margin-top:.4rem;margin-bottom:0">Forces full re-scan on next Groomer run. Misses auto-expire after 6 months.</div>
+            </div>
+
+            <!-- DB Tools -->
+            <div class="section-label" style="color:var(--red)">MAINTENANCE</div>
+            <div class="card" style="padding:.65rem 1rem;display:flex;flex-direction:column;gap:.5rem">
+              <button class="btn btn-outline btn-sm" onclick="vetVacuum()" style="width:100%;font-size:.6rem">🧹 VACUUM DATABASE</button>
+              <div class="field-hint" style="margin-top:0;margin-bottom:.15rem">Reclaims disk space after large deletes. Safe to run anytime.</div>
+              <button class="btn btn-outline btn-sm" onclick="vetIntegrityCheck()" style="width:100%;font-size:.6rem">🔍 INTEGRITY CHECK</button>
+              <div class="field-hint" style="margin-top:0;margin-bottom:.15rem">Runs SQLite integrity check. Reports any corruption.</div>
+            </div>
+
           </div>
         </div>
 
-        <!-- Stats bar -->
-        <div id="dbg-stats" style="font-family:var(--mono);font-size:.55rem;color:var(--muted2);flex-shrink:0"></div>
+        <div class="pane-resizer" id="resizer-vet" onmousedown="startResize(event,'vet')"></div>
+        <div class="pane-main">
+          <div style="font-family:var(--display);font-size:1.8rem;letter-spacing:3px;color:var(--red);margin-bottom:.25rem">🩺 THE VETERINARIAN</div>
+          <div style="font-family:var(--mono);font-size:.62rem;color:var(--muted);margin-bottom:1.25rem;line-height:1.8">Database health, maintenance tools, and administration. Keep ChartHound running clean.</div>
 
-        <!-- Log output -->
-        <div id="dbg-log" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:.75rem;font-family:var(--mono);font-size:.6rem;overflow-y:auto;line-height:1.9;min-height:0"></div>
+          <!-- Clear Database — Danger Zone -->
+          <div class="card" style="border:1px solid rgba(248,113,113,.3);padding:1.25rem 1.5rem">
+            <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.75rem">
+              <div style="font-family:var(--display);font-size:1.1rem;letter-spacing:1.5px;color:var(--red)">⚠ DANGER ZONE</div>
+            </div>
+            <p style="font-family:var(--mono);font-size:.58rem;color:var(--muted);line-height:1.8;margin-bottom:.75rem">
+              Permanently deletes all scanned track records, chart data, write logs, and scan history from the dynamic database. Your music files on disk are <strong style="color:var(--green)">never affected</strong>. The static chart database is <strong style="color:var(--green)">never touched</strong>. This cannot be undone.
+            </p>
+            <button class="btn btn-red" onclick="confirmClearDatabase()" style="font-size:.72rem;font-family:var(--mono);letter-spacing:.5px;padding:.55rem 1.25rem">⚠️ CLEAR FULL DATABASE</button>
+          </div>
 
+          <!-- Debug Console -->
+          <div class="card" style="padding:1.25rem 1.5rem;margin-top:.75rem">
+            <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.75rem">
+              <div style="font-family:var(--display);font-size:1.1rem;letter-spacing:1.5px;color:var(--red)">🐛 DEBUG CONSOLE</div>
+              <span style="font-family:var(--mono);font-size:.55rem;padding:.2rem .6rem;border-radius:10px;background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.25);color:var(--red)" id="vet-dbg-status">OFF</span>
+              <div style="margin-left:auto;display:flex;gap:.5rem">
+                <button class="btn btn-outline btn-sm" id="vet-dbg-toggle" onclick="vetDbgToggle()" style="font-size:.58rem">▶ START</button>
+                <button class="btn btn-outline btn-sm" onclick="vetDbgClear()" style="font-size:.58rem">🗑 CLEAR</button>
+                <button class="btn btn-outline btn-sm" onclick="vetDbgDownload()" style="font-size:.58rem">⬇ DOWNLOAD</button>
+              </div>
+            </div>
+            <div style="display:flex;gap:.5rem;margin-bottom:.6rem;align-items:center">
+              <select id="vet-dbg-level" style="background:var(--bg);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:.6rem;padding:.25rem .45rem;outline:none;cursor:pointer">
+                <option value="">All Levels</option>
+                <option value="DEBUG">DEBUG</option>
+                <option value="INFO" selected>INFO</option>
+                <option value="WARNING">WARNING</option>
+                <option value="ERROR">ERROR</option>
+              </select>
+              <input type="text" id="vet-dbg-filter" placeholder="Filter module…" style="background:var(--bg);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:.6rem;padding:.25rem .5rem;outline:none;width:140px">
+              <div style="margin-left:auto;font-family:var(--mono);font-size:.52rem;color:var(--muted)" id="vet-dbg-count">0 entries · max 1,000</div>
+            </div>
+            <div id="vet-dbg-log" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:.6rem;font-family:var(--mono);font-size:.58rem;overflow-y:auto;line-height:1.8;height:350px;max-height:350px;color:var(--muted)">
+              <span style="color:var(--muted2)">Debug console is off. Click START to begin tailing logs.</span>
+            </div>
+          </div>
+
+          <!-- Static DB Sources (future) -->
+          <div class="card" style="padding:1.25rem 1.5rem;margin-top:.75rem">
+            <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.75rem">
+              <div style="font-family:var(--display);font-size:1.1rem;letter-spacing:1.5px;color:var(--red)">📊 STATIC DB SOURCES</div>
+            </div>
+            <p style="font-family:var(--mono);font-size:.58rem;color:var(--muted);line-height:1.8;margin-bottom:.75rem">
+              Chart data sources loaded into the static database. Future updates will add one-click import from GitHub and Kaggle.
+            </p>
+            <div class="card" style="padding:.5rem .75rem;background:var(--bg)">
+              <div class="vault-row"><div class="vault-row-label">✅ Billboard Pop 1890–2015</div><div class="vault-row-status ok" id="vet-src-whitburn">Loaded</div></div>
+              <div class="vault-row"><div class="vault-row-label">✅ Billboard Hot 100 / Country / R&B / Rock / Dance / Adult Pop</div><div class="vault-row-status ok" id="vet-src-billboard">Loaded</div></div>
+              <div class="vault-row"><div class="vault-row-label">⬜ utdata Hot 100 post-2018</div><div class="vault-row-status" style="color:var(--amber)">Coming Soon</div></div>
+              <div class="vault-row"><div class="vault-row-label">⬜ Kaggle Billboard Hot 100 Weekly</div><div class="vault-row-status" style="color:var(--amber)">Coming Soon</div></div>
+              <div class="vault-row"><div class="vault-row-label">⬜ Kaggle Kworb Global Charts</div><div class="vault-row-status" style="color:var(--amber)">Coming Soon</div></div>
+              <div class="vault-row"><div class="vault-row-label">⬜ Chart2000.com 1900–1995</div><div class="vault-row-status" style="color:var(--amber)">Coming Soon</div></div>
+              <div class="vault-row"><div class="vault-row-label">⬜ CCM / Gospel Charts</div><div class="vault-row-status" style="color:var(--amber)">Coming Soon</div></div>
+              <div class="vault-row"><div class="vault-row-label">⬜ UK Official Charts (OfficialCharts.com)</div><div class="vault-row-status" style="color:var(--amber)">Coming Soon</div></div>
+            </div>
+          </div>
+
+          <!-- Guided Tour -->
+          <div class="card" style="padding:1.25rem 1.5rem;margin-top:.75rem">
+            <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.75rem">
+              <div style="font-family:var(--display);font-size:1.1rem;letter-spacing:1.5px;color:var(--red)">📖 GUIDED TOUR</div>
+            </div>
+            <p style="font-family:var(--mono);font-size:.58rem;color:var(--muted);line-height:1.8;margin-bottom:.75rem">
+              New to ChartHound? The setup wizard walks you through secret key configuration and path translation.
+            </p>
+            <button class="btn btn-outline btn-sm" onclick="showWizard()" style="font-size:.62rem">🐕 LAUNCH SETUP WIZARD</button>
+          </div>
+
+        </div>
       </div>
     </div>
 
@@ -1570,7 +1653,7 @@ function switchTab(name) {
   document.getElementById('vinylIcon').classList.toggle('spinning', ['retriever','sniffer','bloodhound','tracker'].includes(name));
   if (name === 'retriever') { checkRetrieverBanners(); loadCustomTags(); retInjectScrollNav(); }
   if (name === 'groomer') grmInit();
-  if (name === 'debug') dbgInit();
+  if (name === 'vet') vetInit();
 }
 function checkRetrieverBanners() {
   const b = document.getElementById('retrieverLfmBanner');
@@ -3060,7 +3143,7 @@ function setFeedback(service, msg, type) {
   if (el) { el.textContent = msg; el.className = `conn-feedback${type?' '+type:''}`; }
 }
 function refreshAllDots() {
-  const hmap = {plex:'Plex', emby:'Emby', jellyfin:'Jellyfin', lastfm:'Lastfm', prowlarr:'Prowlarr'};
+  const hmap = {plex:'Plex', emby:'Emby', jellyfin:'Jellyfin', lastfm:'Lastfm', prowlarr:'Prowlarr', discogs:'Discogs'};
   for (const [svc,key] of Object.entries(hmap)) {
     const el = document.getElementById(`hDot${key}`);
     if (el) el.className = `dot${connState[svc]?' ok':''}`;
@@ -4229,6 +4312,161 @@ function startResize(e, name) {
     } catch(e) {}
   });
 })();
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  THE VETERINARIAN
+// ══════════════════════════════════════════════════════════════════════════════
+let _vetDbgPoll = null;
+let _vetDbgRunning = false;
+
+function vetInit() {
+  vetLoadHealth();
+  vetLoadSkipCache();
+}
+
+async function vetLoadHealth() {
+  try {
+    const r = await fetch(`${API}/api/groomer/vet/db_health`, {headers:authHdrs()});
+    if (!r.ok) return;
+    const d = await r.json();
+    // Dynamic DB
+    const setT = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    setT('vet-dyn-size',       d.dynamic_size || '—');
+    setT('vet-tracks-count',   (d.tracks || 0).toLocaleString());
+    setT('vet-artists-count',  (d.artists || 0).toLocaleString());
+    setT('vet-albums-count',   (d.albums || 0).toLocaleString());
+    setT('vet-chartdata-count',(d.chart_data || 0).toLocaleString());
+    setT('vet-conn-count',     (d.connections || 0).toLocaleString());
+    // Static DB
+    setT('vet-static-size',    d.static_size || '—');
+    setT('vet-chartref-count', (d.chart_reference || 0).toLocaleString());
+    setT('vet-billpop-count',  (d.billboard_pop || 0).toLocaleString());
+  } catch {}
+}
+
+async function vetLoadSkipCache() {
+  try {
+    const r = await fetch(`${API}/api/groomer/skip_cache/stats`, {headers:authHdrs()});
+    if (!r.ok) return;
+    const d = await r.json();
+    const setT = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    setT('vet-sc-hit',       (d.hit || 0).toLocaleString());
+    setT('vet-sc-miss',      (d.miss || 0).toLocaleString());
+    setT('vet-sc-unchecked', (d.unchecked || 0).toLocaleString());
+  } catch {}
+}
+
+async function vetResetSkipCache() {
+  if (!confirm('Reset the skip cache?\n\nAll tracks will be marked as unchecked. The next Groomer scan will do a full lookup on every track instead of skipping known misses.\n\nThis is safe — no data is deleted.')) return;
+  try {
+    const r = await fetch(`${API}/api/groomer/skip_cache/reset`, {method:'POST', headers:authHdrs()});
+    const d = await r.json();
+    if (r.ok) {
+      toast(`Skip cache reset — ${(d.cleared||0).toLocaleString()} tracks cleared.`, 'ok');
+      vetLoadSkipCache();
+    } else {
+      toast('Reset failed: ' + (d.detail || 'unknown error'), 'error');
+    }
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+async function vetVacuum() {
+  if (!confirm('Run VACUUM on the dynamic database?\n\nThis reclaims disk space and optimizes performance. It may take a few seconds on large databases. ChartHound remains usable during this operation.')) return;
+  toast('Running VACUUM…', 'info');
+  try {
+    const r = await fetch(`${API}/api/groomer/vet/vacuum`, {method:'POST', headers:authHdrs()});
+    const d = await r.json();
+    if (r.ok) {
+      toast(`VACUUM complete — ${d.before_size} → ${d.after_size}`, 'ok');
+      vetLoadHealth();
+    } else {
+      toast('VACUUM failed: ' + (d.detail || 'unknown error'), 'error');
+    }
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+async function vetIntegrityCheck() {
+  toast('Running integrity check…', 'info');
+  try {
+    const r = await fetch(`${API}/api/groomer/vet/integrity_check`, {method:'POST', headers:authHdrs()});
+    const d = await r.json();
+    if (r.ok && d.ok) {
+      toast('✓ Database integrity check passed — no issues found.', 'ok');
+    } else if (r.ok) {
+      toast('⚠ Integrity issues found: ' + (d.result || 'unknown'), 'warn');
+    } else {
+      toast('Check failed: ' + (d.detail || 'unknown error'), 'error');
+    }
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+// ── Vet Debug Console (capped at 1,000 lines, off by default) ────────────────
+
+function vetDbgToggle() {
+  if (_vetDbgRunning) {
+    _vetDbgRunning = false;
+    if (_vetDbgPoll) { clearInterval(_vetDbgPoll); _vetDbgPoll = null; }
+    document.getElementById('vet-dbg-toggle').textContent = '▶ START';
+    document.getElementById('vet-dbg-status').textContent = 'OFF';
+    document.getElementById('vet-dbg-status').style.color = 'var(--red)';
+  } else {
+    _vetDbgRunning = true;
+    document.getElementById('vet-dbg-toggle').textContent = '⏸ STOP';
+    document.getElementById('vet-dbg-status').textContent = 'LIVE';
+    document.getElementById('vet-dbg-status').style.color = 'var(--green)';
+    vetDbgLoad();
+    _vetDbgPoll = setInterval(vetDbgLoad, 3000);
+  }
+}
+
+async function vetDbgLoad() {
+  const level = document.getElementById('vet-dbg-level')?.value || '';
+  const name  = document.getElementById('vet-dbg-filter')?.value || '';
+  try {
+    let url = `${API}/api/debug/logs?limit=1000`;
+    if (level) url += `&level=${level}`;
+    if (name)  url += `&name=${encodeURIComponent(name)}`;
+    const r = await fetch(url, {headers:authHdrs()});
+    if (!r.ok) return;
+    const d = await r.json();
+    const el = document.getElementById('vet-dbg-log');
+    if (!el) return;
+    const lines = d.logs || [];
+    document.getElementById('vet-dbg-count').textContent = `${lines.length} entries · max 1,000`;
+    const levelColors = {
+      'DEBUG':'var(--muted2)','INFO':'var(--text)','WARNING':'var(--amber)',
+      'ERROR':'var(--red)','CRITICAL':'var(--red)'
+    };
+    el.innerHTML = lines.map(l => {
+      const c = levelColors[l.level] || 'var(--muted)';
+      return `<div style="color:${c}">[${l.time}] ${l.level} ${l.name}: ${esc(l.message)}</div>`;
+    }).join('');
+    el.scrollTop = el.scrollHeight;
+  } catch {}
+}
+
+function vetDbgClear() {
+  const el = document.getElementById('vet-dbg-log');
+  if (el) el.innerHTML = '<span style="color:var(--muted2)">Console cleared.</span>';
+  document.getElementById('vet-dbg-count').textContent = '0 entries · max 1,000';
+}
+
+async function vetDbgDownload() {
+  try {
+    const r = await fetch(`${API}/api/debug/logs?limit=1000`, {headers:authHdrs()});
+    if (!r.ok) return;
+    const d = await r.json();
+    const lines = (d.logs || []).map(l => `[${l.time}] ${l.level} ${l.name}: ${l.message}`).join('\n');
+    const blob = new Blob([lines], {type:'text/plain'});
+    const url  = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `charthound_debug_${new Date().toISOString().slice(0,10)}.log`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast('Debug log downloaded.', 'ok');
+  } catch(e) { toast('Download failed: ' + e.message, 'error'); }
+}
 
 
 // ══════════════════════════════════════════════════════════════════════════════
