@@ -19,7 +19,7 @@ from app.config import get_settings
 from app.database import init_db, get_user_count
 from app.security import lockdown_status
 from app.models import HealthResponse
-from app.routers import auth, kennel, retriever, groomer, debug, sniffer
+from app.routers import auth, kennel, retriever, groomer, debug, sniffer, bloodhound
 
 logging.basicConfig(
     level=logging.INFO,
@@ -95,7 +95,7 @@ app.include_router(retriever.router)
 app.include_router(groomer.router)
 app.include_router(debug.router)
 app.include_router(sniffer.router)
-# app.include_router(bloodhound.router) # M7
+app.include_router(bloodhound.router)
 # app.include_router(tracker.router)    # M8
 # app.include_router(scout.router)      # M9
 # app.include_router(lookout.router)    # M10

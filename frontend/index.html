@@ -1554,11 +1554,183 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
 
     <!-- THE BLOODHOUND -->
     <div class="tab-panel" id="panel-bloodhound">
-      <div class="placeholder-panel" style="--tab-color:var(--c5)">
-        <div class="ph-icon">🔍</div><div class="ph-title">THE BLOODHOUND</div>
-        <div class="ph-tagline">ARTIST & ALBUM HUNTER</div>
-        <div class="ph-sub">Search any artist — get every album from MusicBrainz.<br>Select what you want · Search via Prowlarr.<br>Background monitoring for new releases via APScheduler.</div>
-        <div class="ph-coming">MILESTONE 7</div>
+      <div style="display:grid;grid-template-columns:300px 1fr;min-height:calc(100vh - 120px)">
+
+        <!-- LEFT PANEL -->
+        <div style="border-right:1px solid var(--border);padding:1.25rem;display:flex;flex-direction:column;gap:1rem;overflow-y:auto;background:var(--surface);">
+
+          <!-- MODE TOGGLE -->
+          <div>
+            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--orange);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">SEARCH MODE<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
+            <div style="display:flex;gap:.5rem">
+              <button id="bh-mode-artist" onclick="bhSetMode('artist')" style="flex:1;padding:.5rem;background:var(--orange);color:#000;border:none;border-radius:5px;font-family:var(--mono);font-size:.6rem;letter-spacing:1px;cursor:pointer;transition:all .2s">🎤 ARTIST</button>
+              <button id="bh-mode-album" onclick="bhSetMode('album')" style="flex:1;padding:.5rem;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:5px;font-family:var(--mono);font-size:.6rem;letter-spacing:1px;cursor:pointer;transition:all .2s">💿 ALBUM</button>
+              <button id="bh-mode-comp" onclick="bhSetMode('comp')" style="flex:1;padding:.5rem;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:5px;font-family:var(--mono);font-size:.6rem;letter-spacing:1px;cursor:pointer;transition:all .2s">📀 COMPS</button>
+            </div>
+          </div>
+
+          <!-- ARTIST SEARCH -->
+          <div id="bh-artist-section">
+            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--orange);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">ARTIST NAME<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
+            <div style="display:flex;gap:.4rem">
+              <input type="text" id="bh-artist-input" placeholder="e.g. Fleetwood Mac" onkeydown="if(event.key==='Enter')bhArtistSearch()" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:.72rem;padding:.55rem .7rem;outline:none">
+              <button onclick="bhArtistSearch()" style="padding:.5rem .75rem;background:var(--orange);color:#000;border:none;border-radius:5px;font-family:var(--mono);font-size:.62rem;cursor:pointer">🔍</button>
+            </div>
+            <!-- ARTIST RESULTS -->
+            <div id="bh-artist-results" style="margin-top:.65rem;display:flex;flex-direction:column;gap:.35rem"></div>
+            <!-- RELEASE TYPE FILTER (shown after artist selected) -->
+            <div id="bh-release-filter" style="display:none;margin-top:.65rem">
+              <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--orange);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">RELEASE TYPE<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
+              <div style="display:flex;gap:.35rem;flex-wrap:wrap">
+                <button id="bh-rt-album" onclick="bhSetReleaseType('album')" style="padding:.35rem .6rem;background:var(--orange);color:#000;border:none;border-radius:4px;font-family:var(--mono);font-size:.58rem;cursor:pointer">Albums</button>
+                <button id="bh-rt-compilation" onclick="bhSetReleaseType('compilation')" style="padding:.35rem .6rem;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:4px;font-family:var(--mono);font-size:.58rem;cursor:pointer">Compilations</button>
+                <button id="bh-rt-single" onclick="bhSetReleaseType('single')" style="padding:.35rem .6rem;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:4px;font-family:var(--mono);font-size:.58rem;cursor:pointer">Singles</button>
+                <button id="bh-rt-all" onclick="bhSetReleaseType('all')" style="padding:.35rem .6rem;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:4px;font-family:var(--mono);font-size:.58rem;cursor:pointer">All</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- ALBUM SEARCH -->
+          <div id="bh-album-section" style="display:none">
+            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--orange);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">ALBUM NAME<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
+            <div style="display:flex;gap:.4rem">
+              <input type="text" id="bh-album-input" placeholder="e.g. Rumours" onkeydown="if(event.key==='Enter')bhAlbumSearch()" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:.72rem;padding:.55rem .7rem;outline:none">
+              <button onclick="bhAlbumSearch()" style="padding:.5rem .75rem;background:var(--orange);color:#000;border:none;border-radius:5px;font-family:var(--mono);font-size:.62rem;cursor:pointer">🔍</button>
+            </div>
+          </div>
+
+          <!-- COMPILATION PRESETS -->
+          <div id="bh-comp-section" style="display:none">
+            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--orange);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">COMPILATION SERIES<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
+            <select id="bh-comp-select" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:.72rem;padding:.55rem .7rem;outline:none">
+              <option value="">— Select a compilation series —</option>
+              <optgroup label="── Pop / General ──">
+                <option value="Greatest Hits">Greatest Hits</option>
+                <option value="Best Of">Best Of</option>
+                <option value="Number Ones">Number Ones</option>
+                <option value="Super Hits">Super Hits</option>
+                <option value="Essential">Essential</option>
+                <option value="Gold">Gold</option>
+                <option value="Platinum Collection">Platinum Collection</option>
+                <option value="100 Hits">100 Hits</option>
+              </optgroup>
+              <optgroup label="── Branded Series ──">
+                <option value="Now That's What I Call Music">Now That's What I Call Music</option>
+                <option value="Time Life Music">Time Life Music</option>
+                <option value="Billboard Hits">Billboard Hits</option>
+                <option value="Kidz Bop">Kidz Bop</option>
+                <option value="Grammy Nominees">Grammy Nominees</option>
+                <option value="Ministry of Sound">Ministry of Sound</option>
+                <option value="Bravo Hits">Bravo Hits</option>
+              </optgroup>
+              <optgroup label="── Genre ──">
+                <option value="MTV Unplugged">MTV Unplugged</option>
+                <option value="Pure Motown">Pure Motown</option>
+                <option value="Monster Ballads">Monster Ballads</option>
+                <option value="Jock Jams">Jock Jams</option>
+                <option value="Ultra Music Festival">Ultra Music Festival</option>
+              </optgroup>
+              <optgroup label="── CCM / Gospel ──">
+                <option value="WOW Hits">WOW Hits</option>
+                <option value="WOW Worship">WOW Worship</option>
+                <option value="WOW Gospel">WOW Gospel</option>
+                <option value="Songs 4 Worship">Songs 4 Worship</option>
+                <option value="Praise and Worship">Praise and Worship</option>
+                <option value="iWorship">iWorship</option>
+                <option value="Hymns">Hymns</option>
+                <option value="Veggie Tales">Veggie Tales</option>
+                <option value="Cedarmont Kids">Cedarmont Kids</option>
+                <option value="Maranatha Music">Maranatha Music</option>
+                <option value="Integrity Music">Integrity Music</option>
+              </optgroup>
+            </select>
+            <button onclick="bhCompSearch()" style="margin-top:.5rem;width:100%;padding:.5rem;background:var(--orange);color:#000;border:none;border-radius:5px;font-family:var(--mono);font-size:.65rem;cursor:pointer;letter-spacing:1px">🔍 SEARCH COMPILATIONS</button>
+            <div style="margin-top:.5rem">
+              <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--orange);margin-bottom:.45rem;display:flex;align-items:center;gap:.5rem">OR CUSTOM SEARCH<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
+              <div style="display:flex;gap:.4rem">
+                <input type="text" id="bh-comp-custom" placeholder="e.g. Yacht Rock" onkeydown="if(event.key==='Enter')bhCompCustomSearch()" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:.72rem;padding:.55rem .7rem;outline:none">
+                <button onclick="bhCompCustomSearch()" style="padding:.5rem .75rem;background:var(--orange);color:#000;border:none;border-radius:5px;font-family:var(--mono);font-size:.62rem;cursor:pointer">🔍</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- ACTIVITY LOG -->
+          <div style="flex:1;display:flex;flex-direction:column;min-height:0">
+            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--orange);margin-bottom:.5rem;display:flex;align-items:center;gap:.5rem">
+              ACTIVITY LOG
+              <span style="flex:1;height:1px;background:var(--border);display:block"></span>
+              <button onclick="document.getElementById('bh-log').innerHTML=''" style="background:none;border:none;color:var(--muted2);font-family:var(--mono);font-size:.52rem;cursor:pointer;padding:.1rem .3rem;letter-spacing:.5px" title="Clear log">✕ CLEAR</button>
+            </div>
+            <div id="bh-log" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:.7rem;font-family:var(--mono);font-size:.58rem;color:var(--muted);flex:1;min-height:120px;max-height:220px;overflow-y:auto;line-height:1.8"></div>
+          </div>
+        </div>
+
+        <!-- RIGHT PANEL — Results -->
+        <div style="display:flex;flex-direction:column;padding:1.25rem 1.75rem;gap:1rem;overflow-y:auto">
+
+          <!-- STATUS BAR -->
+          <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1rem 1.5rem">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.5rem">
+              <div style="font-family:var(--display);font-size:1.1rem;letter-spacing:1.5px" id="bh-status-title">READY TO HUNT</div>
+              <div style="font-family:var(--mono);font-size:.58rem;color:var(--muted)" id="bh-status-sub">Search for an artist, album, or compilation to begin</div>
+            </div>
+            <div style="display:flex;gap:1.5rem;flex-wrap:wrap">
+              <div style="text-align:center;min-width:70px">
+                <div style="font-family:var(--display);font-size:1.6rem;color:var(--text)" id="bh-s-total">0</div>
+                <div style="font-family:var(--mono);font-size:.48rem;color:var(--muted);letter-spacing:1px">RESULTS</div>
+              </div>
+              <div style="text-align:center;min-width:70px">
+                <div style="font-family:var(--display);font-size:1.6rem;color:var(--green)" id="bh-s-owned">0</div>
+                <div style="font-family:var(--mono);font-size:.48rem;color:var(--muted);letter-spacing:1px">IN LIBRARY</div>
+              </div>
+              <div style="text-align:center;min-width:70px">
+                <div style="font-family:var(--display);font-size:1.6rem;color:var(--red)" id="bh-s-missing">0</div>
+                <div style="font-family:var(--mono);font-size:.48rem;color:var(--muted);letter-spacing:1px">MISSING</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- FILTER TOGGLE -->
+          <div style="display:flex;gap:.5rem;align-items:center">
+            <button id="bh-filter-all" onclick="bhFilterView('all')" style="padding:.35rem .8rem;background:var(--orange);color:#000;border:none;border-radius:5px;font-family:var(--mono);font-size:.62rem;cursor:pointer;letter-spacing:.5px">ALL</button>
+            <button id="bh-filter-missing" onclick="bhFilterView('missing')" style="padding:.35rem .8rem;background:var(--surface2);color:var(--red);border:1px solid var(--border);border-radius:5px;font-family:var(--mono);font-size:.62rem;cursor:pointer;letter-spacing:.5px">❌ MISSING ONLY</button>
+            <button id="bh-filter-owned" onclick="bhFilterView('owned')" style="padding:.35rem .8rem;background:var(--surface2);color:var(--green);border:1px solid var(--border);border-radius:5px;font-family:var(--mono);font-size:.62rem;cursor:pointer;letter-spacing:.5px">✅ OWNED ONLY</button>
+            <input type="text" placeholder="Filter by artist or title…" id="bh-filter-text" oninput="bhFilterText(this.value)" style="margin-left:auto;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:.65rem;padding:.35rem .6rem;outline:none;width:200px">
+          </div>
+
+          <!-- RESULTS TABLE -->
+          <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;flex:1">
+            <div style="overflow-x:auto">
+              <table style="width:100%;border-collapse:collapse;font-family:var(--mono);font-size:.6rem">
+                <thead>
+                  <tr style="background:var(--surface2)">
+                    <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap">ARTIST</th>
+                    <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap">TITLE</th>
+                    <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap">TYPE</th>
+                    <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap">YEAR</th>
+                    <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap">STATUS</th>
+                    <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap">ACTION</th>
+                  </tr>
+                </thead>
+                <tbody id="bh-tbody"></tbody>
+              </table>
+              <div id="bh-empty" style="text-align:center;padding:3rem;color:var(--muted2);font-family:var(--mono);font-size:.65rem;line-height:2">
+                NO RESULTS YET<br>
+                <span style="color:var(--border)">───────────────────────────</span><br>
+                Search for an artist or album to get started
+              </div>
+            </div>
+            <!-- Load More -->
+            <div id="bh-load-more" style="text-align:center;padding:.75rem;display:none">
+              <button onclick="bhLoadMore()" style="padding:.4rem 1.2rem;background:var(--surface2);color:var(--orange);border:1px solid var(--orange);border-radius:5px;font-family:var(--mono);font-size:.65rem;cursor:pointer;letter-spacing:1px">LOAD MORE</button>
+              <span id="bh-load-count" style="font-family:var(--mono);font-size:.58rem;color:var(--muted);margin-left:.75rem"></span>
+            </div>
+          </div>
+
+          <!-- PROWLARR MULTI-CARD CONTAINER -->
+          <div id="bh-prowlarr-cards" style="display:flex;flex-direction:column;gap:.5rem;margin-top:.5rem"></div>
+
+        </div>
       </div>
     </div>
 
@@ -1841,6 +2013,7 @@ function switchTab(name) {
   if (name === 'retriever') { checkRetrieverBanners(); loadCustomTags(); retInjectScrollNav(); }
   if (name === 'groomer') grmInit();
   if (name === 'sniffer') snfInit();
+  if (name === 'bloodhound') bhInit();
   if (name === 'vet') vetInit();
 }
 function checkRetrieverBanners() {
@@ -4934,6 +5107,465 @@ async function loadSnifferPath() {
       if (el) el.value = d.download_path;
     }
   } catch(e) {}
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  THE BLOODHOUND
+// ══════════════════════════════════════════════════════════════════════════════
+
+var _bhMode = 'artist';
+var _bhResults = [];
+var _bhSelectedArtist = null; // { mbid, name }
+var _bhReleaseType = 'album';
+var _bhCardCounter = 0;
+var _bhCards = {};
+var _bhOffset = 0;
+var _bhMbCount = 0;
+var _bhLastQuery = '';
+var _bhLastSearchType = ''; // 'album' or 'comp'
+var _bhCurrentFilter = 'all';
+
+function bhInit() {
+  bhInjectScrollNav();
+}
+
+function bhLog(msg, type) {
+  var el = document.getElementById('bh-log');
+  if (!el) return;
+  var colors = {ok:'var(--green)', err:'var(--red)', warn:'var(--amber)', info:'var(--muted)'};
+  el.innerHTML += '<div style="color:' + (colors[type]||colors.info) + '">' + esc(msg) + '</div>';
+  el.scrollTop = el.scrollHeight;
+}
+
+function bhSetMode(mode) {
+  _bhMode = mode;
+  ['artist','album','comp'].forEach(function(m) {
+    var btn = document.getElementById('bh-mode-' + m);
+    if (m === mode) {
+      btn.style.background = 'var(--orange)'; btn.style.color = '#000'; btn.style.border = 'none';
+    } else {
+      btn.style.background = 'var(--surface2)'; btn.style.color = 'var(--muted)'; btn.style.border = '1px solid var(--border)';
+    }
+  });
+  document.getElementById('bh-artist-section').style.display = mode === 'artist' ? 'block' : 'none';
+  document.getElementById('bh-album-section').style.display = mode === 'album' ? 'block' : 'none';
+  document.getElementById('bh-comp-section').style.display = mode === 'comp' ? 'block' : 'none';
+}
+
+// ── Artist Search ──
+async function bhArtistSearch() {
+  var q = document.getElementById('bh-artist-input').value.trim();
+  if (!q) return;
+  bhLog('🔍 Searching MusicBrainz for artist: ' + q, 'info');
+  document.getElementById('bh-artist-results').innerHTML = '<div style="text-align:center;padding:.5rem;color:var(--muted);font-size:.6rem">Searching…</div>';
+  document.getElementById('bh-release-filter').style.display = 'none';
+  _bhSelectedArtist = null;
+  try {
+    var r = await fetch(API + '/api/bloodhound/artist-search', {
+      method:'POST', headers:authHdrs(),
+      body: JSON.stringify({ query: q }),
+    });
+    var d = await r.json();
+    if (!r.ok) throw new Error(d.detail || 'HTTP ' + r.status);
+    var artists = d.results || [];
+    if (!artists.length) {
+      document.getElementById('bh-artist-results').innerHTML = '<div style="text-align:center;padding:.5rem;color:var(--muted2);font-size:.6rem">No artists found.</div>';
+      bhLog('✗ No artists found for: ' + q, 'warn');
+      return;
+    }
+    bhLog('✓ Found ' + artists.length + ' artist(s)', 'ok');
+    document.getElementById('bh-artist-results').innerHTML = artists.map(function(a, i) {
+      var extra = [];
+      if (a.type) extra.push(a.type);
+      if (a.country) extra.push(a.country);
+      if (a.begin) extra.push(a.begin.substring(0,4) + (a.ended && a.end ? '–' + a.end.substring(0,4) : '–'));
+      return '<div onclick="bhSelectArtist(' + i + ')" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:.55rem .75rem;cursor:pointer;transition:background .15s" onmouseenter="this.style.borderColor=\'var(--orange)\'" onmouseleave="this.style.borderColor=\'var(--border)\'">'
+        + '<div style="font-size:.72rem;color:var(--text)">' + esc(a.name) + '</div>'
+        + '<div style="font-size:.52rem;color:var(--muted);margin-top:.15rem">' + esc(extra.join(' · ')) + (a.score ? ' · Score: ' + a.score : '') + '</div>'
+        + '</div>';
+    }).join('');
+    window._bhArtistList = artists;
+  } catch(e) {
+    document.getElementById('bh-artist-results').innerHTML = '<div style="color:var(--red);font-size:.6rem;padding:.5rem">✗ ' + esc(e.message) + '</div>';
+    bhLog('✗ Artist search failed: ' + e.message, 'err');
+  }
+}
+
+async function bhSelectArtist(idx) {
+  var a = window._bhArtistList[idx];
+  if (!a) return;
+  _bhSelectedArtist = { mbid: a.mbid, name: a.name };
+  document.getElementById('bh-artist-results').innerHTML = '<div style="background:rgba(251,146,60,.12);border:1px solid var(--orange);border-radius:6px;padding:.55rem .75rem">'
+    + '<div style="font-size:.72rem;color:var(--orange);font-family:var(--display);letter-spacing:1px">' + esc(a.name) + '</div>'
+    + '<div style="font-size:.52rem;color:var(--muted);margin-top:.15rem">Selected · Loading releases…</div></div>';
+  document.getElementById('bh-release-filter').style.display = 'block';
+  _bhReleaseType = 'album';
+  bhSetReleaseType('album');
+  await bhLoadReleases();
+}
+
+function bhSetReleaseType(type) {
+  _bhReleaseType = type;
+  ['album','compilation','single','all'].forEach(function(t) {
+    var btn = document.getElementById('bh-rt-' + t);
+    if (!btn) return;
+    if (t === type) {
+      btn.style.background = 'var(--orange)'; btn.style.color = '#000'; btn.style.border = 'none';
+    } else {
+      btn.style.background = 'var(--surface2)'; btn.style.color = 'var(--muted)'; btn.style.border = '1px solid var(--border)';
+    }
+  });
+  if (_bhSelectedArtist) bhLoadReleases();
+}
+
+async function bhLoadReleases() {
+  if (!_bhSelectedArtist) return;
+  bhLog('📀 Loading ' + _bhReleaseType + 's for ' + _bhSelectedArtist.name, 'info');
+  document.getElementById('bh-status-title').textContent = 'LOADING…';
+  document.getElementById('bh-status-sub').textContent = _bhSelectedArtist.name + ' — ' + _bhReleaseType + 's';
+  try {
+    var r = await fetch(API + '/api/bloodhound/artist-releases', {
+      method:'POST', headers:authHdrs(),
+      body: JSON.stringify({ artist_mbid: _bhSelectedArtist.mbid, artist_name: _bhSelectedArtist.name, release_type: _bhReleaseType }),
+    });
+    var d = await r.json();
+    if (!r.ok) throw new Error(d.detail || 'HTTP ' + r.status);
+    _bhResults = (d.results || []).map(function(rg) {
+      return { artist: d.artist_name || _bhSelectedArtist.name, title: rg.title, type: rg.primary_type || '', year: (rg.first_release||'').substring(0,4), mbid: rg.mbid, secondary: rg.secondary_types || [], in_library: rg.in_library || false };
+    });
+    bhLog('✓ Found ' + _bhResults.length + ' release(s)', 'ok');
+    document.getElementById('bh-s-total').textContent = _bhResults.length;
+    document.getElementById('bh-status-title').textContent = _bhSelectedArtist.name.toUpperCase();
+    document.getElementById('bh-status-sub').textContent = _bhResults.length + ' ' + _bhReleaseType + '(s) found on MusicBrainz';
+    bhRenderResults();
+  } catch(e) {
+    bhLog('✗ Failed to load releases: ' + e.message, 'err');
+    document.getElementById('bh-status-title').textContent = 'ERROR';
+  }
+}
+
+// ── Album Search (direct) ──
+async function bhAlbumSearch(loadMore) {
+  var q = loadMore ? _bhLastQuery : document.getElementById('bh-album-input').value.trim();
+  if (!q) return;
+  if (!loadMore) { _bhOffset = 0; _bhResults = []; _bhLastQuery = q; _bhLastSearchType = 'album'; }
+  bhLog('🔍 Searching MusicBrainz for album: ' + q + (loadMore ? ' (offset ' + _bhOffset + ')' : ''), 'info');
+  document.getElementById('bh-status-title').textContent = 'SEARCHING…';
+  try {
+    var r = await fetch(API + '/api/bloodhound/album-search', {
+      method:'POST', headers:authHdrs(),
+      body: JSON.stringify({ query: q, offset: _bhOffset }),
+    });
+    var d = await r.json();
+    if (!r.ok) throw new Error(d.detail || 'HTTP ' + r.status);
+    var newResults = (d.results || []).map(function(rg) {
+      return { artist: rg.artist || '', title: rg.title || '', type: rg.primary_type || '', year: (rg.first_release||'').substring(0,4), mbid: rg.mbid, secondary: rg.secondary_types || [], in_library: rg.in_library || false };
+    });
+    _bhResults = _bhResults.concat(newResults);
+    _bhOffset = _bhOffset + (d.limit || 100);
+    _bhMbCount = d.mb_count || 0;
+    bhLog('✓ Found ' + newResults.length + ' result(s) — ' + _bhResults.length + ' total loaded' + (_bhMbCount ? ' of ' + _bhMbCount + ' on MusicBrainz' : ''), 'ok');
+    document.getElementById('bh-s-total').textContent = _bhResults.length;
+    document.getElementById('bh-status-title').textContent = 'ALBUM SEARCH';
+    document.getElementById('bh-status-sub').textContent = _bhResults.length + ' loaded' + (_bhMbCount ? ' of ' + _bhMbCount : '') + ' for "' + q + '"';
+    bhRenderResults();
+    bhUpdateLoadMore();
+  } catch(e) {
+    bhLog('✗ Album search failed: ' + e.message, 'err');
+    document.getElementById('bh-status-title').textContent = 'ERROR';
+  }
+}
+
+// ── Compilation Search ──
+function bhCompSearch() {
+  var q = document.getElementById('bh-comp-select').value;
+  if (!q) { bhLog('Select a compilation series first', 'warn'); return; }
+  bhCompDoSearch(q);
+}
+function bhCompCustomSearch() {
+  var q = document.getElementById('bh-comp-custom').value.trim();
+  if (!q) return;
+  bhCompDoSearch(q);
+}
+async function bhCompDoSearch(q, loadMore) {
+  if (!loadMore) { _bhOffset = 0; _bhResults = []; _bhLastQuery = q; _bhLastSearchType = 'comp'; }
+  bhLog('🔍 Searching MusicBrainz for compilations: ' + q + (loadMore ? ' (offset ' + _bhOffset + ')' : ''), 'info');
+  document.getElementById('bh-status-title').textContent = 'SEARCHING…';
+  try {
+    var r = await fetch(API + '/api/bloodhound/album-search', {
+      method:'POST', headers:authHdrs(),
+      body: JSON.stringify({ query: q, offset: _bhOffset }),
+    });
+    var d = await r.json();
+    if (!r.ok) throw new Error(d.detail || 'HTTP ' + r.status);
+    var newResults = (d.results || []).map(function(rg) {
+      return { artist: rg.artist || 'Various Artists', title: rg.title || '', type: rg.primary_type || '', year: (rg.first_release||'').substring(0,4), mbid: rg.mbid, secondary: rg.secondary_types || [], in_library: rg.in_library || false };
+    });
+    _bhResults = _bhResults.concat(newResults);
+    _bhOffset = _bhOffset + (d.limit || 100);
+    _bhMbCount = d.mb_count || 0;
+    bhLog('✓ Found ' + newResults.length + ' compilation(s) — ' + _bhResults.length + ' total loaded' + (_bhMbCount ? ' of ' + _bhMbCount : ''), 'ok');
+    document.getElementById('bh-s-total').textContent = _bhResults.length;
+    document.getElementById('bh-status-title').textContent = 'COMPILATIONS';
+    document.getElementById('bh-status-sub').textContent = _bhResults.length + ' loaded' + (_bhMbCount ? ' of ' + _bhMbCount : '') + ' for "' + q + '"';
+    bhRenderResults();
+    bhUpdateLoadMore();
+  } catch(e) {
+    bhLog('✗ Compilation search failed: ' + e.message, 'err');
+    document.getElementById('bh-status-title').textContent = 'ERROR';
+  }
+}
+
+function bhLoadMore() {
+  if (_bhLastSearchType === 'album') bhAlbumSearch(true);
+  else if (_bhLastSearchType === 'comp') bhCompDoSearch(_bhLastQuery, true);
+}
+
+function bhUpdateLoadMore() {
+  var el = document.getElementById('bh-load-more');
+  var remaining = Math.max(0, _bhMbCount - _bhOffset);
+  if (remaining > 0) {
+    el.style.display = 'block';
+    document.getElementById('bh-load-count').textContent = remaining.toLocaleString() + ' remaining on MusicBrainz';
+  } else {
+    el.style.display = 'none';
+  }
+}
+
+// ── Render Results Table ──
+function bhRenderResults() {
+  var tbody = document.getElementById('bh-tbody');
+  var empty = document.getElementById('bh-empty');
+  tbody.innerHTML = '';
+  if (!_bhResults.length) { empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+  var ownedCt = 0, missingCt = 0;
+  _bhResults.forEach(function(r, idx) {
+    var owned = r.in_library || false;
+    if (owned) ownedCt++; else missingCt++;
+    var tr = document.createElement('tr');
+    tr.dataset.text = ((r.artist||'') + ' ' + (r.title||'')).toLowerCase();
+    tr.dataset.status = owned ? 'owned' : 'missing';
+    tr.style.borderBottom = '1px solid var(--border)';
+    if (_bhCurrentFilter === 'missing' && owned) tr.style.display = 'none';
+    if (_bhCurrentFilter === 'owned' && !owned) tr.style.display = 'none';
+    var typeLabel = r.type || '\u2014';
+    if (r.secondary && r.secondary.length) typeLabel += ' \u00b7 ' + r.secondary.join(', ');
+    var typeColor = r.type === 'Album' ? 'var(--teal)' : r.type === 'Single' ? 'var(--purple)' : 'var(--amber)';
+    var statusHTML = owned ? '<span style="color:var(--green)">\u2705 Owned</span>' : '<span style="color:var(--red)">\u274c Missing</span>';
+    tr.innerHTML = '<td style="padding:.45rem .75rem;color:var(--muted)">' + esc(r.artist||'') + '</td>'
+      + '<td style="padding:.45rem .75rem;color:var(--text)">' + esc(r.title||'') + '</td>'
+      + '<td style="padding:.45rem .75rem"><span style="font-size:.55rem;padding:.1rem .35rem;border-radius:8px;background:rgba(251,146,60,.1);border:1px solid rgba(251,146,60,.25);color:' + typeColor + ';white-space:nowrap">' + esc(typeLabel) + '</span></td>'
+      + '<td style="padding:.45rem .75rem;color:var(--muted)">' + esc(r.year||'\u2014') + '</td>'
+      + '<td style="padding:.45rem .75rem">' + statusHTML + '</td>'
+      + '<td style="padding:.45rem .75rem"><button onclick="bhSearchProwlarr(' + idx + ')" style="padding:.25rem .6rem;background:var(--surface2);color:var(--orange);border:1px solid var(--orange);border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer;letter-spacing:.5px;white-space:nowrap">\ud83d\udd0d SEARCH</button></td>';
+    tbody.appendChild(tr);
+  });
+  document.getElementById('bh-s-owned').textContent = ownedCt;
+  document.getElementById('bh-s-missing').textContent = missingCt;
+}
+
+function bhFilterView(filter) {
+  _bhCurrentFilter = filter;
+  ['all','missing','owned'].forEach(function(f) {
+    var btn = document.getElementById('bh-filter-' + f);
+    if (!btn) return;
+    if (f === filter) {
+      btn.style.background = f==='all'?'var(--orange)':f==='missing'?'rgba(248,113,113,.2)':'rgba(74,222,128,.2)';
+      btn.style.color = f==='all'?'#000':f==='missing'?'var(--red)':'var(--green)';
+      btn.style.border = f==='all'?'none':f==='missing'?'1px solid var(--red)':'1px solid var(--green)';
+    } else {
+      btn.style.background = 'var(--surface2)';
+      btn.style.color = f==='all'?'var(--muted)':f==='missing'?'var(--red)':'var(--green)';
+      btn.style.border = '1px solid var(--border)';
+    }
+  });
+  document.querySelectorAll('#bh-tbody tr').forEach(function(tr) {
+    if (filter === 'all') tr.style.display = '';
+    else if (filter === 'missing') tr.style.display = tr.dataset.status === 'missing' ? '' : 'none';
+    else if (filter === 'owned') tr.style.display = tr.dataset.status === 'owned' ? '' : 'none';
+  });
+}
+
+function bhFilterText(q) {
+  var lq = q.toLowerCase();
+  document.querySelectorAll('#bh-tbody tr').forEach(function(tr) {
+    var textMatch = (tr.dataset.text||'').includes(lq);
+    var filterMatch = _bhCurrentFilter === 'all' || tr.dataset.status === _bhCurrentFilter;
+    tr.style.display = (textMatch && filterMatch) ? '' : 'none';
+  });
+}
+
+// ── Prowlarr Multi-Card Search (same pattern as Sniffer) ──
+async function bhSearchProwlarr(idx) {
+  var release = _bhResults[idx];
+  if (!release) return;
+  var searchQuery = release.artist ? release.artist + ' ' + release.title : release.title;
+  var cardKey = searchQuery.toLowerCase().trim();
+  var container = document.getElementById('bh-prowlarr-cards');
+
+  // Check for existing card
+  var existingId = null;
+  Object.keys(_bhCards).forEach(function(cid) {
+    if (_bhCards[cid].key === cardKey) existingId = cid;
+  });
+  if (existingId) {
+    var existingCard = document.getElementById(existingId);
+    if (existingCard) {
+      var body = existingCard.querySelector('.bh-card-body');
+      if (body) body.style.display = 'flex';
+      var minBtn = existingCard.querySelector('.bh-card-min');
+      if (minBtn) minBtn.textContent = '\u2212';
+      existingCard.style.padding = '1.25rem';
+      existingCard.scrollIntoView({behavior:'smooth'});
+      return;
+    }
+  }
+
+  _bhCardCounter++;
+  var cardId = 'bh-card-' + _bhCardCounter;
+  _bhCards[cardId] = { key: cardKey, results: [] };
+
+  var card = document.createElement('div');
+  card.id = cardId;
+  card.style.cssText = 'background:var(--surface);border:1px solid var(--orange);border-radius:10px;padding:1.25rem;';
+
+  card.innerHTML =
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem">'
+    + '<div>'
+    + '<div style="font-family:var(--display);font-size:1rem;letter-spacing:1.5px;color:var(--orange)">PROWLARR RESULTS</div>'
+    + '<div style="font-family:var(--mono);font-size:.55rem;color:var(--muted);margin-top:.15rem" id="' + cardId + '-sub">Searching: ' + esc(searchQuery) + '</div>'
+    + '</div>'
+    + '<div style="display:flex;gap:.35rem">'
+    + '<button class="bh-card-min" onclick="bhToggleCard(\'' + cardId + '\')" style="background:none;border:none;color:var(--muted);font-size:1.1rem;cursor:pointer;line-height:1" title="Minimize">\u2212</button>'
+    + '<button onclick="bhCloseCard(\'' + cardId + '\')" style="background:none;border:none;color:var(--muted);font-size:1rem;cursor:pointer;line-height:1" title="Close">\u2715</button>'
+    + '</div>'
+    + '</div>'
+    + '<div class="bh-card-body" style="display:flex;flex-direction:column;gap:.5rem">'
+    + '<div style="text-align:center;padding:1rem;color:var(--muted);font-family:var(--mono);font-size:.6rem">\ud83d\udd0d Searching Prowlarr\u2026</div>'
+    + '</div>';
+
+  container.appendChild(card);
+  card.scrollIntoView({behavior:'smooth'});
+  bhLog('🔍 Searching Prowlarr for: ' + searchQuery, 'info');
+
+  try {
+    var r = await fetch(API + '/api/bloodhound/search-prowlarr', {
+      method:'POST', headers:authHdrs(),
+      body: JSON.stringify({ query: searchQuery, artist: release.artist || '' }),
+    });
+    var d = await r.json();
+    if (!r.ok) throw new Error(d.detail || 'HTTP ' + r.status);
+    var results = d.results || [];
+    _bhCards[cardId].results = results;
+    var bodyEl = card.querySelector('.bh-card-body');
+    var subEl = document.getElementById(cardId + '-sub');
+
+    if (!results.length) {
+      bodyEl.innerHTML = '<div style="text-align:center;padding:1rem;color:var(--muted2);font-family:var(--mono);font-size:.6rem">No results with seeds found.</div>';
+      bhLog('✗ No results for: ' + searchQuery, 'warn');
+      return;
+    }
+    bhLog('✓ Found ' + results.length + ' result(s)', 'ok');
+    subEl.textContent = results.length + ' result(s) for: ' + searchQuery;
+    bodyEl.innerHTML = results.map(function(r, i) {
+      var sizeMB = r.size_mb || 0;
+      var sizeStr = sizeMB > 1024 ? (sizeMB/1024).toFixed(1) + ' GB' : sizeMB + ' MB';
+      return '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:.65rem .85rem;display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">'
+        + '<div style="flex:1;min-width:200px">'
+        + '<div style="font-size:.68rem;color:var(--text);margin-bottom:.25rem;word-break:break-all">' + esc(r.title||'') + '</div>'
+        + '<div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">'
+        + '<span style="font-size:.52rem;color:var(--muted)">' + esc(r.indexer||'') + '</span>'
+        + '<span style="font-size:.52rem;color:var(--muted)">' + sizeStr + '</span>'
+        + '</div></div>'
+        + '<div style="text-align:center;min-width:50px">'
+        + '<div style="font-family:var(--display);font-size:1.1rem;color:var(--green)">' + (r.seeders||0) + '</div>'
+        + '<div style="font-size:.45rem;color:var(--muted);letter-spacing:.5px">SEEDS</div></div>'
+        + '<div style="display:flex;gap:.35rem;flex-wrap:wrap">'
+        + '<button onclick="bhGrabGet(\'' + cardId + '\',' + i + ')" style="padding:.3rem .6rem;background:var(--orange);color:#000;border:none;border-radius:4px;font-family:var(--mono);font-size:.58rem;cursor:pointer" title="Send to qBittorrent">\u2b07 GET</button>'
+        + (r.info_url ? '<a href="' + esc(r.info_url) + '" target="_blank" rel="noopener" style="display:inline-block;padding:.3rem .6rem;background:var(--surface3);color:var(--teal);border:1px solid var(--teal);border-radius:4px;font-family:var(--mono);font-size:.58rem;cursor:pointer;text-decoration:none" title="Open source page">\u2197 OPEN</a>' : '')
+        + '<button onclick="bhCopyMagnet(\'' + cardId + '\',' + i + ')" style="padding:.3rem .6rem;background:var(--surface3);color:var(--purple);border:1px solid var(--purple);border-radius:4px;font-family:var(--mono);font-size:.58rem;cursor:pointer" title="Copy download URL">\ud83d\udd17 MAGNET</button>'
+        + '</div></div>';
+    }).join('');
+  } catch(e) {
+    card.querySelector('.bh-card-body').innerHTML = '<div style="text-align:center;padding:1rem;color:var(--red);font-family:var(--mono);font-size:.6rem">\u2717 ' + esc(e.message) + '</div>';
+    bhLog('✗ Search failed: ' + e.message, 'err');
+  }
+}
+
+function bhToggleCard(cardId) {
+  var card = document.getElementById(cardId);
+  if (!card) return;
+  var body = card.querySelector('.bh-card-body');
+  var btn = card.querySelector('.bh-card-min');
+  if (!body || !btn) return;
+  if (body.style.display === 'none') {
+    body.style.display = 'flex'; btn.textContent = '\u2212'; card.style.padding = '1.25rem';
+  } else {
+    body.style.display = 'none'; btn.textContent = '+'; card.style.padding = '.6rem 1.25rem';
+  }
+}
+
+function bhCloseCard(cardId) {
+  var card = document.getElementById(cardId);
+  if (card) card.remove();
+  delete _bhCards[cardId];
+}
+
+async function bhGrabGet(cardId, resultIdx) {
+  var cardData = _bhCards[cardId];
+  if (!cardData) return;
+  var result = cardData.results[resultIdx];
+  if (!result) return;
+  bhLog('⬇ Sending to qBittorrent: ' + result.title, 'info');
+  try {
+    var r = await fetch(API + '/api/bloodhound/grab', {
+      method:'POST', headers:authHdrs(),
+      body: JSON.stringify({ download_url: result.download_url, title: result.title, indexer: result.indexer || '' }),
+    });
+    var d = await r.json();
+    if (!r.ok) throw new Error(d.detail || 'HTTP ' + r.status);
+    bhLog('✓ ' + d.message, 'ok');
+    toast(d.message, 'ok');
+  } catch(e) {
+    bhLog('✗ Grab failed: ' + e.message, 'err');
+    toast('Grab failed: ' + e.message, 'error');
+  }
+}
+
+function bhCopyMagnet(cardId, resultIdx) {
+  var cardData = _bhCards[cardId];
+  if (!cardData) return;
+  var result = cardData.results[resultIdx];
+  if (!result || !result.download_url) { bhLog('No URL available', 'err'); return; }
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(result.download_url);
+    } else {
+      var ta = document.createElement('textarea');
+      ta.value = result.download_url;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+    bhLog('✓ Download URL copied to clipboard', 'ok');
+    toast('URL copied to clipboard', 'ok');
+  } catch(e) {
+    bhLog('✗ Copy failed: ' + e.message, 'err');
+  }
+}
+
+function bhInjectScrollNav() {
+  if (document.getElementById('bh-scroll-nav')) return;
+  var panel = document.getElementById('panel-bloodhound');
+  if (!panel) return;
+  var nav = document.createElement('div');
+  nav.id = 'bh-scroll-nav';
+  nav.style.cssText = 'position:fixed;right:1.5rem;bottom:1.5rem;display:flex;flex-direction:column;gap:.35rem;z-index:50';
+  var btnStyle = 'width:36px;height:36px;border-radius:50%;border:1px solid var(--orange);background:var(--surface);color:var(--orange);font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center';
+  nav.innerHTML = '<button style="' + btnStyle + '" title="Scroll to top" onclick="(document.querySelector(\'.content-area\')||document.documentElement).scrollTo({top:0,behavior:\'smooth\'})">↑</button><button style="' + btnStyle + '" title="Scroll to bottom" onclick="(document.querySelector(\'.content-area\')||document.documentElement).scrollTo({top:99999,behavior:\'smooth\'})">↓</button>';
+  panel.appendChild(nav);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
