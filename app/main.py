@@ -19,7 +19,7 @@ from app.config import get_settings
 from app.database import init_db, get_user_count
 from app.security import lockdown_status
 from app.models import HealthResponse
-from app.routers import auth, kennel, retriever, groomer
+from app.routers import auth, kennel, retriever, groomer, debug, sniffer
 
 logging.basicConfig(
     level=logging.INFO,
@@ -28,6 +28,10 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)],
 )
 log = logging.getLogger("charthound")
+
+# Install in-memory debug log handler — captures all charthound.* output
+from app.routers.debug import install_debug_handler
+install_debug_handler()
 settings = get_settings()
 
 PLACEHOLDER_KEY = "CHANGE_ME_GENERATE_A_STRONG_RANDOM_KEY"
@@ -89,7 +93,8 @@ app.include_router(auth.router, prefix="/api")
 app.include_router(kennel.router)
 app.include_router(retriever.router)
 app.include_router(groomer.router)
-# app.include_router(sniffer.router)    # M5
+app.include_router(debug.router)
+app.include_router(sniffer.router)
 # app.include_router(bloodhound.router) # M7
 # app.include_router(tracker.router)    # M8
 # app.include_router(scout.router)      # M9

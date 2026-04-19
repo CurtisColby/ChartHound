@@ -448,6 +448,42 @@ async def get_path_settings(user: dict = Depends(require_auth)):
 
 # ── SECRET KEY STATUS ─────────────────────────────────────────────────────────
 
+# ── SNIFFER DOWNLOAD PATH ────────────────────────────────────────────────────
+
+class SnifferPathRequest(BaseModel):
+    download_path: str
+
+
+@router.post("/save-sniffer-path")
+async def save_sniffer_path(req: SnifferPathRequest, user: dict = Depends(require_auth)):
+    """Save the ChartHound download path for The Sniffer's grabbed files."""
+    now = datetime.now(timezone.utc).isoformat()
+    async with aiosqlite.connect(settings.database_url) as db:
+        await db.execute(
+            "INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
+            ("sniffer_download_path", req.download_path, now),
+        )
+        await db.commit()
+    log.info(f"Sniffer download path saved: {req.download_path}")
+    return {"ok": True, "download_path": req.download_path}
+
+
+@router.get("/sniffer-path")
+async def get_sniffer_path(user: dict = Depends(require_auth)):
+    """Get the saved ChartHound download path."""
+    try:
+        async with aiosqlite.connect(settings.database_url) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                "SELECT value FROM app_settings WHERE key='sniffer_download_path'"
+            )
+            row = await cursor.fetchone()
+        return {"download_path": row["value"] if row else ""}
+    except Exception:
+        return {"download_path": ""}
+
+
 @router.get("/secret-key-status")
 async def secret_key_status():
     """Check if SECRET_KEY is still the placeholder value."""

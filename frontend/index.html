@@ -540,7 +540,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
     </div>
     <div class="nav-spacer"></div>
     <div class="nav-heartbeat" id="navHeartbeat">⟳ —</div>
-    <div class="nav-version">v1.0.0 · MILESTONE 4</div>
+    <div class="nav-version">v1.0.0 · MILESTONE 5</div>
   </nav>
 
   <div class="content-area">
@@ -783,6 +783,14 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
               <button class="btn btn-red btn-sm" onclick="disconnectConn('qbittorrent')">✕ DISCONNECT</button>
             </div>
             <div class="conn-feedback" id="cFeedback-qbittorrent"></div>
+            <!-- SNIFFER DOWNLOAD PATH -->
+            <div style="margin-top:.75rem;padding-top:.75rem;border-top:1px solid var(--border)">
+              <div class="label-row"><label>ChartHound Download Path</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">Where The Sniffer puts completed downloads. Must be inside your music library root so Plex/Emby/JF pick it up. Example: /media/colby/NAS1/MUSIC TAGGED/ChartHound</div></div></div>
+              <input type="text" id="cSnifferPath" placeholder="/path/to/music/ChartHound">
+              <div class="field-hint">Completed Sniffer grabs land here. Use a subfolder inside your music library root.</div>
+              <button class="btn btn-outline btn-sm" onclick="saveSnifferPath()" style="margin-top:.3rem">💾 SAVE PATH</button>
+              <div class="conn-feedback" id="cFeedback-snifferpath"></div>
+            </div>
           </div>
 
           <!-- YOUTUBE -->
@@ -1084,11 +1092,199 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
 
     <!-- THE SNIFFER -->
     <div class="tab-panel" id="panel-sniffer">
-      <div class="placeholder-panel" style="--tab-color:var(--c3)">
-        <div class="ph-icon">📡</div><div class="ph-title">THE SNIFFER</div>
-        <div class="ph-tagline">CHART-HIT FINDER & GRABBER</div>
-        <div class="ph-sub">Hot 100 · Adult Pop · UK · CCM · Gospel · Rock · R&B · 15+ charts.<br>Finds what's missing from your library · Searches via Prowlarr.<br>Pushes grabs with ChartHound-Music category.<br>Builds and pushes playlists to Plex · Emby · Jellyfin.</div>
-        <div class="ph-coming">MILESTONE 5</div>
+      <div style="display:grid;grid-template-columns:300px 1fr;min-height:calc(100vh - 120px)">
+
+        <!-- LEFT PANEL -->
+        <div style="border-right:1px solid var(--border);padding:1.25rem;display:flex;flex-direction:column;gap:1rem;overflow-y:auto;background:var(--surface);">
+
+          <!-- MODE TOGGLE -->
+          <div>
+            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--gold);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">SEARCH MODE<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
+            <div style="display:flex;gap:.5rem">
+              <button id="snf-mode-gap" onclick="snfSetMode('gap')" style="flex:1;padding:.5rem;background:var(--gold);color:#000;border:none;border-radius:5px;font-family:var(--mono);font-size:.65rem;letter-spacing:1px;cursor:pointer;transition:all .2s">📊 CHART GAP FILL</button>
+              <button id="snf-mode-trending" onclick="snfSetMode('trending')" style="flex:1;padding:.5rem;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:5px;font-family:var(--mono);font-size:.65rem;letter-spacing:1px;cursor:pointer;transition:all .2s">🔥 TRENDING</button>
+            </div>
+          </div>
+
+          <!-- GAP FILL OPTIONS -->
+          <div id="snf-gap-section">
+            <!-- CHART CHECKBOXES -->
+            <div>
+              <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--gold);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">CHART FILTERS<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
+              <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem;display:flex;flex-direction:column;gap:.4rem">
+                <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.75rem"><input type="checkbox" id="snf-hot100" checked style="accent-color:var(--gold)"><span>Billboard Hot 100</span></label>
+                <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.75rem"><input type="checkbox" id="snf-adultpop" checked style="accent-color:var(--gold)"><span>Adult Pop / Top 40</span></label>
+                <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.75rem"><input type="checkbox" id="snf-ac" style="accent-color:var(--gold)"><span>Adult Contemporary</span></label>
+                <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.75rem"><input type="checkbox" id="snf-uk" style="accent-color:var(--gold)"><span>UK Singles Chart</span></label>
+                <div style="height:1px;background:var(--border);margin:.15rem 0"></div>
+                <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.75rem"><input type="checkbox" id="snf-country" style="accent-color:var(--gold)"><span>Hot Country Songs</span></label>
+                <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.75rem"><input type="checkbox" id="snf-rnb" style="accent-color:var(--gold)"><span>R&amp;B / Hip-Hop</span></label>
+                <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.75rem"><input type="checkbox" id="snf-rock" style="accent-color:var(--gold)"><span>Mainstream Rock</span></label>
+                <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.75rem"><input type="checkbox" id="snf-dance" style="accent-color:var(--gold)"><span>Dance / Electronic</span></label>
+              </div>
+            </div>
+
+            <!-- YEAR RANGE -->
+            <div>
+              <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--gold);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">YEAR RANGE<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
+              <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem;display:flex;flex-direction:column;gap:.75rem">
+                <div>
+                  <div style="display:flex;justify-content:space-between;margin-bottom:.3rem">
+                    <label style="font-size:.7rem;color:var(--muted)">From Year</label>
+                    <span style="font-family:var(--display);font-size:1.05rem;color:var(--amber)" id="snf-year-min-display">1958</span>
+                  </div>
+                  <input type="range" id="snf-year-min" min="1890" max="2025" value="1958" oninput="snfUpdateYearMin(this.value)" style="width:100%">
+                </div>
+                <div>
+                  <div style="display:flex;justify-content:space-between;margin-bottom:.3rem">
+                    <label style="font-size:.7rem;color:var(--muted)">To Year</label>
+                    <span style="font-family:var(--display);font-size:1.05rem;color:var(--amber)" id="snf-year-max-display">2025</span>
+                  </div>
+                  <input type="range" id="snf-year-max" min="1890" max="2025" value="2025" oninput="snfUpdateYearMax(this.value)" style="width:100%">
+                </div>
+              </div>
+            </div>
+
+            <!-- PEAK POSITION -->
+            <div>
+              <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--gold);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">PEAK POSITION<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
+              <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem">
+                <div style="display:flex;justify-content:space-between;margin-bottom:.3rem">
+                  <label style="font-size:.7rem;color:var(--muted)">Top</label>
+                  <span style="font-family:var(--display);font-size:1.05rem;color:var(--amber)" id="snf-peak-display">Top 40</span>
+                </div>
+                <input type="range" id="snf-peak" min="1" max="100" value="40" oninput="snfUpdatePeak(this.value)" style="width:100%">
+                <div style="display:flex;justify-content:space-between;margin-top:.2rem"><span style="font-size:.52rem;color:var(--muted);font-family:var(--mono)">#1</span><span style="font-size:.52rem;color:var(--muted);font-family:var(--mono)">#100</span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- TRENDING OPTIONS -->
+          <div id="snf-trending-section" style="display:none">
+            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--gold);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">GENRE / TAG<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
+            <select id="snf-trending-tag" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:.72rem;padding:.55rem .7rem;outline:none">
+              <option value="pop">Pop</option>
+              <option value="rock">Rock</option>
+              <option value="hip-hop">Hip-Hop</option>
+              <option value="r&b">R&amp;B</option>
+              <option value="country">Country</option>
+              <option value="electronic">Electronic</option>
+              <option value="indie">Indie</option>
+              <option value="alternative">Alternative</option>
+              <option value="soul">Soul</option>
+              <option value="metal">Metal</option>
+              <option value="jazz">Jazz</option>
+              <option value="christian">Christian</option>
+            </select>
+          </div>
+
+          <!-- OPTIONS -->
+          <div>
+            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--gold);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">INFO<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
+            <div style="background:rgba(245,166,35,.06);border:1px solid rgba(245,166,35,.25);border-radius:6px;padding:.6rem">
+              <p style="font-family:var(--mono);font-size:.55rem;color:var(--amber);line-height:1.7;margin:0">📡 Results show albums for better seeds &amp; metadata. Use GET to send to qBit, OPEN for source page, or MAGNET to copy the link.</p>
+            </div>
+          </div>
+
+          <!-- ACTIONS -->
+          <div>
+            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--gold);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">ACTIONS<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
+            <button id="snf-btn-search" onclick="snfRunAnalysis()" style="width:100%;padding:.65rem;background:var(--gold);color:#000;border:none;border-radius:6px;font-family:var(--display);font-size:1.1rem;letter-spacing:2px;cursor:pointer;transition:all .2s">🔍 FIND MISSING TRACKS</button>
+          </div>
+
+          <!-- ACTIVITY LOG -->
+          <div style="flex:1;display:flex;flex-direction:column;min-height:0;max-height:280px">
+            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--gold);margin-bottom:.5rem;display:flex;align-items:center;gap:.5rem">
+              ACTIVITY LOG
+              <span style="flex:1;height:1px;background:var(--border);display:block"></span>
+              <button onclick="document.getElementById('snf-log').innerHTML=''" style="background:none;border:none;color:var(--muted2);font-family:var(--mono);font-size:.52rem;cursor:pointer;padding:.1rem .3rem;letter-spacing:.5px" title="Clear log">✕ CLEAR</button>
+            </div>
+            <div id="snf-log" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:.7rem;font-family:var(--mono);font-size:.58rem;color:var(--muted);flex:1;min-height:120px;max-height:220px;overflow-y:auto;line-height:1.8"></div>
+          </div>
+        </div>
+
+        <!-- RIGHT PANEL — Results -->
+        <div style="display:flex;flex-direction:column;padding:1.25rem 1.75rem;gap:1rem;overflow-y:auto">
+
+          <!-- LIDARR SETUP BANNER -->
+          <div id="snf-banner-lidarr" class="feature-banner" style="background:rgba(245,166,35,.08);border:1px solid rgba(245,166,35,.3);color:var(--gold);margin-bottom:0;justify-content:space-between;align-items:flex-start">
+            <span>📡 <strong>Lidarr users:</strong> ChartHound grabs are tagged with <code style="background:var(--surface2);padding:.1rem .3rem;border-radius:3px;font-size:.6rem">charthound-music</code> category. Downloads go to the path configured in The Kennel. Your media server will pick them up on its next scan. Lidarr can also import them if the artist is already in your library.</span>
+            <button onclick="document.getElementById('snf-banner-lidarr').style.display='none'" style="background:none;border:none;color:inherit;cursor:pointer;font-size:.85rem;padding:0 0 0 .75rem;opacity:.5;flex-shrink:0;line-height:1" title="Dismiss">✕</button>
+          </div>
+
+          <!-- STATS BAR -->
+          <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1rem 1.5rem">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem">
+              <div style="font-family:var(--display);font-size:1.1rem;letter-spacing:1.5px" id="snf-status-title">READY TO SNIFF</div>
+              <div style="font-family:var(--mono);font-size:.58rem;color:var(--muted)" id="snf-status-sub">Select charts and year range, then click Find Missing Tracks</div>
+            </div>
+            <div style="display:flex;gap:1.5rem;flex-wrap:wrap">
+              <div style="text-align:center;min-width:70px">
+                <div style="font-family:var(--display);font-size:1.6rem;color:var(--text)" id="snf-s-total">0</div>
+                <div style="font-family:var(--mono);font-size:.48rem;color:var(--muted);letter-spacing:1px">TOTAL ENTRIES</div>
+              </div>
+              <div style="text-align:center;min-width:70px">
+                <div style="font-family:var(--display);font-size:1.6rem;color:var(--green)" id="snf-s-owned">0</div>
+                <div style="font-family:var(--mono);font-size:.48rem;color:var(--muted);letter-spacing:1px">IN LIBRARY</div>
+              </div>
+              <div style="text-align:center;min-width:70px">
+                <div style="font-family:var(--display);font-size:1.6rem;color:var(--red)" id="snf-s-missing">0</div>
+                <div style="font-family:var(--mono);font-size:.48rem;color:var(--muted);letter-spacing:1px">MISSING</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- FILTER TOGGLE -->
+          <div style="display:flex;gap:.5rem;align-items:center">
+            <button id="snf-filter-all" onclick="snfFilterView('all')" style="padding:.35rem .8rem;background:var(--gold);color:#000;border:none;border-radius:5px;font-family:var(--mono);font-size:.62rem;cursor:pointer;letter-spacing:.5px">ALL</button>
+            <button id="snf-filter-missing" onclick="snfFilterView('missing')" style="padding:.35rem .8rem;background:var(--surface2);color:var(--red);border:1px solid var(--border);border-radius:5px;font-family:var(--mono);font-size:.62rem;cursor:pointer;letter-spacing:.5px">❌ MISSING ONLY</button>
+            <button id="snf-filter-owned" onclick="snfFilterView('owned')" style="padding:.35rem .8rem;background:var(--surface2);color:var(--green);border:1px solid var(--border);border-radius:5px;font-family:var(--mono);font-size:.62rem;cursor:pointer;letter-spacing:.5px">✅ OWNED ONLY</button>
+            <input type="text" placeholder="Filter by artist or title…" oninput="snfFilterText(this.value)" style="margin-left:auto;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:.65rem;padding:.35rem .6rem;outline:none;width:200px">
+          </div>
+
+          <!-- RESULTS TABLE -->
+          <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;flex:1">
+            <div style="overflow-x:auto">
+              <table style="width:100%;border-collapse:collapse;font-family:var(--mono);font-size:.6rem">
+                <thead>
+                  <tr style="background:var(--surface2)">
+                    <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer" onclick="snfSort('artist')">ARTIST</th>
+                    <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer" onclick="snfSort('title')">TITLE</th>
+                    <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer" onclick="snfSort('year')">YEAR</th>
+                    <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer" onclick="snfSort('peak')">PEAK</th>
+                    <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap">CHART</th>
+                    <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer" onclick="snfSort('status')">STATUS</th>
+                    <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap">ACTION</th>
+                  </tr>
+                </thead>
+                <tbody id="snf-tbody"></tbody>
+              </table>
+              <div id="snf-empty" style="text-align:center;padding:3rem;color:var(--muted2);font-family:var(--mono);font-size:.65rem;line-height:2">
+                NO RESULTS YET<br>
+                <span style="color:var(--border)">───────────────────────────</span><br>
+                Select your chart criteria and click FIND MISSING TRACKS
+              </div>
+            </div>
+            <!-- Load More -->
+            <div id="snf-load-more" style="text-align:center;padding:.75rem;display:none">
+              <button onclick="snfLoadMore()" style="padding:.4rem 1.2rem;background:var(--surface2);color:var(--gold);border:1px solid var(--gold);border-radius:5px;font-family:var(--mono);font-size:.65rem;cursor:pointer;letter-spacing:1px">LOAD MORE</button>
+              <span id="snf-load-count" style="font-family:var(--mono);font-size:.58rem;color:var(--muted);margin-left:.75rem"></span>
+            </div>
+          </div>
+
+          <!-- PROWLARR SEARCH MODAL -->
+          <div id="snf-prowlarr-panel" style="display:none;background:var(--surface);border:1px solid var(--gold);border-radius:10px;padding:1.25rem;margin-top:.5rem">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem">
+              <div>
+                <div style="font-family:var(--display);font-size:1rem;letter-spacing:1.5px;color:var(--gold)">PROWLARR RESULTS</div>
+                <div style="font-family:var(--mono);font-size:.55rem;color:var(--muted);margin-top:.15rem" id="snf-prowl-sub">Searching…</div>
+              </div>
+              <button onclick="snfCloseProwlarr()" style="background:none;border:none;color:var(--muted);font-size:1rem;cursor:pointer">✕</button>
+            </div>
+            <div id="snf-prowl-results" style="display:flex;flex-direction:column;gap:.5rem"></div>
+          </div>
+
+        </div>
       </div>
     </div>
 
@@ -1653,6 +1849,7 @@ function switchTab(name) {
   document.getElementById('vinylIcon').classList.toggle('spinning', ['retriever','sniffer','bloodhound','tracker'].includes(name));
   if (name === 'retriever') { checkRetrieverBanners(); loadCustomTags(); retInjectScrollNav(); }
   if (name === 'groomer') grmInit();
+  if (name === 'sniffer') snfInit();
   if (name === 'vet') vetInit();
 }
 function checkRetrieverBanners() {
@@ -1834,6 +2031,8 @@ async function loadAllStatuses() {
     }
     refreshAllDots();
   } catch {}
+  // Load sniffer download path into Kennel UI
+  loadSnifferPath();
 }
 
 // PATH TRANSLATOR — BUG-005 fixed
@@ -4313,6 +4512,366 @@ function startResize(e, name) {
   });
 })();
 
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  THE SNIFFER
+// ══════════════════════════════════════════════════════════════════════════════
+
+let snfCurrentMode = 'gap';
+let snfResults = [];
+let snfCurrentFilter = 'all';
+let snfOffset = 0;
+let snfTotal = 0;
+const SNF_PAGE = 500;
+let _snfSortKey = 'peak';
+let _snfSortAsc = true;
+let _snfTrendingPage = 1;
+
+function snfSetMode(mode) {
+  snfCurrentMode = mode;
+  const isGap = mode === 'gap';
+  document.getElementById('snf-mode-gap').style.background = isGap ? 'var(--gold)' : 'var(--surface2)';
+  document.getElementById('snf-mode-gap').style.color = isGap ? '#000' : 'var(--muted)';
+  document.getElementById('snf-mode-gap').style.border = isGap ? 'none' : '1px solid var(--border)';
+  document.getElementById('snf-mode-trending').style.background = isGap ? 'var(--surface2)' : 'var(--gold)';
+  document.getElementById('snf-mode-trending').style.color = isGap ? 'var(--muted)' : '#000';
+  document.getElementById('snf-mode-trending').style.border = isGap ? '1px solid var(--border)' : 'none';
+  document.getElementById('snf-gap-section').style.display = isGap ? 'flex' : 'none';
+  document.getElementById('snf-gap-section').style.flexDirection = 'column';
+  document.getElementById('snf-gap-section').style.gap = '1rem';
+  document.getElementById('snf-trending-section').style.display = isGap ? 'none' : 'block';
+  document.getElementById('snf-btn-search').textContent = isGap ? '\ud83d\udd0d FIND MISSING TRACKS' : '\ud83d\udd25 FIND TRENDING';
+}
+
+function snfLog(msg, type='') {
+  const el = document.getElementById('snf-log');
+  if (!el) return;
+  const color = type==='ok'?'var(--green)':type==='err'?'var(--red)':type==='warn'?'var(--amber)':'var(--muted)';
+  el.innerHTML += '<div style="color:'+color+'">'+msg+'</div>';
+  el.scrollTop = el.scrollHeight;
+}
+
+function snfGetSelectedCharts() {
+  const map = {
+    'snf-hot100':'hot100','snf-adultpop':'adultpop','snf-ac':'ac','snf-uk':'uk',
+    'snf-country':'country','snf-rnb':'rnb','snf-rock':'rock','snf-dance':'dance',
+  };
+  return Object.entries(map).filter(([id])=>document.getElementById(id)?.checked).map(([,v])=>v);
+}
+
+function snfUpdateYearMin(v) { document.getElementById('snf-year-min-display').textContent = v; }
+function snfUpdateYearMax(v) { document.getElementById('snf-year-max-display').textContent = v; }
+function snfUpdatePeak(v) {
+  document.getElementById('snf-peak-display').textContent = v == 1 ? '#1 Only' : 'Top ' + v;
+}
+
+async function snfRunAnalysis() {
+  if (snfCurrentMode === 'gap') await snfGapAnalysis();
+  else await snfTrending();
+}
+
+async function snfGapAnalysis(append) {
+  const charts = snfGetSelectedCharts();
+  if (!charts.length) { toast('Select at least one chart.', 'warn'); return; }
+  if (!append) { snfOffset = 0; snfResults = []; }
+  const yearMin = parseInt(document.getElementById('snf-year-min').value);
+  const yearMax = parseInt(document.getElementById('snf-year-max').value);
+  const peakMax = parseInt(document.getElementById('snf-peak').value);
+  snfLog('Searching ' + charts.length + ' chart(s) \u00b7 ' + yearMin + '\u2013' + yearMax + ' \u00b7 peak \u2264 #' + peakMax + '\u2026', 'info');
+  document.getElementById('snf-status-title').textContent = 'SEARCHING\u2026';
+  document.getElementById('snf-btn-search').disabled = true;
+  try {
+    const r = await fetch(API + '/api/sniffer/gap-analysis', {
+      method:'POST', headers:authHdrs(),
+      body: JSON.stringify({ charts, min_year: yearMin, max_year: yearMax, min_peak: 1, max_peak: peakMax, limit: SNF_PAGE, offset: snfOffset }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || 'HTTP ' + r.status);
+    snfTotal = d.total || 0;
+    snfResults = append ? snfResults.concat(d.results || []) : (d.results || []);
+    snfOffset += (d.results || []).length;
+    document.getElementById('snf-s-total').textContent = snfTotal.toLocaleString();
+    document.getElementById('snf-s-owned').textContent = (d.owned || 0).toLocaleString();
+    document.getElementById('snf-s-missing').textContent = (d.missing || 0).toLocaleString();
+    document.getElementById('snf-status-title').textContent = 'ANALYSIS COMPLETE';
+    document.getElementById('snf-status-sub').textContent = snfTotal.toLocaleString() + ' chart entries \u00b7 ' + (d.owned||0).toLocaleString() + ' owned \u00b7 ' + (d.missing||0).toLocaleString() + ' missing';
+    snfRenderResults();
+    snfUpdateLoadMore();
+    snfLog('\u2713 Found ' + snfTotal.toLocaleString() + ' entries \u2014 ' + (d.missing||0).toLocaleString() + ' missing', 'ok');
+  } catch(e) {
+    snfLog('\u2717 ' + e.message, 'err');
+    document.getElementById('snf-status-title').textContent = 'ERROR';
+  }
+  document.getElementById('snf-btn-search').disabled = false;
+}
+
+async function snfTrending(append) {
+  const tag = document.getElementById('snf-trending-tag').value;
+  if (!append) { snfResults = []; snfOffset = 0; _snfTrendingPage = 1; }
+  snfLog('Fetching trending ' + tag + ' tracks (page ' + _snfTrendingPage + ')\u2026', 'info');
+  document.getElementById('snf-status-title').textContent = 'SEARCHING\u2026';
+  document.getElementById('snf-btn-search').disabled = true;
+  try {
+    const r = await fetch(API + '/api/sniffer/trending', {
+      method:'POST', headers:authHdrs(),
+      body: JSON.stringify({ tag, limit: 200, page: _snfTrendingPage }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || 'HTTP ' + r.status);
+    const newResults = (d.results || []).map(function(t) {
+      return Object.assign({}, t, { chart_name: 'trending', chart_display: 'Trending', peak_position: null, weeks_on_chart: null, chart_year: null });
+    });
+    snfResults = append ? snfResults.concat(newResults) : newResults;
+    snfTotal = snfResults.length;
+    snfOffset = snfResults.length;
+    document.getElementById('snf-s-total').textContent = snfTotal.toLocaleString();
+    document.getElementById('snf-s-owned').textContent = (d.owned||0).toLocaleString();
+    document.getElementById('snf-s-missing').textContent = (d.missing||0).toLocaleString();
+    document.getElementById('snf-status-title').textContent = 'TRENDING RESULTS';
+    document.getElementById('snf-status-sub').textContent = snfTotal + ' trending ' + tag + ' tracks \u00b7 page ' + _snfTrendingPage;
+    snfRenderResults();
+    // Show load more for trending pagination
+    const lm = document.getElementById('snf-load-more');
+    if (newResults.length >= 100) { lm.style.display = 'block'; document.getElementById('snf-load-count').textContent = 'Load page ' + (_snfTrendingPage + 1); }
+    else { lm.style.display = 'none'; }
+    snfLog('\u2713 Found ' + newResults.length + ' trending tracks', 'ok');
+  } catch(e) {
+    snfLog('\u2717 ' + e.message, 'err');
+    document.getElementById('snf-status-title').textContent = 'ERROR';
+  }
+  document.getElementById('snf-btn-search').disabled = false;
+}
+
+function snfLoadMore() {
+  if (snfCurrentMode === 'gap') snfGapAnalysis(true);
+  else { _snfTrendingPage++; snfTrending(true); }
+}
+
+function snfUpdateLoadMore() {
+  const el = document.getElementById('snf-load-more');
+  const rem = Math.max(0, snfTotal - snfOffset);
+  if (rem > 0 && snfCurrentMode === 'gap') {
+    el.style.display = 'block';
+    document.getElementById('snf-load-count').textContent = rem.toLocaleString() + ' remaining';
+  } else if (snfCurrentMode !== 'trending') { el.style.display = 'none'; }
+}
+
+function snfRenderResults() {
+  const tbody = document.getElementById('snf-tbody');
+  const empty = document.getElementById('snf-empty');
+  tbody.innerHTML = '';
+  let data = snfResults.slice();
+  const sortFns = { artist: function(r){return (r.artist||'').toLowerCase()}, title: function(r){return (r.title||'').toLowerCase()}, year: function(r){return r.chart_year||0}, peak: function(r){return r.peak_position||999}, status: function(r){return r.in_library?1:0} };
+  const fn = sortFns[_snfSortKey] || sortFns.peak;
+  data.sort(function(a,b) { const av=fn(a), bv=fn(b); if(av<bv)return _snfSortAsc?-1:1; if(av>bv)return _snfSortAsc?1:-1; return 0; });
+  if (!data.length) { empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+  data.forEach(function(r, idx) {
+    const tr = document.createElement('tr');
+    tr.dataset.status = r.in_library ? 'owned' : 'missing';
+    tr.dataset.text = ((r.artist||'') + ' ' + (r.title||'')).toLowerCase();
+    tr.style.borderBottom = '1px solid var(--border)';
+    if (snfCurrentFilter === 'missing' && r.in_library) tr.style.display = 'none';
+    if (snfCurrentFilter === 'owned' && !r.in_library) tr.style.display = 'none';
+    const statusHTML = r.in_library ? '<span style="color:var(--green)">\u2705 Owned</span>' : '<span style="color:var(--red)">\u274c Missing</span>';
+    const peakHTML = r.peak_position ? '<span style="font-family:var(--display);font-size:1rem;color:var(--amber)">#'+r.peak_position+'</span>' : '<span style="color:var(--muted2)">\u2014</span>';
+    const chartBadge = r.chart_display ? '<span style="font-size:.5rem;padding:.1rem .35rem;border-radius:8px;background:rgba(245,166,35,.1);border:1px solid rgba(245,166,35,.25);color:var(--gold);white-space:nowrap">'+esc(r.chart_display)+'</span>' : '\u2014';
+    const listenersHTML = r.listeners ? '<span style="font-size:.55rem;color:var(--muted2);margin-left:.35rem">('+(r.listeners/1000).toFixed(0)+'k)</span>' : '';
+    const actionHTML = r.in_library ? '' : '<button onclick="snfSearchTrack('+idx+')" style="padding:.25rem .6rem;background:var(--surface2);color:var(--gold);border:1px solid var(--gold);border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer;letter-spacing:.5px;white-space:nowrap">\ud83d\udd0d SEARCH</button>';
+    tr.innerHTML = '<td style="padding:.45rem .75rem;color:var(--muted)">'+esc(r.artist||'')+'</td><td style="padding:.45rem .75rem;color:var(--text)">'+esc(r.title||'')+listenersHTML+'</td><td style="padding:.45rem .75rem;color:var(--muted)">'+(r.chart_year||'\u2014')+'</td><td style="padding:.45rem .75rem">'+peakHTML+'</td><td style="padding:.45rem .75rem">'+chartBadge+'</td><td style="padding:.45rem .75rem">'+statusHTML+'</td><td style="padding:.45rem .75rem">'+actionHTML+'</td>';
+    tbody.appendChild(tr);
+  });
+}
+
+function snfSort(key) {
+  if (_snfSortKey === key) _snfSortAsc = !_snfSortAsc;
+  else { _snfSortKey = key; _snfSortAsc = true; }
+  snfRenderResults();
+}
+
+function snfFilterView(filter) {
+  snfCurrentFilter = filter;
+  ['all','missing','owned'].forEach(function(f) {
+    const btn = document.getElementById('snf-filter-' + f);
+    if (!btn) return;
+    if (f === filter) {
+      btn.style.background = f==='all'?'var(--gold)':f==='missing'?'rgba(248,113,113,.2)':'rgba(74,222,128,.2)';
+      btn.style.color = f==='all'?'#000':f==='missing'?'var(--red)':'var(--green)';
+      btn.style.border = f==='all'?'none':f==='missing'?'1px solid var(--red)':'1px solid var(--green)';
+    } else {
+      btn.style.background = 'var(--surface2)';
+      btn.style.color = f==='all'?'var(--muted)':f==='missing'?'var(--red)':'var(--green)';
+      btn.style.border = '1px solid var(--border)';
+    }
+  });
+  document.querySelectorAll('#snf-tbody tr').forEach(function(tr) {
+    if (filter === 'all') tr.style.display = '';
+    else if (filter === 'missing') tr.style.display = tr.dataset.status === 'missing' ? '' : 'none';
+    else if (filter === 'owned') tr.style.display = tr.dataset.status === 'owned' ? '' : 'none';
+  });
+}
+
+function snfFilterText(q) {
+  const lq = q.toLowerCase();
+  document.querySelectorAll('#snf-tbody tr').forEach(function(tr) {
+    const textMatch = (tr.dataset.text||'').includes(lq);
+    const filterMatch = snfCurrentFilter === 'all' || tr.dataset.status === snfCurrentFilter;
+    tr.style.display = (textMatch && filterMatch) ? '' : 'none';
+  });
+}
+
+// \u2500\u2500 Prowlarr Search \u2500\u2500
+async function snfSearchTrack(idx) {
+  const track = snfResults[idx];
+  if (!track) return;
+  const panel = document.getElementById('snf-prowlarr-panel');
+  panel.style.display = 'block';
+  document.getElementById('snf-prowl-sub').textContent = 'Searching albums by: ' + track.artist;
+  document.getElementById('snf-prowl-results').innerHTML = '<div style="text-align:center;padding:1rem;color:var(--muted);font-family:var(--mono);font-size:.6rem">\ud83d\udd0d Searching Prowlarr for albums by ' + esc(track.artist) + '\u2026</div>';
+  panel.scrollIntoView({behavior:'smooth'});
+  snfLog('\ud83d\udd0d Searching Prowlarr for albums by: ' + track.artist, 'info');
+  try {
+    const r = await fetch(API + '/api/sniffer/search', {
+      method:'POST', headers:authHdrs(),
+      body: JSON.stringify({ artist: track.artist, title: track.title, album: null }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || 'HTTP ' + r.status);
+    const results = d.results || [];
+    if (!results.length) {
+      document.getElementById('snf-prowl-results').innerHTML = '<div style="text-align:center;padding:1rem;color:var(--muted2);font-family:var(--mono);font-size:.6rem">No results with seeds found for ' + esc(track.artist) + '.</div>';
+      snfLog('\u2717 No results for ' + track.artist, 'warn');
+      return;
+    }
+    snfLog('\u2713 Found ' + results.length + ' result(s)', 'ok');
+    window._snfProwlResults = results;
+    document.getElementById('snf-prowl-sub').textContent = results.length + ' result(s) for: ' + track.artist;
+    document.getElementById('snf-prowl-results').innerHTML = results.map(function(r, i) {
+      const sizeMB = r.size_mb || 0;
+      const sizeStr = sizeMB > 1024 ? (sizeMB/1024).toFixed(1) + ' GB' : sizeMB + ' MB';
+      return '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:.65rem .85rem;display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">'
+        + '<div style="flex:1;min-width:200px">'
+        + '<div style="font-size:.68rem;color:var(--text);margin-bottom:.25rem;word-break:break-all">' + esc(r.title||'') + '</div>'
+        + '<div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">'
+        + '<span style="font-size:.52rem;color:var(--muted)">' + esc(r.indexer||'') + '</span>'
+        + '<span style="font-size:.52rem;color:var(--muted)">' + sizeStr + '</span>'
+        + '</div></div>'
+        + '<div style="text-align:center;min-width:50px">'
+        + '<div style="font-family:var(--display);font-size:1.1rem;color:var(--green)">' + (r.seeders||0) + '</div>'
+        + '<div style="font-size:.45rem;color:var(--muted);letter-spacing:.5px">SEEDS</div></div>'
+        + '<div style="display:flex;gap:.35rem;flex-wrap:wrap">'
+        + '<button onclick="snfGrabGet(' + i + ')" style="padding:.3rem .6rem;background:var(--gold);color:#000;border:none;border-radius:4px;font-family:var(--mono);font-size:.58rem;cursor:pointer" title="Send to qBittorrent">\u2b07 GET</button>'
+        + (r.info_url ? '<a href="' + esc(r.info_url) + '" target="_blank" rel="noopener" style="display:inline-block;padding:.3rem .6rem;background:var(--surface3);color:var(--teal);border:1px solid var(--teal);border-radius:4px;font-family:var(--mono);font-size:.58rem;cursor:pointer;text-decoration:none" title="Open source page">\u2197 OPEN</a>' : '')
+        + '<button onclick="snfCopyMagnet(' + i + ')" style="padding:.3rem .6rem;background:var(--surface3);color:var(--purple);border:1px solid var(--purple);border-radius:4px;font-family:var(--mono);font-size:.58rem;cursor:pointer" title="Copy download URL">\ud83d\udd17 MAGNET</button>'
+        + '</div></div>';
+    }).join('');
+  } catch(e) {
+    document.getElementById('snf-prowl-results').innerHTML = '<div style="text-align:center;padding:1rem;color:var(--red);font-family:var(--mono);font-size:.6rem">\u2717 ' + esc(e.message) + '</div>';
+    snfLog('\u2717 Search failed: ' + e.message, 'err');
+  }
+}
+
+async function snfGrabGet(resultIdx) {
+  const result = window._snfProwlResults?.[resultIdx];
+  if (!result) return;
+  snfLog('\u2b07 Sending to qBittorrent: ' + result.title, 'info');
+  try {
+    const r = await fetch(API + '/api/sniffer/grab', {
+      method:'POST', headers:authHdrs(),
+      body: JSON.stringify({ download_url: result.download_url, title: result.title, indexer: result.indexer || '' }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || 'HTTP ' + r.status);
+    snfLog('\u2713 ' + d.message, 'ok');
+    toast(d.message, 'ok');
+  } catch(e) {
+    snfLog('\u2717 Grab failed: ' + e.message, 'err');
+    toast('Grab failed: ' + e.message, 'error');
+  }
+}
+
+function snfCopyMagnet(resultIdx) {
+  const result = window._snfProwlResults?.[resultIdx];
+  if (!result || !result.download_url) { snfLog('No URL available', 'err'); return; }
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(result.download_url);
+    } else {
+      const ta = document.createElement('textarea');
+      ta.value = result.download_url;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+    snfLog('\u2713 Download URL copied to clipboard', 'ok');
+    toast('URL copied to clipboard', 'ok');
+  } catch(e) {
+    snfLog('\u2717 Copy failed: ' + e.message, 'err');
+  }
+}
+
+function snfCloseProwlarr() {
+  document.getElementById('snf-prowlarr-panel').style.display = 'none';
+}
+
+function snfInit() {
+  // Dynamic year range from static DB
+  fetch(API + '/api/sniffer/year-range', {headers:authHdrs()})
+    .then(function(r){return r.json()}).then(function(d) {
+      const minEl = document.getElementById('snf-year-min');
+      const maxEl = document.getElementById('snf-year-max');
+      const curYear = new Date().getFullYear();
+      if (minEl && d.min_year) minEl.min = d.min_year;
+      if (maxEl) { maxEl.max = curYear; maxEl.value = curYear; }
+      snfUpdateYearMax(curYear);
+    }).catch(function(){});
+  snfInjectScrollNav();
+}
+
+function snfInjectScrollNav() {
+  if (document.getElementById('snf-scroll-nav')) return;
+  const scroller = document.querySelector('.content-area') || document.documentElement;
+  const nav = document.createElement('div');
+  nav.id = 'snf-scroll-nav';
+  nav.style.cssText = 'position:fixed;right:1.5rem;bottom:5rem;z-index:500;display:flex;flex-direction:column;gap:.4rem;opacity:0;transition:opacity .3s;pointer-events:none;';
+  const btnStyle = 'width:36px;height:36px;border-radius:50%;background:var(--surface2);border:1px solid var(--border2);color:var(--gold);font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;line-height:1;';
+  nav.innerHTML = '<button style="' + btnStyle + '" title="Scroll to top" onclick="(document.querySelector(\'.content-area\')||document.documentElement).scrollTo({top:0,behavior:\'smooth\'})">↑</button><button style="' + btnStyle + '" title="Scroll to bottom" onclick="(document.querySelector(\'.content-area\')||document.documentElement).scrollTo({top:99999,behavior:\'smooth\'})">↓</button>';
+  document.body.appendChild(nav);
+  scroller.addEventListener('scroll', function() {
+    var show = scroller.scrollTop > 200;
+    nav.style.opacity = show ? '1' : '0';
+    nav.style.pointerEvents = show ? 'auto' : 'none';
+  }, {passive:true});
+}
+
+// \u2500\u2500 Kennel: Sniffer Download Path \u2500\u2500
+async function saveSnifferPath() {
+  const path = document.getElementById('cSnifferPath')?.value?.trim();
+  if (!path) { setFeedback('snifferpath', 'Enter a download path.', 'error'); return; }
+  try {
+    const r = await fetch(API + '/api/kennel/save-sniffer-path', {
+      method:'POST', headers:authHdrs(),
+      body: JSON.stringify({ download_path: path }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || 'Save failed');
+    setFeedback('snifferpath', '\u2713 Download path saved.', 'ok');
+    toast('Sniffer download path saved.', 'ok');
+  } catch(e) { setFeedback('snifferpath', '\u2717 ' + e.message, 'error'); }
+}
+
+async function loadSnifferPath() {
+  try {
+    const r = await fetch(API + '/api/kennel/sniffer-path', {headers:authHdrs()});
+    if (!r.ok) return;
+    const d = await r.json();
+    if (d.download_path) {
+      const el = document.getElementById('cSnifferPath');
+      if (el) el.value = d.download_path;
+    }
+  } catch(e) {}
+}
 
 // ══════════════════════════════════════════════════════════════════════════════
 //  THE VETERINARIAN
