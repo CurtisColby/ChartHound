@@ -395,22 +395,40 @@ async def grab(req: GrabRequest, _=Depends(require_auth)):
         if not r.is_success:
             raise HTTPException(502, f"qBittorrent add failed: {r.status_code}")
 
-    # Fire-and-forget background task to checkmark files
-    asyncio.create_task(_background_checkmark(base, pwd, extra))
+        # Grab the hash of the torrent we just added
+        await asyncio.sleep(1)  # give qBit a moment to register it
+        tr = await client.get(f"{base}/api/v2/torrents/info",
+            params={"category": "charthound-music", "sort": "added_on",
+                    "reverse": "true", "limit": "1"},
+            cookies=cookies)
+        t_hash = ""
+        if tr.is_success and tr.json():
+            t_hash = tr.json()[0].get("hash", "")
+
+    # Fire-and-forget background task with specific hash
+    asyncio.create_task(_background_checkmark(base, pwd, extra, t_hash, req.title or ""))
 
     return {"ok": True, "client": "qbittorrent", "title": req.title,
             "category": "charthound-music",
             "message": "Torrent added to qBittorrent — files will start downloading shortly"}
 
 
-async def _background_checkmark(base: str, password: str, extra: dict):
+async def _background_checkmark(base: str, password: str, extra: dict,
+                                t_hash: str = "", title: str = ""):
     """
-    Background task: retries setting all files to priority 1 (checkmarked)
-    every 5 seconds for up to 60 seconds. This is the API equivalent of
-    clicking the checkbox next to the album in qBittorrent's file list.
-    Without this, qBit sometimes treats all-unchecked torrents as "complete"
-    and moves them to seeding with zero bytes downloaded.
+    Background task: targets a specific torrent hash.
+    Phase 1 — Metadata wait: if files list is empty, force-resume to trigger
+              metadata fetch from peers, retry until files appear.
+    Phase 2 — Checkmark: set all files to priority 1 (Normal) and force-resume.
+    Retries every 5 seconds for up to 60 seconds (12 attempts).
+    If metadata never resolves, logs a warning so the user knows it's dead.
     """
+    label = title or t_hash[:12] or "unknown"
+
+    if not t_hash:
+        log.warning(f"Checkmark: no hash captured for '{label}' — cannot track")
+        return
+
     for attempt in range(12):
         await asyncio.sleep(5)
         try:
@@ -418,33 +436,35 @@ async def _background_checkmark(base: str, password: str, extra: dict):
                 sid = await _qbt_login(client, base, extra, password)
                 cookies = {"SID": sid}
 
-                # Find most recently added charthound-music torrent
+                # Check torrent progress directly by hash
                 tr = await client.get(f"{base}/api/v2/torrents/info",
-                    params={"category": "charthound-music", "sort": "added_on",
-                            "reverse": "true", "limit": "1"},
-                    cookies=cookies)
+                    params={"hashes": t_hash}, cookies=cookies)
                 if not (tr.is_success and tr.json()):
+                    log.info(f"Checkmark: torrent {t_hash[:8]} not found, attempt {attempt+1}/12")
                     continue
 
                 torrent = tr.json()[0]
-                t_hash = torrent.get("hash", "")
                 progress = torrent.get("progress", 0)
-                if not t_hash:
-                    continue
 
                 # Already downloading/seeding with actual data — done
                 if progress > 0.01:
-                    log.info(f"Checkmark OK: {t_hash[:8]} at {progress*100:.0f}%")
+                    log.info(f"Checkmark OK: '{label}' ({t_hash[:8]}) at {progress*100:.0f}%")
                     return
 
                 # Get file list
                 fr = await client.get(f"{base}/api/v2/torrents/files",
                     params={"hash": t_hash}, cookies=cookies)
-                if not (fr.is_success and isinstance(fr.json(), list) and len(fr.json()) > 0):
-                    log.info(f"Checkmark: no files yet, attempt {attempt+1}/12")
+                files = fr.json() if (fr.is_success and isinstance(fr.json(), list)) else []
+
+                if not files:
+                    # No metadata yet — force resume to trigger peer connection
+                    await client.post(f"{base}/api/v2/torrents/resume",
+                        data={"hashes": t_hash}, cookies=cookies)
+                    log.info(f"Checkmark: '{label}' ({t_hash[:8]}) no files yet (metadata pending), "
+                             f"force-resumed, attempt {attempt+1}/12")
                     continue
 
-                files = fr.json()
+                # Files exist — set all to priority 1
                 has_unchecked = any(f.get("priority", 0) == 0 for f in files)
 
                 if has_unchecked:
@@ -452,18 +472,19 @@ async def _background_checkmark(base: str, password: str, extra: dict):
                     pr = await client.post(f"{base}/api/v2/torrents/filePrio",
                         data={"hash": t_hash, "id": all_ids, "priority": "1"},
                         cookies=cookies)
-                    log.info(f"Checkmark: set {len(files)} files to Normal — {pr.status_code}")
+                    log.info(f"Checkmark: '{label}' set {len(files)} files to Normal — {pr.status_code}")
 
                 # Force resume
                 await client.post(f"{base}/api/v2/torrents/resume",
                     data={"hashes": t_hash}, cookies=cookies)
-                log.info(f"Checkmark: force-started {t_hash[:8]} on attempt {attempt+1}")
+                log.info(f"Checkmark: '{label}' ({t_hash[:8]}) started on attempt {attempt+1}")
                 return
 
         except Exception as e:
-            log.warning(f"Checkmark attempt {attempt+1} error: {e}")
+            log.warning(f"Checkmark attempt {attempt+1} error for '{label}': {e}")
 
-    log.warning("Checkmark: gave up after 60s — check qBittorrent manually")
+    log.warning(f"Checkmark: '{label}' ({t_hash[:8]}) failed to resolve metadata after 60s "
+                f"— torrent may be dead/fake. Remove it from qBittorrent manually.")
 
 
 async def _qbt_login(client: httpx.AsyncClient, base: str, extra: dict, password: str) -> str:

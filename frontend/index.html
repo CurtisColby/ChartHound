@@ -1272,17 +1272,8 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
             </div>
           </div>
 
-          <!-- PROWLARR SEARCH MODAL -->
-          <div id="snf-prowlarr-panel" style="display:none;background:var(--surface);border:1px solid var(--gold);border-radius:10px;padding:1.25rem;margin-top:.5rem">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem">
-              <div>
-                <div style="font-family:var(--display);font-size:1rem;letter-spacing:1.5px;color:var(--gold)">PROWLARR RESULTS</div>
-                <div style="font-family:var(--mono);font-size:.55rem;color:var(--muted);margin-top:.15rem" id="snf-prowl-sub">Searching…</div>
-              </div>
-              <button onclick="snfCloseProwlarr()" style="background:none;border:none;color:var(--muted);font-size:1rem;cursor:pointer">✕</button>
-            </div>
-            <div id="snf-prowl-results" style="display:flex;flex-direction:column;gap:.5rem"></div>
-          </div>
+          <!-- PROWLARR MULTI-CARD CONTAINER -->
+          <div id="snf-prowlarr-cards" style="display:flex;flex-direction:column;gap:.5rem;margin-top:.5rem"></div>
 
         </div>
       </div>
@@ -4720,35 +4711,83 @@ function snfFilterText(q) {
   });
 }
 
-// \u2500\u2500 Prowlarr Search \u2500\u2500
+// ── Prowlarr Multi-Card Search ──
+var _snfCardCounter = 0;
+var _snfCards = {}; // cardId -> { artist, results[] }
+
 async function snfSearchTrack(idx) {
   const track = snfResults[idx];
   if (!track) return;
-  const panel = document.getElementById('snf-prowlarr-panel');
-  panel.style.display = 'block';
-  document.getElementById('snf-prowl-sub').textContent = 'Searching albums by: ' + track.artist;
-  document.getElementById('snf-prowl-results').innerHTML = '<div style="text-align:center;padding:1rem;color:var(--muted);font-family:var(--mono);font-size:.6rem">\ud83d\udd0d Searching Prowlarr for albums by ' + esc(track.artist) + '\u2026</div>';
-  panel.scrollIntoView({behavior:'smooth'});
+  const artistKey = (track.artist||'').toLowerCase().trim();
+  const container = document.getElementById('snf-prowlarr-cards');
+
+  // If card for this artist already exists, expand it and scroll to it
+  var existingId = null;
+  Object.keys(_snfCards).forEach(function(cid) {
+    if (_snfCards[cid].artist === artistKey) existingId = cid;
+  });
+  if (existingId) {
+    var existingCard = document.getElementById(existingId);
+    if (existingCard) {
+      var body = existingCard.querySelector('.snf-card-body');
+      if (body) body.style.display = 'flex';
+      var minBtn = existingCard.querySelector('.snf-card-min');
+      if (minBtn) minBtn.textContent = '\u2212';
+      existingCard.style.padding = '1.25rem';
+      existingCard.scrollIntoView({behavior:'smooth'});
+      return;
+    }
+  }
+
+  _snfCardCounter++;
+  var cardId = 'snf-card-' + _snfCardCounter;
+  _snfCards[cardId] = { artist: artistKey, results: [] };
+
+  var card = document.createElement('div');
+  card.id = cardId;
+  card.style.cssText = 'background:var(--surface);border:1px solid var(--gold);border-radius:10px;padding:1.25rem;';
+
+  card.innerHTML =
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem">'
+    + '<div>'
+    + '<div style="font-family:var(--display);font-size:1rem;letter-spacing:1.5px;color:var(--gold)">PROWLARR RESULTS</div>'
+    + '<div style="font-family:var(--mono);font-size:.55rem;color:var(--muted);margin-top:.15rem" id="' + cardId + '-sub">Searching albums by: ' + esc(track.artist) + '</div>'
+    + '</div>'
+    + '<div style="display:flex;gap:.35rem">'
+    + '<button class="snf-card-min" onclick="snfToggleCard(\'' + cardId + '\')" style="background:none;border:none;color:var(--muted);font-size:1.1rem;cursor:pointer;line-height:1" title="Minimize">\u2212</button>'
+    + '<button onclick="snfCloseCard(\'' + cardId + '\')" style="background:none;border:none;color:var(--muted);font-size:1rem;cursor:pointer;line-height:1" title="Close">\u2715</button>'
+    + '</div>'
+    + '</div>'
+    + '<div class="snf-card-body" style="display:flex;flex-direction:column;gap:.5rem">'
+    + '<div style="text-align:center;padding:1rem;color:var(--muted);font-family:var(--mono);font-size:.6rem">\ud83d\udd0d Searching Prowlarr for albums by ' + esc(track.artist) + '\u2026</div>'
+    + '</div>';
+
+  container.appendChild(card);
+  card.scrollIntoView({behavior:'smooth'});
   snfLog('\ud83d\udd0d Searching Prowlarr for albums by: ' + track.artist, 'info');
+
   try {
-    const r = await fetch(API + '/api/sniffer/search', {
+    var r = await fetch(API + '/api/sniffer/search', {
       method:'POST', headers:authHdrs(),
       body: JSON.stringify({ artist: track.artist, title: track.title, album: null }),
     });
-    const d = await r.json();
+    var d = await r.json();
     if (!r.ok) throw new Error(d.detail || 'HTTP ' + r.status);
-    const results = d.results || [];
+    var results = d.results || [];
+    _snfCards[cardId].results = results;
+    var bodyEl = card.querySelector('.snf-card-body');
+    var subEl = document.getElementById(cardId + '-sub');
+
     if (!results.length) {
-      document.getElementById('snf-prowl-results').innerHTML = '<div style="text-align:center;padding:1rem;color:var(--muted2);font-family:var(--mono);font-size:.6rem">No results with seeds found for ' + esc(track.artist) + '.</div>';
+      bodyEl.innerHTML = '<div style="text-align:center;padding:1rem;color:var(--muted2);font-family:var(--mono);font-size:.6rem">No results with seeds found for ' + esc(track.artist) + '.</div>';
       snfLog('\u2717 No results for ' + track.artist, 'warn');
       return;
     }
     snfLog('\u2713 Found ' + results.length + ' result(s)', 'ok');
-    window._snfProwlResults = results;
-    document.getElementById('snf-prowl-sub').textContent = results.length + ' result(s) for: ' + track.artist;
-    document.getElementById('snf-prowl-results').innerHTML = results.map(function(r, i) {
-      const sizeMB = r.size_mb || 0;
-      const sizeStr = sizeMB > 1024 ? (sizeMB/1024).toFixed(1) + ' GB' : sizeMB + ' MB';
+    subEl.textContent = results.length + ' result(s) for: ' + track.artist;
+    bodyEl.innerHTML = results.map(function(r, i) {
+      var sizeMB = r.size_mb || 0;
+      var sizeStr = sizeMB > 1024 ? (sizeMB/1024).toFixed(1) + ' GB' : sizeMB + ' MB';
       return '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:.65rem .85rem;display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">'
         + '<div style="flex:1;min-width:200px">'
         + '<div style="font-size:.68rem;color:var(--text);margin-bottom:.25rem;word-break:break-all">' + esc(r.title||'') + '</div>'
@@ -4760,27 +4799,53 @@ async function snfSearchTrack(idx) {
         + '<div style="font-family:var(--display);font-size:1.1rem;color:var(--green)">' + (r.seeders||0) + '</div>'
         + '<div style="font-size:.45rem;color:var(--muted);letter-spacing:.5px">SEEDS</div></div>'
         + '<div style="display:flex;gap:.35rem;flex-wrap:wrap">'
-        + '<button onclick="snfGrabGet(' + i + ')" style="padding:.3rem .6rem;background:var(--gold);color:#000;border:none;border-radius:4px;font-family:var(--mono);font-size:.58rem;cursor:pointer" title="Send to qBittorrent">\u2b07 GET</button>'
+        + '<button onclick="snfGrabGet(\'' + cardId + '\',' + i + ')" style="padding:.3rem .6rem;background:var(--gold);color:#000;border:none;border-radius:4px;font-family:var(--mono);font-size:.58rem;cursor:pointer" title="Send to qBittorrent">\u2b07 GET</button>'
         + (r.info_url ? '<a href="' + esc(r.info_url) + '" target="_blank" rel="noopener" style="display:inline-block;padding:.3rem .6rem;background:var(--surface3);color:var(--teal);border:1px solid var(--teal);border-radius:4px;font-family:var(--mono);font-size:.58rem;cursor:pointer;text-decoration:none" title="Open source page">\u2197 OPEN</a>' : '')
-        + '<button onclick="snfCopyMagnet(' + i + ')" style="padding:.3rem .6rem;background:var(--surface3);color:var(--purple);border:1px solid var(--purple);border-radius:4px;font-family:var(--mono);font-size:.58rem;cursor:pointer" title="Copy download URL">\ud83d\udd17 MAGNET</button>'
+        + '<button onclick="snfCopyMagnet(\'' + cardId + '\',' + i + ')" style="padding:.3rem .6rem;background:var(--surface3);color:var(--purple);border:1px solid var(--purple);border-radius:4px;font-family:var(--mono);font-size:.58rem;cursor:pointer" title="Copy download URL">\ud83d\udd17 MAGNET</button>'
         + '</div></div>';
     }).join('');
   } catch(e) {
-    document.getElementById('snf-prowl-results').innerHTML = '<div style="text-align:center;padding:1rem;color:var(--red);font-family:var(--mono);font-size:.6rem">\u2717 ' + esc(e.message) + '</div>';
+    var bodyEl2 = card.querySelector('.snf-card-body');
+    bodyEl2.innerHTML = '<div style="text-align:center;padding:1rem;color:var(--red);font-family:var(--mono);font-size:.6rem">\u2717 ' + esc(e.message) + '</div>';
     snfLog('\u2717 Search failed: ' + e.message, 'err');
   }
 }
 
-async function snfGrabGet(resultIdx) {
-  const result = window._snfProwlResults?.[resultIdx];
+function snfToggleCard(cardId) {
+  var card = document.getElementById(cardId);
+  if (!card) return;
+  var body = card.querySelector('.snf-card-body');
+  var btn = card.querySelector('.snf-card-min');
+  if (!body || !btn) return;
+  if (body.style.display === 'none') {
+    body.style.display = 'flex';
+    btn.textContent = '\u2212';
+    card.style.padding = '1.25rem';
+  } else {
+    body.style.display = 'none';
+    btn.textContent = '+';
+    card.style.padding = '.6rem 1.25rem';
+  }
+}
+
+function snfCloseCard(cardId) {
+  var card = document.getElementById(cardId);
+  if (card) card.remove();
+  delete _snfCards[cardId];
+}
+
+async function snfGrabGet(cardId, resultIdx) {
+  var cardData = _snfCards[cardId];
+  if (!cardData) return;
+  var result = cardData.results[resultIdx];
   if (!result) return;
   snfLog('\u2b07 Sending to qBittorrent: ' + result.title, 'info');
   try {
-    const r = await fetch(API + '/api/sniffer/grab', {
+    var r = await fetch(API + '/api/sniffer/grab', {
       method:'POST', headers:authHdrs(),
       body: JSON.stringify({ download_url: result.download_url, title: result.title, indexer: result.indexer || '' }),
     });
-    const d = await r.json();
+    var d = await r.json();
     if (!r.ok) throw new Error(d.detail || 'HTTP ' + r.status);
     snfLog('\u2713 ' + d.message, 'ok');
     toast(d.message, 'ok');
@@ -4790,14 +4855,16 @@ async function snfGrabGet(resultIdx) {
   }
 }
 
-function snfCopyMagnet(resultIdx) {
-  const result = window._snfProwlResults?.[resultIdx];
+function snfCopyMagnet(cardId, resultIdx) {
+  var cardData = _snfCards[cardId];
+  if (!cardData) return;
+  var result = cardData.results[resultIdx];
   if (!result || !result.download_url) { snfLog('No URL available', 'err'); return; }
   try {
     if (navigator.clipboard && window.isSecureContext) {
       navigator.clipboard.writeText(result.download_url);
     } else {
-      const ta = document.createElement('textarea');
+      var ta = document.createElement('textarea');
       ta.value = result.download_url;
       document.body.appendChild(ta);
       ta.select();
@@ -4809,10 +4876,6 @@ function snfCopyMagnet(resultIdx) {
   } catch(e) {
     snfLog('\u2717 Copy failed: ' + e.message, 'err');
   }
-}
-
-function snfCloseProwlarr() {
-  document.getElementById('snf-prowlarr-panel').style.display = 'none';
 }
 
 function snfInit() {
