@@ -6,17 +6,12 @@
 ## ACTIVE BUGS
 
 ### Kennel
-- **Emby/Jellyfin library selector "Poll error: Failed to fetch"** — Likely `ParentId` filter format issue when selecting specific libraries. Connection works, but library dropdown polling fails.
-
+- No Known bugs at this time.
 ### Retriever
-- **Local Folder scan freezes the container** — Blocking I/O on NAS mount locks the event loop. Needs `run_in_executor` wrapper.
-- **Auto-Pilot not writing tags** — Scan completes but tags are not written to files.
-- **Comment tag writing wrong data** — Comment field populated with incorrect content.
-- **Preview mode lacks Keep/Dismiss option** — No way for user to selectively keep or dismiss individual rows before writing.
+- No Known Bugs at this time.
 
 ### Sniffer / Bloodhound (Shared)
-- **Indexer name shows as "Indexer #60"** — Torznab results only have the indexer ID, not the human-readable name. Need to resolve ID → name from Prowlarr's `/api/v1/indexer` response.
-
+- No Known Bugs at this time.
 ---
 
 ## KNOWN QUIRKS (Not Bugs — By Design or Third-Party)
