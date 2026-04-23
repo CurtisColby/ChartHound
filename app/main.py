@@ -19,7 +19,7 @@ from app.config import get_settings
 from app.database import init_db, get_user_count
 from app.security import lockdown_status
 from app.models import HealthResponse
-from app.routers import auth, kennel, retriever, groomer, debug, sniffer, bloodhound
+from app.routers import auth, kennel, retriever, groomer, debug, sniffer, bloodhound, tracker
 
 logging.basicConfig(
     level=logging.INFO,
@@ -55,6 +55,9 @@ async def lifespan(app: FastAPI):
 
     await init_db()
 
+    # Start Tracker background loop if it was enabled
+    await tracker.tracker_startup()
+
     count = await get_user_count()
     status = lockdown_status(count)
     if status["lockdown_active"]:
@@ -74,7 +77,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="ChartHound",
-    description="Dockerized music metadata engine — MusicBrainz > iTunes > Last.fm",
+    description="Dockerized music metadata engine — The New World",
     version="1.0.0",
     lifespan=lifespan,
     docs_url="/api/docs",
@@ -96,7 +99,7 @@ app.include_router(groomer.router)
 app.include_router(debug.router)
 app.include_router(sniffer.router)
 app.include_router(bloodhound.router)
-# app.include_router(tracker.router)    # M8
+app.include_router(tracker.router)
 # app.include_router(scout.router)      # M9
 # app.include_router(lookout.router)    # M10
 
