@@ -540,7 +540,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
     </div>
     <div class="nav-spacer"></div>
     <div class="nav-heartbeat" id="navHeartbeat">⟳ —</div>
-    <div class="nav-version">v1.0.0 · MILESTONE 5</div>
+    <div class="nav-version">v1.0.0 · MILESTONE 8</div>
   </nav>
 
   <div class="content-area">
@@ -1736,11 +1736,149 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
 
     <!-- THE TRACKER -->
     <div class="tab-panel" id="panel-tracker">
-      <div class="placeholder-panel" style="--tab-color:var(--c6)">
-        <div class="ph-icon">🎯</div><div class="ph-title">THE TRACKER</div>
-        <div class="ph-tagline">RADARR / SONARR HUNTER</div>
-        <div class="ph-sub">Hunts missing movies and TV episodes automatically.<br>Reads Radarr and Sonarr want lists · Searches via Prowlarr.<br>ChartHound-Movies and ChartHound-TV categories.<br>Scheduled background hunting — runs while browser is closed.</div>
-        <div class="ph-coming">MILESTONE 8</div>
+      <div style="display:grid;grid-template-columns:300px 1fr;min-height:calc(100vh - 120px)">
+
+        <!-- LEFT PANEL -->
+        <div style="border-right:1px solid var(--border);padding:1.25rem;display:flex;flex-direction:column;gap:1rem;overflow-y:auto;background:var(--surface);">
+
+          <!-- MASTER TOGGLE -->
+          <div>
+            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--crimson);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">HUNT ENGINE<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
+            <button id="trk-toggle-btn" onclick="trkToggle()" style="width:100%;padding:.75rem;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:8px;font-family:var(--display);font-size:1.1rem;letter-spacing:2px;cursor:pointer;transition:all .3s">
+              ⏸ TRACKER OFF
+            </button>
+            <div id="trk-toggle-hint" style="font-family:var(--mono);font-size:.52rem;color:var(--muted2);text-align:center;margin-top:.35rem">Click to enable automatic hunting</div>
+          </div>
+
+          <!-- CONNECTIONS -->
+          <div>
+            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--crimson);margin-bottom:.5rem;display:flex;align-items:center;gap:.5rem">CONNECTIONS<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
+            <div style="display:flex;flex-direction:column;gap:.3rem">
+              <div style="display:flex;align-items:center;gap:.5rem;font-family:var(--mono);font-size:.6rem">
+                <span id="trk-radarr-dot" style="width:8px;height:8px;border-radius:50%;background:var(--muted2)"></span>
+                <span style="color:var(--muted)">Radarr</span>
+                <span id="trk-radarr-status" style="margin-left:auto;color:var(--muted2);font-size:.52rem">—</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:.5rem;font-family:var(--mono);font-size:.6rem">
+                <span id="trk-sonarr-dot" style="width:8px;height:8px;border-radius:50%;background:var(--muted2)"></span>
+                <span style="color:var(--muted)">Sonarr</span>
+                <span id="trk-sonarr-status" style="margin-left:auto;color:var(--muted2);font-size:.52rem">—</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- SYNC -->
+          <div>
+            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--crimson);margin-bottom:.5rem;display:flex;align-items:center;gap:.5rem">SYNC<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
+            <button onclick="trkSync()" style="width:100%;padding:.55rem;background:var(--crimson);color:#000;border:none;border-radius:6px;font-family:var(--mono);font-size:.65rem;letter-spacing:1px;cursor:pointer;transition:all .2s" id="trk-sync-btn">⟳ SYNC MISSING LISTS</button>
+            <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted2);margin-top:.3rem;text-align:center">Pull current missing items from Radarr &amp; Sonarr</div>
+          </div>
+
+          <!-- SETTINGS -->
+          <div>
+            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--crimson);margin-bottom:.5rem;display:flex;align-items:center;gap:.5rem">SETTINGS<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
+
+            <label style="font-family:var(--mono);font-size:.52rem;color:var(--muted);letter-spacing:1px;display:block;margin-bottom:.25rem">SEARCH INTERVAL (seconds)</label>
+            <input type="number" id="trk-interval" min="30" max="600" value="90" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:.72rem;padding:.4rem .6rem;outline:none;margin-bottom:.6rem" onchange="trkSaveSettings()">
+
+            <label style="font-family:var(--mono);font-size:.52rem;color:var(--muted);letter-spacing:1px;display:block;margin-bottom:.25rem">COOLDOWN (days before re-search)</label>
+            <input type="number" id="trk-cooldown" min="1" max="30" value="7" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:.72rem;padding:.4rem .6rem;outline:none;margin-bottom:.6rem" onchange="trkSaveSettings()">
+
+            <label style="font-family:var(--mono);font-size:.52rem;color:var(--muted);letter-spacing:1px;display:block;margin-bottom:.25rem">MAX SEARCHES PER DAY</label>
+            <input type="number" id="trk-max-daily" min="10" max="500" value="100" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:.72rem;padding:.4rem .6rem;outline:none;margin-bottom:.6rem" onchange="trkSaveSettings()">
+
+            <div style="display:flex;align-items:center;gap:.5rem;margin-top:.2rem">
+              <input type="checkbox" id="trk-logging" checked onchange="trkSaveSettings()" style="accent-color:var(--crimson)">
+              <label for="trk-logging" style="font-family:var(--mono);font-size:.55rem;color:var(--muted);cursor:pointer">Enable activity logging</label>
+            </div>
+          </div>
+
+          <!-- ACTIVITY LOG -->
+          <div style="flex:1;display:flex;flex-direction:column;min-height:0">
+            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--crimson);margin-bottom:.5rem;display:flex;align-items:center;gap:.5rem">
+              ACTIVITY LOG
+              <span style="flex:1;height:1px;background:var(--border);display:block"></span>
+              <button onclick="trkClearLog()" style="background:none;border:none;color:var(--muted2);font-family:var(--mono);font-size:.52rem;cursor:pointer;padding:.1rem .3rem;letter-spacing:.5px" title="Clear log">✕ CLEAR</button>
+            </div>
+            <div id="trk-log" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:.7rem;font-family:var(--mono);font-size:.55rem;color:var(--muted);flex:1;min-height:120px;max-height:220px;overflow-y:auto;line-height:1.8"></div>
+          </div>
+        </div>
+
+        <!-- RIGHT PANEL — Results -->
+        <div style="display:flex;flex-direction:column;padding:1.25rem 1.75rem;gap:1rem;overflow-y:auto">
+
+          <!-- STATS BAR -->
+          <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1rem 1.5rem">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.5rem">
+              <div style="font-family:var(--display);font-size:1.1rem;letter-spacing:1.5px" id="trk-status-title">THE TRACKER</div>
+              <div style="font-family:var(--mono);font-size:.58rem;color:var(--muted)" id="trk-status-sub">Sync to load missing items</div>
+            </div>
+            <div style="display:flex;gap:1.5rem;flex-wrap:wrap">
+              <div style="text-align:center;min-width:70px">
+                <div style="font-family:var(--display);font-size:1.6rem;color:var(--crimson)" id="trk-s-movies">0</div>
+                <div style="font-family:var(--mono);font-size:.48rem;color:var(--muted);letter-spacing:1px">MOVIES MISSING</div>
+              </div>
+              <div style="text-align:center;min-width:70px">
+                <div style="font-family:var(--display);font-size:1.6rem;color:var(--crimson)" id="trk-s-tv">0</div>
+                <div style="font-family:var(--mono);font-size:.48rem;color:var(--muted);letter-spacing:1px">EPISODES MISSING</div>
+              </div>
+              <div style="text-align:center;min-width:70px">
+                <div style="font-family:var(--display);font-size:1.6rem;color:var(--green)" id="trk-s-found">0</div>
+                <div style="font-family:var(--mono);font-size:.48rem;color:var(--muted);letter-spacing:1px">FOUND</div>
+              </div>
+              <div style="text-align:center;min-width:70px">
+                <div style="font-family:var(--display);font-size:1.6rem;color:var(--amber)" id="trk-s-today">0</div>
+                <div style="font-family:var(--mono);font-size:.48rem;color:var(--muted);letter-spacing:1px">SEARCHED TODAY</div>
+              </div>
+              <div style="text-align:center;min-width:70px">
+                <div style="font-family:var(--display);font-size:1.6rem;color:var(--muted)" id="trk-s-skipped">0</div>
+                <div style="font-family:var(--mono);font-size:.48rem;color:var(--muted);letter-spacing:1px">SKIPPED</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- FILTER TABS -->
+          <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+            <button id="trk-f-all" onclick="trkFilter('all')" style="padding:.35rem .8rem;background:var(--crimson);color:#000;border:none;border-radius:5px;font-family:var(--mono);font-size:.62rem;cursor:pointer;letter-spacing:.5px">ALL</button>
+            <button id="trk-f-radarr" onclick="trkFilter('radarr')" style="padding:.35rem .8rem;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:5px;font-family:var(--mono);font-size:.62rem;cursor:pointer;letter-spacing:.5px">🎬 MOVIES</button>
+            <button id="trk-f-sonarr" onclick="trkFilter('sonarr')" style="padding:.35rem .8rem;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:5px;font-family:var(--mono);font-size:.62rem;cursor:pointer;letter-spacing:.5px">📺 TV</button>
+            <button id="trk-f-missing" onclick="trkFilter('missing')" style="padding:.35rem .8rem;background:var(--surface2);color:var(--red);border:1px solid var(--border);border-radius:5px;font-family:var(--mono);font-size:.62rem;cursor:pointer;letter-spacing:.5px">❌ MISSING</button>
+            <button id="trk-f-found" onclick="trkFilter('found')" style="padding:.35rem .8rem;background:var(--surface2);color:var(--green);border:1px solid var(--border);border-radius:5px;font-family:var(--mono);font-size:.62rem;cursor:pointer;letter-spacing:.5px">✅ FOUND</button>
+            <button id="trk-f-skipped" onclick="trkFilter('skipped')" style="padding:.35rem .8rem;background:var(--surface2);color:var(--amber);border:1px solid var(--border);border-radius:5px;font-family:var(--mono);font-size:.62rem;cursor:pointer;letter-spacing:.5px">⏭ SKIPPED</button>
+            <input type="text" placeholder="Filter by title…" id="trk-filter-text" oninput="trkTextFilter(this.value)" style="margin-left:auto;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:.65rem;padding:.35rem .6rem;outline:none;width:200px">
+          </div>
+
+          <!-- RESULTS TABLE -->
+          <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;flex:1">
+            <div style="overflow-x:auto">
+              <table style="width:100%;border-collapse:collapse;font-family:var(--mono);font-size:.6rem">
+                <thead>
+                  <tr style="background:var(--surface2)">
+                    <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap;width:50px">TYPE</th>
+                    <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border)">TITLE</th>
+                    <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap;width:55px">YEAR</th>
+                    <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap;width:75px">STATUS</th>
+                    <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap;width:60px">TRIES</th>
+                    <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap;width:130px">LAST SEARCHED</th>
+                    <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap;width:160px">ACTIONS</th>
+                  </tr>
+                </thead>
+                <tbody id="trk-tbody"></tbody>
+              </table>
+              <div id="trk-empty" style="text-align:center;padding:3rem;color:var(--muted2);font-family:var(--mono);font-size:.65rem;line-height:2">
+                NO ITEMS YET<br>
+                <span style="color:var(--border)">───────────────────────────</span><br>
+                Click SYNC MISSING LISTS to pull from Radarr &amp; Sonarr
+              </div>
+            </div>
+            <!-- Load More -->
+            <div id="trk-load-more" style="text-align:center;padding:.75rem;display:none">
+              <button onclick="trkLoadMore()" style="padding:.4rem 1.2rem;background:var(--surface2);color:var(--crimson);border:1px solid var(--crimson);border-radius:5px;font-family:var(--mono);font-size:.65rem;cursor:pointer;letter-spacing:1px">LOAD MORE</button>
+              <span id="trk-load-count" style="font-family:var(--mono);font-size:.58rem;color:var(--muted);margin-left:.75rem"></span>
+            </div>
+          </div>
+
+        </div>
       </div>
     </div>
 
@@ -2014,6 +2152,7 @@ function switchTab(name) {
   if (name === 'groomer') grmInit();
   if (name === 'sniffer') snfInit();
   if (name === 'bloodhound') bhInit();
+  if (name === 'tracker') trkInit();
   if (name === 'vet') vetInit();
 }
 function checkRetrieverBanners() {
@@ -5828,6 +5967,321 @@ async function dbgDownload() {
 // Stop auto-poll when leaving debug tab
 const _origSwitchTab = switchTab;
 // Patch switchTab to stop debug poll when leaving
+// ══════════════════════════════════════════════════════════════════════════════
+//  THE TRACKER — Radarr / Sonarr Missing Media Hunter
+// ══════════════════════════════════════════════════════════════════════════════
+
+var _trkItems = [];
+var _trkFilter = 'all';
+var _trkTextFilter = '';
+var _trkOffset = 0;
+var _trkTotal = 0;
+var _trkPollTimer = null;
+var _trkInitDone = false;
+
+function trkInit() {
+  if (!_trkInitDone) {
+    _trkInitDone = true;
+  }
+  trkRefreshStatus();
+  trkLoadItems();
+  trkLoadLog();
+  // Poll status every 15s while on tracker tab
+  clearInterval(_trkPollTimer);
+  _trkPollTimer = setInterval(function() {
+    var panel = document.getElementById('panel-tracker');
+    if (panel && panel.classList.contains('active')) {
+      trkRefreshStatus();
+    } else {
+      clearInterval(_trkPollTimer);
+    }
+  }, 15000);
+}
+
+async function trkRefreshStatus() {
+  try {
+    var r = await fetch(API + '/api/tracker/status', { headers: authHdrs() });
+    var d = await r.json();
+    if (!r.ok) return;
+
+    // Toggle button
+    var btn = document.getElementById('trk-toggle-btn');
+    var hint = document.getElementById('trk-toggle-hint');
+    if (d.enabled) {
+      btn.style.background = 'var(--crimson)';
+      btn.style.color = '#000';
+      btn.style.border = 'none';
+      btn.innerHTML = '▶ TRACKER ON';
+      hint.textContent = d.hunt_loop_active ? 'Hunting in background…' : 'Enabled — loop starting…';
+      hint.style.color = 'var(--green)';
+    } else {
+      btn.style.background = 'var(--surface2)';
+      btn.style.color = 'var(--muted)';
+      btn.style.border = '1px solid var(--border)';
+      btn.innerHTML = '⏸ TRACKER OFF';
+      hint.textContent = 'Click to enable automatic hunting';
+      hint.style.color = 'var(--muted2)';
+    }
+
+    // Connection dots
+    var rdot = document.getElementById('trk-radarr-dot');
+    var rstat = document.getElementById('trk-radarr-status');
+    rdot.style.background = d.radarr_connected ? 'var(--green)' : 'var(--red)';
+    rstat.textContent = d.radarr_connected ? 'Connected' : 'Not configured';
+    rstat.style.color = d.radarr_connected ? 'var(--green)' : 'var(--red)';
+
+    var sdot = document.getElementById('trk-sonarr-dot');
+    var sstat = document.getElementById('trk-sonarr-status');
+    sdot.style.background = d.sonarr_connected ? 'var(--green)' : 'var(--red)';
+    sstat.textContent = d.sonarr_connected ? 'Connected' : 'Not configured';
+    sstat.style.color = d.sonarr_connected ? 'var(--green)' : 'var(--red)';
+
+    // Stats
+    document.getElementById('trk-s-movies').textContent = d.movies_missing || 0;
+    document.getElementById('trk-s-tv').textContent = d.tv_missing || 0;
+    document.getElementById('trk-s-found').textContent = (d.movies_found || 0) + (d.tv_found || 0);
+    document.getElementById('trk-s-today').textContent = d.searches_today || 0;
+    document.getElementById('trk-s-skipped').textContent = d.skipped || 0;
+
+    // Settings inputs
+    document.getElementById('trk-interval').value = d.interval_seconds || 90;
+    document.getElementById('trk-cooldown').value = d.cooldown_days || 7;
+    document.getElementById('trk-max-daily').value = d.max_daily || 100;
+    document.getElementById('trk-logging').checked = d.logging_enabled !== false;
+
+    // Status bar
+    var total_missing = (d.movies_missing || 0) + (d.tv_missing || 0);
+    document.getElementById('trk-status-sub').textContent = d.enabled
+      ? 'Hunting · ' + d.searches_today + '/' + (d.max_daily||100) + ' today · ' + total_missing + ' missing'
+      : total_missing > 0 ? total_missing + ' missing items — enable tracker to start hunting' : 'Sync to load missing items';
+
+  } catch(e) { /* silent */ }
+}
+
+async function trkToggle() {
+  try {
+    var r = await fetch(API + '/api/tracker/toggle', { method:'POST', headers:authHdrs() });
+    var d = await r.json();
+    if (!r.ok) { toast(d.detail || 'Toggle failed', 'error'); return; }
+    toast(d.enabled ? 'Tracker enabled — hunting started' : 'Tracker disabled', d.enabled ? 'ok' : 'info');
+    trkRefreshStatus();
+    trkLoadLog();
+  } catch(e) { toast('Toggle error: ' + e.message, 'error'); }
+}
+
+async function trkSync() {
+  var btn = document.getElementById('trk-sync-btn');
+  btn.textContent = '⟳ SYNCING…'; btn.disabled = true;
+  try {
+    var r = await fetch(API + '/api/tracker/sync', { method:'POST', headers:authHdrs() });
+    var d = await r.json();
+    if (!r.ok) { toast(d.detail || 'Sync failed', 'error'); return; }
+    var msg = 'Synced! Movies: +' + (d.radarr_new||0) + ' · TV: +' + (d.sonarr_new||0);
+    if (d.errors && d.errors.length) msg += ' (' + d.errors.join('; ') + ')';
+    toast(msg, d.errors && d.errors.length ? 'warn' : 'ok');
+    trkRefreshStatus();
+    trkLoadItems();
+    trkLoadLog();
+  } catch(e) { toast('Sync error: ' + e.message, 'error'); }
+  finally { btn.textContent = '⟳ SYNC MISSING LISTS'; btn.disabled = false; }
+}
+
+async function trkLoadItems() {
+  var params = new URLSearchParams({ limit: '200', offset: String(_trkOffset) });
+  // Apply source/status filters
+  if (_trkFilter === 'radarr') params.set('source', 'radarr');
+  else if (_trkFilter === 'sonarr') params.set('source', 'sonarr');
+  else if (_trkFilter === 'missing') params.set('status', 'missing');
+  else if (_trkFilter === 'found') params.set('status', 'found');
+  else if (_trkFilter === 'skipped') params.set('status', 'skipped');
+
+  try {
+    var r = await fetch(API + '/api/tracker/items?' + params, { headers: authHdrs() });
+    var d = await r.json();
+    if (!r.ok) return;
+    if (_trkOffset === 0) _trkItems = d.items || [];
+    else _trkItems = _trkItems.concat(d.items || []);
+    _trkTotal = d.total || 0;
+    trkRenderTable();
+  } catch(e) { /* silent */ }
+}
+
+function trkRenderTable() {
+  var tbody = document.getElementById('trk-tbody');
+  var empty = document.getElementById('trk-empty');
+  var loadMore = document.getElementById('trk-load-more');
+
+  // Apply text filter
+  var items = _trkItems;
+  if (_trkTextFilter) {
+    var q = _trkTextFilter.toLowerCase();
+    items = items.filter(function(it) { return (it.title||'').toLowerCase().indexOf(q) >= 0; });
+  }
+
+  if (!items.length) {
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+    loadMore.style.display = 'none';
+    return;
+  }
+
+  empty.style.display = 'none';
+  var html = '';
+  items.forEach(function(it) {
+    var typeIcon = it.source === 'radarr' ? '🎬' : '📺';
+    var statusColor = it.status === 'missing' ? 'var(--red)' : it.status === 'found' ? 'var(--green)' : it.status === 'skipped' ? 'var(--amber)' : 'var(--muted)';
+    var statusLabel = it.status === 'missing' ? '❌ Missing' : it.status === 'found' ? '✅ Found' : it.status === 'skipped' ? '⏭ Skipped' : it.status;
+    var lastSearched = it.last_searched ? it.last_searched.replace('T',' ').substring(0,16) : '—';
+    var year = it.year || '—';
+
+    var actions = '';
+    if (it.status === 'missing') {
+      actions += '<button onclick="trkSearchNow(' + it.item_id + ')" style="padding:.2rem .5rem;background:var(--crimson);color:#000;border:none;border-radius:4px;font-family:var(--mono);font-size:.52rem;cursor:pointer;margin-right:.25rem" title="Search now">🔍 SEARCH</button>';
+      actions += '<button onclick="trkSkip(' + it.item_id + ')" style="padding:.2rem .5rem;background:var(--surface2);color:var(--amber);border:1px solid var(--border);border-radius:4px;font-family:var(--mono);font-size:.52rem;cursor:pointer" title="Skip this item">⏭ SKIP</button>';
+    } else if (it.status === 'skipped') {
+      actions += '<button onclick="trkUnskip(' + it.item_id + ')" style="padding:.2rem .5rem;background:var(--surface2);color:var(--green);border:1px solid var(--border);border-radius:4px;font-family:var(--mono);font-size:.52rem;cursor:pointer" title="Resume searching">↩ UNSKIP</button>';
+    }
+
+    // Season skip button for sonarr items
+    if (it.source === 'sonarr' && it.season_number && it.status === 'missing') {
+      actions += ' <button onclick="trkSkipSeason(' + it.series_id + ',' + it.season_number + ')" style="padding:.2rem .5rem;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:4px;font-family:var(--mono);font-size:.48rem;cursor:pointer;margin-left:.15rem" title="Skip entire season ' + it.season_number + '">S' + it.season_number + ' SKIP</button>';
+    }
+
+    html += '<tr style="border-bottom:1px solid var(--border)">' +
+      '<td style="padding:.45rem .75rem;white-space:nowrap">' + typeIcon + '</td>' +
+      '<td style="padding:.45rem .75rem;color:var(--text);max-width:350px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(it.title) + '">' + esc(it.title) + '</td>' +
+      '<td style="padding:.45rem .75rem;color:var(--muted)">' + year + '</td>' +
+      '<td style="padding:.45rem .75rem;color:' + statusColor + '">' + statusLabel + '</td>' +
+      '<td style="padding:.45rem .75rem;color:var(--muted);text-align:center">' + (it.search_count || 0) + '</td>' +
+      '<td style="padding:.45rem .75rem;color:var(--muted2);font-size:.52rem">' + lastSearched + '</td>' +
+      '<td style="padding:.45rem .75rem">' + actions + '</td>' +
+    '</tr>';
+  });
+  tbody.innerHTML = html;
+
+  // Load more
+  if (_trkItems.length < _trkTotal) {
+    loadMore.style.display = 'block';
+    document.getElementById('trk-load-count').textContent = (_trkTotal - _trkItems.length) + ' remaining';
+  } else {
+    loadMore.style.display = 'none';
+  }
+}
+
+function trkLoadMore() {
+  _trkOffset = _trkItems.length;
+  trkLoadItems();
+}
+
+function trkFilter(f) {
+  _trkFilter = f;
+  _trkOffset = 0;
+  // Update button styles
+  ['all','radarr','sonarr','missing','found','skipped'].forEach(function(k) {
+    var btn = document.getElementById('trk-f-' + k);
+    if (!btn) return;
+    if (k === f) {
+      btn.style.background = 'var(--crimson)'; btn.style.color = '#000'; btn.style.border = 'none';
+    } else {
+      btn.style.background = 'var(--surface2)'; btn.style.border = '1px solid var(--border)';
+      var colors = {all:'var(--muted)',radarr:'var(--muted)',sonarr:'var(--muted)',missing:'var(--red)',found:'var(--green)',skipped:'var(--amber)'};
+      btn.style.color = colors[k] || 'var(--muted)';
+    }
+  });
+  trkLoadItems();
+}
+
+function trkTextFilter(val) {
+  _trkTextFilter = val;
+  trkRenderTable();
+}
+
+async function trkSearchNow(itemId) {
+  try {
+    var r = await fetch(API + '/api/tracker/search-now', {
+      method:'POST', headers:authHdrs(), body: JSON.stringify({ item_id: itemId })
+    });
+    var d = await r.json();
+    if (!r.ok) { toast(d.detail || 'Search failed', 'error'); return; }
+    toast(d.message || 'Search fired', 'ok');
+    trkLoadItems();
+    trkLoadLog();
+    trkRefreshStatus();
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+async function trkSkip(itemId) {
+  try {
+    await fetch(API + '/api/tracker/skip', {
+      method:'POST', headers:authHdrs(), body: JSON.stringify({ item_id: itemId })
+    });
+    trkLoadItems(); trkRefreshStatus();
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+async function trkUnskip(itemId) {
+  try {
+    await fetch(API + '/api/tracker/unskip', {
+      method:'POST', headers:authHdrs(), body: JSON.stringify({ item_id: itemId })
+    });
+    trkLoadItems(); trkRefreshStatus();
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+async function trkSkipSeason(seriesId, seasonNum) {
+  if (!confirm('Skip all missing episodes in Season ' + seasonNum + '? This allows later seasons to be searched.')) return;
+  try {
+    await fetch(API + '/api/tracker/skip-season', {
+      method:'POST', headers:authHdrs(),
+      body: JSON.stringify({ series_id: seriesId, season_number: seasonNum })
+    });
+    toast('Season ' + seasonNum + ' skipped', 'ok');
+    trkLoadItems(); trkRefreshStatus();
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+async function trkSaveSettings() {
+  try {
+    await fetch(API + '/api/tracker/settings', {
+      method:'POST', headers:authHdrs(),
+      body: JSON.stringify({
+        interval_seconds: parseInt(document.getElementById('trk-interval').value) || 90,
+        cooldown_days: parseInt(document.getElementById('trk-cooldown').value) || 7,
+        max_daily: parseInt(document.getElementById('trk-max-daily').value) || 100,
+        logging_enabled: document.getElementById('trk-logging').checked,
+      })
+    });
+  } catch(e) { /* silent save */ }
+}
+
+async function trkLoadLog() {
+  try {
+    var r = await fetch(API + '/api/tracker/log?limit=50', { headers: authHdrs() });
+    var d = await r.json();
+    if (!r.ok) return;
+    var el = document.getElementById('trk-log');
+    var html = '';
+    var entries = d.entries || [];
+    // Show newest first (already sorted desc by API)
+    entries.forEach(function(e) {
+      var colors = {sync:'var(--blue)',search:'var(--crimson)',found:'var(--green)',skip:'var(--amber)',error:'var(--red)',toggle:'var(--purple)'};
+      var color = colors[e.action] || 'var(--muted)';
+      var time = (e.created_at || '').substring(11,16) || '';
+      var icon = {sync:'⟳',search:'🔍',found:'✅',skip:'⏭',error:'⚠',toggle:'⏻'}[e.action] || '·';
+      html += '<div style="color:' + color + '">' + icon + ' <span style="color:var(--muted2)">' + time + '</span> ' + esc(e.title||'') + ' — ' + esc(e.detail||e.action) + '</div>';
+    });
+    el.innerHTML = html || '<div style="color:var(--muted2)">No log entries yet</div>';
+  } catch(e) { /* silent */ }
+}
+
+async function trkClearLog() {
+  try {
+    await fetch(API + '/api/tracker/clear-log', { method:'POST', headers:authHdrs() });
+    document.getElementById('trk-log').innerHTML = '<div style="color:var(--muted2)">Log cleared</div>';
+  } catch(e) { /* silent */ }
+}
+
+// Stop tracker poll when leaving tab
 window._dbgTabPatch = true;
 
 </script>
