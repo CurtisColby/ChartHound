@@ -52,6 +52,7 @@ _DYNAMIC_DB = getattr(settings, "database_url", "/data/charthound.db")
 # Background loop handle — so we can cancel on toggle-off
 _hunt_task: Optional[asyncio.Task] = None
 _hunt_running = False
+_last_search_source = "sonarr"  # Start sonarr so first pick tries radarr
 
 # ── Defaults ──
 _DEFAULT_INTERVAL   = 90       # seconds between search commands
@@ -491,21 +492,34 @@ async def _hunt_loop():
 
 async def _pick_next_item() -> Optional[dict]:
     """
-    Pick the next missing item to search, respecting cooldowns and smart ordering.
-
-    Priority order:
-    1. Movies (Radarr) — oldest added first
-    2. TV (Sonarr) — earliest season first, earliest episode first
-       - Skip episodes whose season is blocked by an earlier missing season
-         (unless the earlier season is user-skipped)
+    Pick the next missing item to search, alternating between Radarr and Sonarr
+    so neither source starves the other. Respects cooldowns and smart TV ordering.
     """
-    now = _now_iso()
-    cooldown_days = int(await _get_setting("tracker_cooldown", str(_DEFAULT_COOLDOWN)))
+    global _last_search_source
 
+    # Alternate: if last was radarr, try sonarr first (and vice versa)
+    if _last_search_source == "radarr":
+        order = ["sonarr", "radarr"]
+    else:
+        order = ["radarr", "sonarr"]
+
+    for source in order:
+        if source == "radarr":
+            item = await _pick_radarr_item()
+        else:
+            item = await _pick_sonarr_item()
+        if item:
+            _last_search_source = source
+            return item
+
+    return None
+
+
+async def _pick_radarr_item() -> Optional[dict]:
+    """Pick the next eligible missing Radarr movie."""
+    now = _now_iso()
     async with aiosqlite.connect(_DYNAMIC_DB) as db:
         db.row_factory = aiosqlite.Row
-
-        # ── Try a Radarr movie first ──
         async with db.execute("""
             SELECT * FROM tracker_items
             WHERE source='radarr' AND status='missing'
@@ -514,11 +528,18 @@ async def _pick_next_item() -> Optional[dict]:
             LIMIT 1
         """, (now,)) as cur:
             row = await cur.fetchone()
-            if row:
-                return dict(row)
+            return dict(row) if row else None
 
-        # ── Then try Sonarr episodes ──
-        # Get all missing sonarr items, grouped by series
+
+async def _pick_sonarr_item() -> Optional[dict]:
+    """
+    Pick the next eligible missing Sonarr episode.
+    Earliest season first — won't search season 3 if season 2 is still missing
+    (unless the earlier season is user-skipped).
+    """
+    now = _now_iso()
+    async with aiosqlite.connect(_DYNAMIC_DB) as db:
+        db.row_factory = aiosqlite.Row
         async with db.execute("""
             SELECT * FROM tracker_items
             WHERE source='sonarr' AND status='missing'
@@ -527,55 +548,53 @@ async def _pick_next_item() -> Optional[dict]:
         """, (now,)) as cur:
             all_eps = [dict(r) async for r in cur]
 
-        if not all_eps:
-            return None
-
-        # Group by series
-        series_map: dict[int, list] = {}
-        for ep in all_eps:
-            sid = ep["series_id"]
-            if sid not in series_map:
-                series_map[sid] = []
-            series_map[sid].append(ep)
-
-        # For each series, find the earliest eligible episode
-        for sid, eps in sorted(series_map.items()):
-            # Find the earliest missing season
-            seasons_present = set()
-            for ep in eps:
-                seasons_present.add(ep["season_number"])
-
-            sorted_seasons = sorted(seasons_present)
-
-            for season_num in sorted_seasons:
-                # Check if an earlier season is still missing and NOT skipped
-                blocked = False
-                for earlier_season in sorted_seasons:
-                    if earlier_season >= season_num:
-                        break
-                    # Check if earlier season has any missing (non-skipped) episodes
-                    earlier_missing = [
-                        e for e in eps
-                        if e["season_number"] == earlier_season
-                        and e["status"] == "missing"
-                        and not e.get("skipped_season", 0)
-                    ]
-                    if earlier_missing:
-                        blocked = True
-                        break
-
-                if blocked:
-                    continue
-
-                # Find first eligible episode in this season
-                season_eps = [e for e in eps if e["season_number"] == season_num
-                              and not e.get("skipped_season", 0)]
-                if season_eps:
-                    # Pick the one with fewest search attempts
-                    season_eps.sort(key=lambda x: (x["search_count"], x["episode_number"]))
-                    return season_eps[0]
-
+    if not all_eps:
         return None
+
+    # Group by series
+    series_map: dict[int, list] = {}
+    for ep in all_eps:
+        sid = ep["series_id"]
+        if sid not in series_map:
+            series_map[sid] = []
+        series_map[sid].append(ep)
+
+    # For each series, find the earliest eligible episode
+    for sid, eps in sorted(series_map.items()):
+        seasons_present = set()
+        for ep in eps:
+            seasons_present.add(ep["season_number"])
+
+        sorted_seasons = sorted(seasons_present)
+
+        for season_num in sorted_seasons:
+            # Check if an earlier season is still missing and NOT skipped
+            blocked = False
+            for earlier_season in sorted_seasons:
+                if earlier_season >= season_num:
+                    break
+                earlier_missing = [
+                    e for e in eps
+                    if e["season_number"] == earlier_season
+                    and e["status"] == "missing"
+                    and not e.get("skipped_season", 0)
+                ]
+                if earlier_missing:
+                    blocked = True
+                    break
+
+            if blocked:
+                continue
+
+            # Find first eligible episode in this season
+            season_eps = [e for e in eps if e["season_number"] == season_num
+                          and not e.get("skipped_season", 0)]
+            if season_eps:
+                # Pick the one with fewest search attempts
+                season_eps.sort(key=lambda x: (x["search_count"], x["episode_number"]))
+                return season_eps[0]
+
+    return None
 
 
 async def _execute_search(item: dict):
