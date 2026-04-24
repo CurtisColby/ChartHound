@@ -238,7 +238,7 @@ The Tracker monitors your Radarr and Sonarr libraries for missing movies and TV 
 - **Smart TV ordering** — searches for the earliest missing season first; won't look for season 3 if season 2 is still missing
 - **Season search** — when an entire season is missing, fires a single SeasonSearch instead of individual episode searches
 - **Cooldown system** — won't re-search the same unfindable item until the cooldown expires (default 7 days)
-- **Daily cap** — limits total searches per day to prevent overloading (default 100)
+- **Daily cap** — limits total searches per day to prevent overloading (default 20 or 60 on moderate mode) Adds Jitter between searches so it doesnt look like a bot but like a human doing the searches.
 - **Manual override** — skip a stuck season to allow later seasons to be searched, or manually trigger a search for any specific item
 - **Activity log** — tracks every search, sync, and error with timestamps
 - **Runs in background** — continues hunting even when the browser is closed, survives container restarts
