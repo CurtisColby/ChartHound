@@ -66,6 +66,30 @@ body::before{content:'';position:fixed;inset:0;background-image:url("data:image/
 .login-donate a{color:var(--gold-dim);text-decoration:none;}
 .login-donate a:hover{color:var(--gold);}
 
+/* SUPPORT BUTTON — warm gradient, catches the eye */
+.support-btn{display:inline-flex;align-items:center;gap:.4rem;padding:.4rem .85rem;background:linear-gradient(135deg,#f5a623 0%,#fb7185 100%);color:#1a1612;border:none;border-radius:6px;font-family:var(--mono);font-size:.62rem;font-weight:700;letter-spacing:1.2px;cursor:pointer;transition:all .2s;box-shadow:0 2px 8px rgba(245,166,35,.25);}
+.support-btn:hover{transform:translateY(-1px);box-shadow:0 4px 14px rgba(245,166,35,.4);}
+.support-btn.compact{padding:.3rem .65rem;font-size:.55rem;}
+
+/* DONATION MODAL */
+#donationModal{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:5000;display:flex;align-items:center;justify-content:center;padding:1rem;}
+#donationModal.hidden{display:none;}
+.donation-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;width:100%;max-width:460px;max-height:88vh;overflow-y:auto;display:flex;flex-direction:column;padding:1.5rem 1.75rem;}
+.donation-card h2{font-family:var(--display);font-size:1.4rem;letter-spacing:2px;color:var(--gold);margin:0 0 .25rem;}
+.donation-sub{font-family:var(--mono);font-size:.6rem;color:var(--muted);line-height:1.7;margin-bottom:1.25rem;}
+.donation-option{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.85rem 1rem;margin-bottom:.7rem;transition:border-color .2s;}
+.donation-option:hover{border-color:var(--gold-dim);}
+.donation-option-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:.4rem;}
+.donation-option-title{font-family:var(--display);font-size:.9rem;letter-spacing:1.5px;color:var(--text);display:flex;align-items:center;gap:.45rem;}
+.donation-addr{font-family:var(--mono);font-size:.58rem;color:var(--muted);background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:.45rem .6rem;word-break:break-all;line-height:1.5;cursor:pointer;transition:all .15s;}
+.donation-addr:hover{color:var(--text);border-color:var(--gold-dim);}
+.donation-addr.copied{color:var(--green);border-color:var(--green);}
+.donation-btn{display:inline-block;padding:.4rem .8rem;background:var(--surface);border:1px solid var(--gold-dim);color:var(--gold);text-decoration:none;font-family:var(--mono);font-size:.58rem;letter-spacing:1px;border-radius:5px;transition:all .2s;}
+.donation-btn:hover{background:var(--gold);color:#000;}
+.donation-close{position:absolute;top:1rem;right:1rem;background:none;border:1px solid var(--border);color:var(--muted);font-family:var(--mono);font-size:.65rem;padding:.25rem .55rem;border-radius:4px;cursor:pointer;}
+.donation-close:hover{color:var(--red);border-color:var(--red);}
+.donation-foot{font-family:var(--mono);font-size:.55rem;color:var(--muted2);text-align:center;margin-top:.75rem;line-height:1.7;}
+
 /* WIZARD */
 #wizardOverlay{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:4000;display:flex;align-items:center;justify-content:center;}
 #wizardOverlay.hidden{display:none;}
@@ -256,6 +280,12 @@ input[readonly]{color:var(--muted);cursor:not-allowed;}
 .conn-card-dot.error{background:var(--red);box-shadow:0 0 8px var(--red);}
 .conn-card-dot.spin{background:var(--gold);animation:dotPulse .8s ease infinite;}
 .conn-card-dot.warn{background:var(--amber);box-shadow:0 0 8px var(--amber);}
+/* Rollup — collapsed state hides body, leaves only header visible */
+.conn-card.collapsed{padding:.65rem 1.1rem;}
+.conn-card.collapsed .conn-card-header{margin-bottom:0;}
+.conn-card.collapsed > *:not(.conn-card-header){display:none;}
+.conn-collapse-btn{background:none;border:1px solid var(--border);color:var(--muted);font-family:var(--mono);font-size:.58rem;padding:.2rem .55rem;border-radius:4px;cursor:pointer;letter-spacing:1px;transition:all .15s;margin-left:.5rem;}
+.conn-collapse-btn:hover{color:var(--purple);border-color:var(--purple);}
 .conn-verified{font-family:var(--mono);font-size:.52rem;color:var(--muted);}
 .conn-verified.ok{color:var(--green);} .conn-verified.error{color:var(--red);}
 .conn-btn-row{display:flex;gap:.4rem;margin-top:.3rem;}
@@ -350,7 +380,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
   <div class="login-card">
     <div class="login-logo"><div class="login-logo-icon"></div><h1>CHARTHOUND</h1></div>
     <div class="login-sub">THE NEW WORLD · v1.0</div>
-    <div class="login-credit">Developed by Colby R. Curtis · <a href="https://buymeacoffee.com/colbycurtis" target="_blank">☕ Buy Me a Coffee</a> · Claude.ai code support</div>
+    <div class="login-credit">Developed by Colby R. Curtis · Claude.ai code support</div>
     <label class="login-label" for="loginUser">USERNAME</label>
     <input class="login-input" type="text" id="loginUser" placeholder="your username" autocomplete="username">
     <label class="login-label" for="loginPass">PASSWORD</label>
@@ -358,8 +388,55 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
     <button class="login-btn" id="loginBtn" onclick="doLogin()">ENTER THE KENNEL</button>
     <div class="login-err" id="loginErr"></div>
     <div class="login-toggle hidden" id="registerToggle" onclick="toggleAuthMode()" style="font-size:.75rem;color:var(--gold);margin-top:1.25rem;font-weight:600;letter-spacing:1px">↓ CREATE YOUR ACCOUNT</div>
-    <div class="login-donate"><a href="https://buymeacoffee.com/colbycurtis" target="_blank">☕ buymeacoffee.com/colbycurtis</a>
-    <!-- CRYPTO WALLET: · BTC: YOUR_WALLET_HERE -->
+    <div class="login-donate">
+      <button class="support-btn" onclick="openDonationModal()">💝 SUPPORT CHARTHOUND</button>
+    </div>
+  </div>
+</div>
+
+<!-- DONATION MODAL -->
+<div id="donationModal" class="hidden" onclick="if(event.target===this)closeDonationModal()">
+  <div class="donation-card" style="position:relative">
+    <button class="donation-close" onclick="closeDonationModal()">✕ CLOSE</button>
+    <h2>💝 SUPPORT CHARTHOUND</h2>
+    <div class="donation-sub">
+      ChartHound is free and self-hosted. If it's earned a spot in your stack and you'd like to fuel more development, here are three ways to help.
+    </div>
+
+    <!-- Buy Me a Coffee -->
+    <div class="donation-option">
+      <div class="donation-option-head">
+        <div class="donation-option-title">☕ BUY ME A COFFEE</div>
+        <a class="donation-btn" href="https://buymeacoffee.com/colbycurtis" target="_blank" rel="noopener">OPEN ↗</a>
+      </div>
+      <div style="font-family:var(--mono);font-size:.57rem;color:var(--muted);line-height:1.6">One-time tip via card or Apple Pay — opens in a new tab.</div>
+    </div>
+
+    <!-- Bitcoin -->
+    <div class="donation-option">
+      <div class="donation-option-head">
+        <div class="donation-option-title">₿ BITCOIN</div>
+        <span style="font-family:var(--mono);font-size:.52rem;color:var(--muted2);letter-spacing:1px">BTC · NATIVE SEGWIT</span>
+      </div>
+      <div class="donation-addr" id="btcAddr" onclick="copyDonationAddr('btcAddr','bc1qdr9j5al9qq29cskrjxvm4myzq4se4c3kk6p8hv')" title="Click to copy">
+        bc1qdr9j5al9qq29cskrjxvm4myzq4se4c3kk6p8hv
+      </div>
+    </div>
+
+    <!-- Ethereum -->
+    <div class="donation-option">
+      <div class="donation-option-head">
+        <div class="donation-option-title">Ξ ETHEREUM</div>
+        <span style="font-family:var(--mono);font-size:.52rem;color:var(--muted2);letter-spacing:1px">ETH · ERC-20 OK</span>
+      </div>
+      <div class="donation-addr" id="ethAddr" onclick="copyDonationAddr('ethAddr','0x60D4519eA1CcBAB149403e232C54468572f783C7')" title="Click to copy">
+        0x60D4519eA1CcBAB149403e232C54468572f783C7
+      </div>
+    </div>
+
+    <div class="donation-foot">
+      Click an address to copy. Always double-check the first & last 4 characters before sending.<br>
+      Thanks for keeping the lights on. — Colby
     </div>
   </div>
 </div>
@@ -479,8 +556,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
   <div class="header-titles">
     <h1>CHARTHOUND</h1>
     <div class="header-sub">THE NEW WORLD · METADATA ENGINE</div>
-    <div class="header-credit">Developed by Colby R. Curtis · <a href="https://buymeacoffee.com/colbycurtis" target="_blank">☕ Buy Me a Coffee</a> · Claude.ai code support
-    <!-- CRYPTO: · BTC: YOUR_WALLET_HERE -->
+    <div class="header-credit">Developed by Colby R. Curtis · <button class="support-btn compact" onclick="openDonationModal()" style="vertical-align:middle">💝 SUPPORT</button> · Claude.ai code support
     </div>
   </div>
   <div class="header-right">
@@ -594,9 +670,9 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
                 🔐 Fernet (AES-128-CBC) encryption before SQLite write.<br>
                 🔒 /register locked after first user.<br>
                 🚫 Tokens never returned to the browser.<br>
-                ⟳ Heartbeat re-checks connections every 60s.<br>
-                🐕 <a href="https://buymeacoffee.com/colbycurtis" target="_blank" style="color:var(--gold-dim);text-decoration:none">buymeacoffee.com/colbycurtis</a>
+                ⟳ Heartbeat re-checks connections every 60s.
               </p>
+              <button class="support-btn compact" onclick="openDonationModal()" style="margin-top:.4rem">💝 SUPPORT CHARTHOUND</button>
             </div>
           </div>
         </div>
@@ -918,8 +994,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
             <div class="section-label sl-teal">MAINTENANCE</div>
             <button class="btn btn-outline" onclick="clearCache()" style="font-size:.7rem;font-family:var(--mono);letter-spacing:.5px">🗑 CLEAR METADATA CACHE</button>
             <p style="font-family:var(--mono);font-size:.56rem;color:var(--muted);line-height:1.7;margin-top:.4rem">Clears SQLite cache. Next scan fetches fresh data from MusicBrainz · Last.fm · Discogs · Deezer · ListenBrainz.</p>
-            <button class="btn btn-red" onclick="confirmClearDatabase()" style="font-size:.7rem;font-family:var(--mono);letter-spacing:.5px;margin-top:.5rem">⚠️ CLEAR FULL DATABASE</button>
-            <p style="font-family:var(--mono);font-size:.56rem;color:var(--muted);line-height:1.7;margin-top:.4rem">Removes ALL tracks, chart data, write logs and scan history from the database. Files on disk are not affected. Use this for a completely fresh start.</p>
+            <p style="font-family:var(--mono);font-size:.54rem;color:var(--muted2);line-height:1.7;margin-top:.4rem;font-style:italic">Need a full database wipe? It lives on The Veterinarian tab under Danger Zone.</p>
           </div>
         </div>
 
@@ -1868,7 +1943,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
                     <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap;width:55px">YEAR</th>
                     <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap;width:75px">STATUS</th>
                     <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap;width:60px">TRIES</th>
-                    <th onclick="trkToggleSortLastSearched()" style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap;width:150px;cursor:pointer;user-select:none" title="Click to cycle: never-searched first → oldest → newest"><span id="trk-sort-arrow">LAST SEARCHED ▲</span></th>
+                    <th onclick="trkToggleSortLastSearched()" style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap;width:150px;cursor:pointer;user-select:none" title="Click to cycle: newest → oldest → never-searched first"><span id="trk-sort-arrow">LAST SEARCHED ↓</span></th>
                     <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap;width:160px">ACTIONS</th>
                   </tr>
                 </thead>
@@ -3670,6 +3745,44 @@ function refreshAllDots() {
   }
   const navDot = document.getElementById('navDotKennel');
   if (navDot) navDot.className = `nav-conn-dot${(connState.plex||connState.emby||connState.jellyfin)?' ok':''}`;
+  // Inject rollup button + auto-collapse connected cards on first paint
+  injectConnRollupButtons();
+}
+
+// ── Kennel conn-card rollup ──
+var _connRollupInitDone = {};  // per-service: has user interacted? prevents auto-collapse override
+function injectConnRollupButtons() {
+  const cards = document.querySelectorAll('.conn-card[id^="connCard-"]');
+  cards.forEach(function(card) {
+    const service = card.id.replace('connCard-', '');
+    const header = card.querySelector('.conn-card-header');
+    if (!header) return;
+    let btn = header.querySelector('.conn-collapse-btn');
+    if (!btn) {
+      btn = document.createElement('button');
+      btn.className = 'conn-collapse-btn';
+      btn.onclick = function(e) { e.stopPropagation(); toggleConnCard(service); };
+      header.appendChild(btn);
+    }
+    // Auto-collapse connected cards on first render (only if user hasn't touched it)
+    if (!_connRollupInitDone[service]) {
+      if (connState[service]) {
+        card.classList.add('collapsed');
+      } else {
+        card.classList.remove('collapsed');
+      }
+      _connRollupInitDone[service] = true;
+    }
+    // Update button label based on current state
+    btn.textContent = card.classList.contains('collapsed') ? '▼ EXPAND' : '▲ COLLAPSE';
+  });
+}
+function toggleConnCard(service) {
+  const card = document.getElementById('connCard-' + service);
+  if (!card) return;
+  card.classList.toggle('collapsed');
+  const btn = card.querySelector('.conn-collapse-btn');
+  if (btn) btn.textContent = card.classList.contains('collapsed') ? '▼ EXPAND' : '▲ COLLAPSE';
 }
 
 // TOAST
@@ -3682,6 +3795,56 @@ function toast(msg, type='') {
   document.getElementById('toastWrap').appendChild(el);
   setTimeout(() => { if (el.parentNode) el.remove(); }, 4200);
 }
+
+// ── DONATION MODAL ──
+function openDonationModal() {
+  const m = document.getElementById('donationModal');
+  if (m) m.classList.remove('hidden');
+}
+function closeDonationModal() {
+  const m = document.getElementById('donationModal');
+  if (m) m.classList.add('hidden');
+}
+async function copyDonationAddr(elId, addr) {
+  const el = document.getElementById(elId);
+  let ok = false;
+  // Try modern clipboard API first (works on HTTPS + localhost)
+  if (navigator.clipboard && window.isSecureContext) {
+    try { await navigator.clipboard.writeText(addr); ok = true; } catch(e) { ok = false; }
+  }
+  // Fallback for HTTP: use a hidden textarea + execCommand
+  if (!ok) {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = addr;
+      ta.style.position = 'fixed';
+      ta.style.top = '-9999px';
+      document.body.appendChild(ta);
+      ta.select();
+      ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+    } catch(e) { ok = false; }
+  }
+  if (ok && el) {
+    const orig = el.textContent.trim();
+    el.classList.add('copied');
+    el.textContent = '✓ COPIED — ' + orig.substring(0, 8) + '…' + orig.substring(orig.length - 6);
+    toast('Address copied to clipboard', 'ok');
+    setTimeout(() => {
+      el.textContent = orig;
+      el.classList.remove('copied');
+    }, 2000);
+  } else {
+    toast('Copy failed — select the address and copy manually', 'error');
+  }
+}
+// ESC key closes donation modal
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    const m = document.getElementById('donationModal');
+    if (m && !m.classList.contains('hidden')) closeDonationModal();
+  }
+});
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
 // SUBFOLDER BROWSER
@@ -3872,7 +4035,9 @@ function retInjectScrollNav() {
       onclick="(document.querySelector('.content-area')||document.documentElement).scrollTo({top:99999,behavior:'smooth'})">↓</button>`;
   document.body.appendChild(nav);
   scroller.addEventListener('scroll', () => {
-    const show = scroller.scrollTop > 200;
+    const panel = document.getElementById('panel-retriever');
+    const tabActive = panel && panel.classList.contains('active');
+    const show = tabActive && scroller.scrollTop > 200;
     nav.style.opacity       = show ? '1'    : '0';
     nav.style.pointerEvents = show ? 'auto' : 'none';
   }, {passive:true});
@@ -3893,7 +4058,9 @@ function grmInjectScrollNav() {
       onclick="(document.querySelector('.content-area')||document.documentElement).scrollTo({top:99999,behavior:'smooth'})">↓</button>`;
   document.body.appendChild(nav);
   scroller.addEventListener('scroll', () => {
-    const show = scroller.scrollTop > 200;
+    const panel = document.getElementById('panel-groomer');
+    const tabActive = panel && panel.classList.contains('active');
+    const show = tabActive && scroller.scrollTop > 200;
     nav.style.opacity       = show ? '1'    : '0';
     nav.style.pointerEvents = show ? 'auto' : 'none';
   }, {passive:true});
@@ -5987,7 +6154,7 @@ var _trkOffset = 0;
 var _trkTotal = 0;
 var _trkPollTimer = null;
 var _trkInitDone = false;
-var _trkSortDir = 'never-first'; // 'never-first' | 'oldest-first' | 'newest-first'
+var _trkSortDir = 'newest-first'; // 'never-first' | 'oldest-first' | 'newest-first'
 
 function trkInit() {
   if (!_trkInitDone) {
@@ -6148,15 +6315,15 @@ async function trkLoadItems() {
 }
 
 function trkToggleSortLastSearched() {
-  // 3-way cycle: never-first → oldest-first → newest-first
-  if (_trkSortDir === 'never-first')      _trkSortDir = 'oldest-first';
-  else if (_trkSortDir === 'oldest-first') _trkSortDir = 'newest-first';
-  else                                     _trkSortDir = 'never-first';
+  // 3-way cycle: newest-first → oldest-first → never-first → back
+  if (_trkSortDir === 'newest-first')      _trkSortDir = 'oldest-first';
+  else if (_trkSortDir === 'oldest-first') _trkSortDir = 'never-first';
+  else                                     _trkSortDir = 'newest-first';
   var arrow = document.getElementById('trk-sort-arrow');
   if (arrow) {
     arrow.textContent = 'LAST SEARCHED ' +
-      (_trkSortDir === 'never-first'  ? '▲' :
-       _trkSortDir === 'oldest-first' ? '↑' : '↓');
+      (_trkSortDir === 'newest-first' ? '↓' :
+       _trkSortDir === 'oldest-first' ? '↑' : '▲');
   }
   trkRenderTable();
 }
