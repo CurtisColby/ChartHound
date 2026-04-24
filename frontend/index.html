@@ -1778,14 +1778,23 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
           <div>
             <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--crimson);margin-bottom:.5rem;display:flex;align-items:center;gap:.5rem">SETTINGS<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
 
-            <label style="font-family:var(--mono);font-size:.52rem;color:var(--muted);letter-spacing:1px;display:block;margin-bottom:.25rem">SEARCH INTERVAL (seconds)</label>
-            <input type="number" id="trk-interval" min="30" max="600" value="90" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:.72rem;padding:.4rem .6rem;outline:none;margin-bottom:.6rem" onchange="trkSaveSettings()">
+            <!-- MODE TOGGLE: Gentle / Moderate -->
+            <label style="font-family:var(--mono);font-size:.52rem;color:var(--muted);letter-spacing:1px;display:block;margin-bottom:.35rem">HUNT PACE</label>
+            <div style="display:flex;gap:0;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:2px;margin-bottom:.5rem">
+              <button id="trk-mode-gentle" onclick="trkSetMode('gentle')" style="flex:1;padding:.45rem;background:var(--crimson);color:#000;border:none;border-radius:4px;font-family:var(--mono);font-size:.58rem;letter-spacing:1px;cursor:pointer">🐢 GENTLE</button>
+              <button id="trk-mode-moderate" onclick="trkSetMode('moderate')" style="flex:1;padding:.45rem;background:transparent;color:var(--muted);border:none;border-radius:4px;font-family:var(--mono);font-size:.58rem;letter-spacing:1px;cursor:pointer">🐇 MODERATE</button>
+            </div>
+
+            <!-- INFO BANNER — why only two modes -->
+            <div style="background:rgba(251,113,133,.08);border:1px solid rgba(251,113,133,.3);border-radius:6px;padding:.55rem .7rem;margin-bottom:.7rem">
+              <div style="font-family:var(--mono);font-size:.52rem;color:var(--crimson);letter-spacing:.5px;margin-bottom:.2rem">⚠ WHY ONLY TWO SPEEDS?</div>
+              <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted);line-height:1.55">
+                Indexers (especially private trackers) ban IPs that search on tight, predictable loops. The Tracker adds <strong style="color:var(--crimson)">random jitter</strong> to every sleep and alternates Radarr/Sonarr so it looks human. Gentle (~1/hour) is safest; Moderate (~1/20min) hits harder on big backlogs but is still safe. There is no aggressive mode on purpose — your indexers will thank you.
+              </div>
+            </div>
 
             <label style="font-family:var(--mono);font-size:.52rem;color:var(--muted);letter-spacing:1px;display:block;margin-bottom:.25rem">COOLDOWN (days before re-search)</label>
             <input type="number" id="trk-cooldown" min="1" max="30" value="7" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:.72rem;padding:.4rem .6rem;outline:none;margin-bottom:.6rem" onchange="trkSaveSettings()">
-
-            <label style="font-family:var(--mono);font-size:.52rem;color:var(--muted);letter-spacing:1px;display:block;margin-bottom:.25rem">MAX SEARCHES PER DAY</label>
-            <input type="number" id="trk-max-daily" min="10" max="500" value="100" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:.72rem;padding:.4rem .6rem;outline:none;margin-bottom:.6rem" onchange="trkSaveSettings()">
 
             <div style="display:flex;align-items:center;gap:.5rem;margin-top:.2rem">
               <input type="checkbox" id="trk-logging" checked onchange="trkSaveSettings()" style="accent-color:var(--crimson)">
@@ -1859,7 +1868,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
                     <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap;width:55px">YEAR</th>
                     <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap;width:75px">STATUS</th>
                     <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap;width:60px">TRIES</th>
-                    <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap;width:130px">LAST SEARCHED</th>
+                    <th onclick="trkToggleSortLastSearched()" style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap;width:150px;cursor:pointer;user-select:none" title="Click to cycle: never-searched first → oldest → newest"><span id="trk-sort-arrow">LAST SEARCHED ▲</span></th>
                     <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap;width:160px">ACTIONS</th>
                   </tr>
                 </thead>
@@ -5978,6 +5987,7 @@ var _trkOffset = 0;
 var _trkTotal = 0;
 var _trkPollTimer = null;
 var _trkInitDone = false;
+var _trkSortDir = 'never-first'; // 'never-first' | 'oldest-first' | 'newest-first'
 
 function trkInit() {
   if (!_trkInitDone) {
@@ -5986,6 +5996,7 @@ function trkInit() {
   trkRefreshStatus();
   trkLoadItems();
   trkLoadLog();
+  trkInjectScrollNav();
   // Poll status every 15s while on tracker tab
   clearInterval(_trkPollTimer);
   _trkPollTimer = setInterval(function() {
@@ -5996,6 +6007,18 @@ function trkInit() {
       clearInterval(_trkPollTimer);
     }
   }, 15000);
+}
+
+function trkInjectScrollNav() {
+  if (document.getElementById('trk-scroll-nav')) return;
+  var panel = document.getElementById('panel-tracker');
+  if (!panel) return;
+  var nav = document.createElement('div');
+  nav.id = 'trk-scroll-nav';
+  nav.style.cssText = 'position:fixed;right:1.5rem;bottom:1.5rem;display:flex;flex-direction:column;gap:.35rem;z-index:50';
+  var btnStyle = 'width:36px;height:36px;border-radius:50%;border:1px solid var(--crimson);background:var(--surface);color:var(--crimson);font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center';
+  nav.innerHTML = '<button style="' + btnStyle + '" title="Scroll to top" onclick="(document.querySelector(\'.content-area\')||document.documentElement).scrollTo({top:0,behavior:\'smooth\'})">↑</button><button style="' + btnStyle + '" title="Scroll to bottom" onclick="(document.querySelector(\'.content-area\')||document.documentElement).scrollTo({top:99999,behavior:\'smooth\'})">↓</button>';
+  panel.appendChild(nav);
 }
 
 async function trkRefreshStatus() {
@@ -6012,88 +6035,106 @@ async function trkRefreshStatus() {
       btn.style.color = '#000';
       btn.style.border = 'none';
       btn.innerHTML = '▶ TRACKER ON';
-      hint.textContent = d.hunt_loop_active ? 'Hunting in background…' : 'Enabled — loop starting…';
-      hint.style.color = 'var(--green)';
+      hint.textContent = d.hunt_loop_active
+        ? ('Hunting · ' + (d.mode || 'gentle') + ' mode · ~' + Math.round((d.base_interval||3600)/60) + 'min ± jitter')
+        : 'Enabled but hunt loop idle';
     } else {
       btn.style.background = 'var(--surface2)';
       btn.style.color = 'var(--muted)';
       btn.style.border = '1px solid var(--border)';
-      btn.innerHTML = '⏸ TRACKER OFF';
+      btn.innerHTML = '⏻ TRACKER OFF';
       hint.textContent = 'Click to enable automatic hunting';
-      hint.style.color = 'var(--muted2)';
     }
 
     // Connection dots
     var rdot = document.getElementById('trk-radarr-dot');
     var rstat = document.getElementById('trk-radarr-status');
-    rdot.style.background = d.radarr_connected ? 'var(--green)' : 'var(--red)';
-    rstat.textContent = d.radarr_connected ? 'Connected' : 'Not configured';
-    rstat.style.color = d.radarr_connected ? 'var(--green)' : 'var(--red)';
+    if (rdot) rdot.style.background = d.radarr_connected ? 'var(--green)' : 'var(--red)';
+    if (rstat) { rstat.textContent = d.radarr_connected ? 'OK' : '—'; rstat.style.color = d.radarr_connected ? 'var(--green)' : 'var(--muted2)'; }
 
     var sdot = document.getElementById('trk-sonarr-dot');
     var sstat = document.getElementById('trk-sonarr-status');
-    sdot.style.background = d.sonarr_connected ? 'var(--green)' : 'var(--red)';
-    sstat.textContent = d.sonarr_connected ? 'Connected' : 'Not configured';
-    sstat.style.color = d.sonarr_connected ? 'var(--green)' : 'var(--red)';
+    if (sdot) sdot.style.background = d.sonarr_connected ? 'var(--green)' : 'var(--red)';
+    if (sstat) { sstat.textContent = d.sonarr_connected ? 'OK' : '—'; sstat.style.color = d.sonarr_connected ? 'var(--green)' : 'var(--muted2)'; }
 
     // Stats
-    document.getElementById('trk-s-movies').textContent = d.movies_missing || 0;
-    document.getElementById('trk-s-tv').textContent = d.tv_missing || 0;
-    document.getElementById('trk-s-found').textContent = (d.movies_found || 0) + (d.tv_found || 0);
-    document.getElementById('trk-s-today').textContent = d.searches_today || 0;
+    document.getElementById('trk-s-movies').textContent  = d.movies_missing || 0;
+    document.getElementById('trk-s-tv').textContent      = d.tv_missing || 0;
+    document.getElementById('trk-s-found').textContent   = (d.movies_found || 0) + (d.tv_found || 0);
+    document.getElementById('trk-s-today').textContent   = d.searches_today || 0;
     document.getElementById('trk-s-skipped').textContent = d.skipped || 0;
 
-    // Settings inputs
-    document.getElementById('trk-interval').value = d.interval_seconds || 90;
-    document.getElementById('trk-cooldown').value = d.cooldown_days || 7;
-    document.getElementById('trk-max-daily').value = d.max_daily || 100;
+    // Settings
+    trkPaintModeButtons(d.mode || 'gentle');
+    document.getElementById('trk-cooldown').value  = d.cooldown_days || 7;
     document.getElementById('trk-logging').checked = d.logging_enabled !== false;
 
-    // Status bar
-    var total_missing = (d.movies_missing || 0) + (d.tv_missing || 0);
+    // Status sub
     document.getElementById('trk-status-sub').textContent = d.enabled
-      ? 'Hunting · ' + d.searches_today + '/' + (d.max_daily||100) + ' today · ' + total_missing + ' missing'
-      : total_missing > 0 ? total_missing + ' missing items — enable tracker to start hunting' : 'Sync to load missing items';
-
+      ? ((d.searches_today || 0) + ' searched today · ' + (d.total || 0) + ' tracked')
+      : 'Sync to load missing items';
   } catch(e) { /* silent */ }
+}
+
+function trkPaintModeButtons(active) {
+  var g = document.getElementById('trk-mode-gentle');
+  var m = document.getElementById('trk-mode-moderate');
+  if (!g || !m) return;
+  if (active === 'moderate') {
+    m.style.background = 'var(--crimson)'; m.style.color = '#000';
+    g.style.background = 'transparent';    g.style.color = 'var(--muted)';
+  } else {
+    g.style.background = 'var(--crimson)'; g.style.color = '#000';
+    m.style.background = 'transparent';    m.style.color = 'var(--muted)';
+  }
+}
+
+async function trkSetMode(mode) {
+  try {
+    var r = await fetch(API + '/api/tracker/settings', {
+      method:'POST', headers:authHdrs(),
+      body: JSON.stringify({ mode: mode })
+    });
+    if (!r.ok) { var d = await r.json(); toast(d.detail || 'Failed', 'error'); return; }
+    trkPaintModeButtons(mode);
+    toast('Hunt pace: ' + mode.toUpperCase(), 'ok');
+    trkRefreshStatus();
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
 }
 
 async function trkToggle() {
   try {
-    var r = await fetch(API + '/api/tracker/toggle', { method:'POST', headers:authHdrs() });
+    var r = await fetch(API + '/api/tracker/toggle', { method:'POST', headers: authHdrs() });
     var d = await r.json();
     if (!r.ok) { toast(d.detail || 'Toggle failed', 'error'); return; }
-    toast(d.enabled ? 'Tracker enabled — hunting started' : 'Tracker disabled', d.enabled ? 'ok' : 'info');
+    toast(d.enabled ? 'Tracker ON' : 'Tracker OFF', 'ok');
     trkRefreshStatus();
     trkLoadLog();
-  } catch(e) { toast('Toggle error: ' + e.message, 'error'); }
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
 }
 
 async function trkSync() {
   var btn = document.getElementById('trk-sync-btn');
-  btn.textContent = '⟳ SYNCING…'; btn.disabled = true;
+  btn.disabled = true; btn.textContent = '⟳ SYNCING…';
   try {
-    var r = await fetch(API + '/api/tracker/sync', { method:'POST', headers:authHdrs() });
+    var r = await fetch(API + '/api/tracker/sync', { method:'POST', headers: authHdrs() });
     var d = await r.json();
     if (!r.ok) { toast(d.detail || 'Sync failed', 'error'); return; }
-    var msg = 'Synced! Movies: +' + (d.radarr_new||0) + ' · TV: +' + (d.sonarr_new||0);
-    if (d.errors && d.errors.length) msg += ' (' + d.errors.join('; ') + ')';
-    toast(msg, d.errors && d.errors.length ? 'warn' : 'ok');
+    toast(d.detail || 'Synced', 'ok');
     trkRefreshStatus();
     trkLoadItems();
     trkLoadLog();
-  } catch(e) { toast('Sync error: ' + e.message, 'error'); }
-  finally { btn.textContent = '⟳ SYNC MISSING LISTS'; btn.disabled = false; }
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+  finally { btn.disabled = false; btn.textContent = '⟳ SYNC MISSING LISTS'; }
 }
 
 async function trkLoadItems() {
   var params = new URLSearchParams({ limit: '200', offset: String(_trkOffset) });
-  // Apply source/status filters
-  if (_trkFilter === 'radarr') params.set('source', 'radarr');
+  if (_trkFilter === 'radarr')      params.set('source', 'radarr');
   else if (_trkFilter === 'sonarr') params.set('source', 'sonarr');
-  else if (_trkFilter === 'missing') params.set('status', 'missing');
-  else if (_trkFilter === 'found') params.set('status', 'found');
-  else if (_trkFilter === 'skipped') params.set('status', 'skipped');
+  else if (_trkFilter === 'missing')params.set('status', 'missing');
+  else if (_trkFilter === 'found')  params.set('status', 'found');
+  else if (_trkFilter === 'skipped')params.set('status', 'skipped');
 
   try {
     var r = await fetch(API + '/api/tracker/items?' + params, { headers: authHdrs() });
@@ -6106,17 +6147,54 @@ async function trkLoadItems() {
   } catch(e) { /* silent */ }
 }
 
+function trkToggleSortLastSearched() {
+  // 3-way cycle: never-first → oldest-first → newest-first
+  if (_trkSortDir === 'never-first')      _trkSortDir = 'oldest-first';
+  else if (_trkSortDir === 'oldest-first') _trkSortDir = 'newest-first';
+  else                                     _trkSortDir = 'never-first';
+  var arrow = document.getElementById('trk-sort-arrow');
+  if (arrow) {
+    arrow.textContent = 'LAST SEARCHED ' +
+      (_trkSortDir === 'never-first'  ? '▲' :
+       _trkSortDir === 'oldest-first' ? '↑' : '↓');
+  }
+  trkRenderTable();
+}
+
+function trkSortItems(items) {
+  var arr = items.slice();
+  if (_trkSortDir === 'never-first') {
+    arr.sort(function(a, b) {
+      var ac = a.search_count || 0;
+      var bc = b.search_count || 0;
+      if (ac === 0 && bc !== 0) return -1;
+      if (bc === 0 && ac !== 0) return 1;
+      // Within each group: oldest last_searched first
+      return (a.last_searched || '') < (b.last_searched || '') ? -1 : 1;
+    });
+  } else if (_trkSortDir === 'oldest-first') {
+    arr.sort(function(a, b) {
+      return (a.last_searched || '0000') < (b.last_searched || '0000') ? -1 : 1;
+    });
+  } else {
+    arr.sort(function(a, b) {
+      return (a.last_searched || '0000') > (b.last_searched || '0000') ? -1 : 1;
+    });
+  }
+  return arr;
+}
+
 function trkRenderTable() {
   var tbody = document.getElementById('trk-tbody');
   var empty = document.getElementById('trk-empty');
   var loadMore = document.getElementById('trk-load-more');
 
-  // Apply text filter
   var items = _trkItems;
   if (_trkTextFilter) {
     var q = _trkTextFilter.toLowerCase();
     items = items.filter(function(it) { return (it.title||'').toLowerCase().indexOf(q) >= 0; });
   }
+  items = trkSortItems(items);
 
   if (!items.length) {
     tbody.innerHTML = '';
@@ -6131,7 +6209,9 @@ function trkRenderTable() {
     var typeIcon = it.source === 'radarr' ? '🎬' : '📺';
     var statusColor = it.status === 'missing' ? 'var(--red)' : it.status === 'found' ? 'var(--green)' : it.status === 'skipped' ? 'var(--amber)' : 'var(--muted)';
     var statusLabel = it.status === 'missing' ? '❌ Missing' : it.status === 'found' ? '✅ Found' : it.status === 'skipped' ? '⏭ Skipped' : it.status;
-    var lastSearched = it.last_searched ? it.last_searched.replace('T',' ').substring(0,16) : '—';
+    var lastSearched = it.last_searched
+      ? it.last_searched.replace('T',' ').substring(0,16)
+      : '<span style="color:var(--crimson);letter-spacing:.5px">— NEVER —</span>';
     var year = it.year || '—';
 
     var actions = '';
@@ -6176,7 +6256,6 @@ function trkLoadMore() {
 function trkFilter(f) {
   _trkFilter = f;
   _trkOffset = 0;
-  // Update button styles
   ['all','radarr','sonarr','missing','found','skipped'].forEach(function(k) {
     var btn = document.getElementById('trk-f-' + k);
     if (!btn) return;
@@ -6245,9 +6324,7 @@ async function trkSaveSettings() {
     await fetch(API + '/api/tracker/settings', {
       method:'POST', headers:authHdrs(),
       body: JSON.stringify({
-        interval_seconds: parseInt(document.getElementById('trk-interval').value) || 90,
         cooldown_days: parseInt(document.getElementById('trk-cooldown').value) || 7,
-        max_daily: parseInt(document.getElementById('trk-max-daily').value) || 100,
         logging_enabled: document.getElementById('trk-logging').checked,
       })
     });
@@ -6262,7 +6339,6 @@ async function trkLoadLog() {
     var el = document.getElementById('trk-log');
     var html = '';
     var entries = d.entries || [];
-    // Show newest first (already sorted desc by API)
     entries.forEach(function(e) {
       var colors = {sync:'var(--blue)',search:'var(--crimson)',found:'var(--green)',skip:'var(--amber)',error:'var(--red)',toggle:'var(--purple)'};
       var color = colors[e.action] || 'var(--muted)';
@@ -6278,6 +6354,7 @@ async function trkClearLog() {
   try {
     await fetch(API + '/api/tracker/clear-log', { method:'POST', headers:authHdrs() });
     document.getElementById('trk-log').innerHTML = '<div style="color:var(--muted2)">Log cleared</div>';
+    toast('Activity log cleared', 'ok');
   } catch(e) { /* silent */ }
 }
 

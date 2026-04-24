@@ -29,6 +29,7 @@ Endpoints:
 import asyncio
 import json
 import logging
+import random
 import time
 from datetime import datetime, timezone, timedelta
 from typing import Optional
@@ -52,13 +53,20 @@ _DYNAMIC_DB = getattr(settings, "database_url", "/data/charthound.db")
 # Background loop handle — so we can cancel on toggle-off
 _hunt_task: Optional[asyncio.Task] = None
 _hunt_running = False
-_last_search_source = "sonarr"  # Start sonarr so first pick tries radarr
 
-# ── Defaults ──
-_DEFAULT_INTERVAL   = 90       # seconds between search commands
-_DEFAULT_COOLDOWN   = 7        # days before re-searching same item
-_DEFAULT_MAX_DAILY  = 100      # max searches per 24h
-_LOG_CAP            = 5000     # max log entries
+# ── Defaults & Mode Presets ──
+_LOG_CAP = 5000
+
+# Two modes. Base interval in seconds; jitter is ±50% of base.
+# Gentle ≈ 30–90 min between searches, Moderate ≈ 10–30 min between searches.
+_MODES = {
+    "gentle":   {"base_interval": 3600, "max_daily": 20},
+    "moderate": {"base_interval": 1200, "max_daily": 60},
+}
+_DEFAULT_MODE     = "gentle"
+_DEFAULT_COOLDOWN = 7
+_JITTER_PCT       = 0.5    # ±50% randomization on every sleep
+_FLOOR_INTERVAL   = 300    # absolute minimum sleep (5 min) — safety net
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  DB MIGRATIONS — run on import (safe to repeat)
@@ -102,6 +110,12 @@ async def _ensure_tracker_tables():
             );
             CREATE INDEX IF NOT EXISTS idx_tlog_created ON tracker_log(created_at);
         """)
+        # Additive migration — add release_date column if missing
+        try:
+            await db.execute("ALTER TABLE tracker_items ADD COLUMN release_date TEXT")
+        except Exception:
+            pass  # column already exists
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_tracker_release ON tracker_items(release_date)")
         await db.commit()
     log.info("Tracker tables ready.")
 
@@ -192,6 +206,23 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 
+async def _get_mode_config() -> dict:
+    """Read current mode from settings and return its config dict."""
+    mode = await _get_setting("tracker_mode", _DEFAULT_MODE)
+    if mode not in _MODES:
+        mode = _DEFAULT_MODE
+    cfg = dict(_MODES[mode])
+    cfg["mode"] = mode
+    return cfg
+
+
+def _jittered_sleep(base_seconds: int) -> int:
+    """Return base ± JITTER_PCT%, floored at _FLOOR_INTERVAL."""
+    multiplier = 1.0 + random.uniform(-_JITTER_PCT, _JITTER_PCT)
+    sleep_for = max(_FLOOR_INTERVAL, int(base_seconds * multiplier))
+    return sleep_for
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  REQUEST MODELS
 # ══════════════════════════════════════════════════════════════════════════════
@@ -204,9 +235,9 @@ class SkipSeasonRequest(BaseModel):
     season_number: int
 
 class SettingsRequest(BaseModel):
-    interval_seconds: Optional[int] = None
-    cooldown_days:    Optional[int] = None
-    max_daily:        Optional[int] = None
+    mode:             Optional[str]  = None   # 'gentle' or 'moderate'
+    cooldown_days:    Optional[int]  = None
+    max_daily:        Optional[int]  = None
     logging_enabled:  Optional[bool] = None
 
 
@@ -266,16 +297,30 @@ async def sync_missing(user: dict = Depends(require_auth)):
                 title = m.get("title", "Unknown")
                 year = m.get("year", 0)
 
+                # Release date — prefer physical, then digital, then cinema
+                rel = (m.get("physicalRelease")
+                       or m.get("digitalRelease")
+                       or m.get("inCinemas")
+                       or "")
+                rel_date = rel[:10] if rel else None
+
                 if not has_file:
                     # Missing — upsert
                     if movie_id not in existing_ext_ids:
                         await db.execute(
                             """INSERT OR IGNORE INTO tracker_items
-                               (source, external_id, title, year, search_type, status)
-                               VALUES ('radarr', ?, ?, ?, 'movie', 'missing')""",
-                            (movie_id, title, year)
+                               (source, external_id, title, year, search_type, status, release_date)
+                               VALUES ('radarr', ?, ?, ?, 'movie', 'missing', ?)""",
+                            (movie_id, title, year, rel_date)
                         )
                         radarr_count += 1
+                    else:
+                        # Keep release_date fresh on existing rows
+                        await db.execute(
+                            """UPDATE tracker_items SET release_date=?
+                               WHERE source='radarr' AND external_id=? AND search_type='movie'""",
+                            (rel_date, movie_id)
+                        )
                     existing_ext_ids.discard(movie_id)
                 else:
                     # Found — mark if it was in our table
@@ -355,6 +400,10 @@ async def sync_missing(user: dict = Depends(require_auth)):
                         if season_num == 0:
                             continue
 
+                        # Air date — prefer UTC, fall back to airDate string
+                        air = ep.get("airDateUtc") or ep.get("airDate") or ""
+                        rel_date = air[:10] if air else None
+
                         full_title = f"{series_title} S{season_num:02d}E{ep_num:02d}"
                         if ep_title:
                             full_title += f" - {ep_title}"
@@ -364,11 +413,17 @@ async def sync_missing(user: dict = Depends(require_auth)):
                                 await db.execute(
                                     """INSERT OR IGNORE INTO tracker_items
                                        (source, external_id, series_id, title, season_number,
-                                        episode_number, search_type, status)
-                                       VALUES ('sonarr', ?, ?, ?, ?, ?, 'episode', 'missing')""",
-                                    (ep_id, series_id, full_title, season_num, ep_num)
+                                        episode_number, search_type, status, release_date)
+                                       VALUES ('sonarr', ?, ?, ?, ?, ?, 'episode', 'missing', ?)""",
+                                    (ep_id, series_id, full_title, season_num, ep_num, rel_date)
                                 )
                                 sonarr_count += 1
+                            else:
+                                await db.execute(
+                                    """UPDATE tracker_items SET release_date=?
+                                       WHERE source='sonarr' AND external_id=?""",
+                                    (rel_date, ep_id)
+                                )
                             existing_ep_ids.discard(ep_id)
                         else:
                             if ep_id in existing_ep_ids:
@@ -443,12 +498,18 @@ def _start_hunt_loop():
 # ══════════════════════════════════════════════════════════════════════════════
 
 async def _hunt_loop():
-    """Background loop: pick next eligible item, fire search command, wait interval."""
+    """
+    Background loop. Alternates Radarr ↔ Sonarr each tick. Uses jittered sleep
+    based on the current mode (gentle / moderate). Skips unreleased items.
+    """
     global _hunt_running
     log.info("Hunt loop started.")
 
     # Small initial delay so startup settles
     await asyncio.sleep(5)
+
+    # Alternator: 0 = try radarr first this tick, 1 = try sonarr first
+    alt_toggle = 0
 
     while _hunt_running:
         try:
@@ -458,143 +519,129 @@ async def _hunt_loop():
                 _hunt_running = False
                 break
 
+            cfg = await _get_mode_config()
+            # Allow user to override max_daily; otherwise use mode default
+            max_daily_override = await _get_setting("tracker_max_daily", "")
+            max_daily = int(max_daily_override) if max_daily_override.isdigit() else cfg["max_daily"]
+
             # Check daily cap
-            interval = int(await _get_setting("tracker_interval", str(_DEFAULT_INTERVAL)))
-            max_daily = int(await _get_setting("tracker_max_daily", str(_DEFAULT_MAX_DAILY)))
             today_count = await _count_searches_today()
             if today_count >= max_daily:
                 log.info(f"Tracker: daily cap reached ({today_count}/{max_daily}), sleeping 1h")
                 await asyncio.sleep(3600)
                 continue
 
-            # Pick next item
-            item = await _pick_next_item()
+            # Alternate: try preferred source first, fall back to the other
+            preferred = "radarr" if alt_toggle == 0 else "sonarr"
+            fallback  = "sonarr" if alt_toggle == 0 else "radarr"
+            alt_toggle = 1 - alt_toggle
+
+            item = await _pick_next_item(source=preferred)
             if not item:
-                # Nothing to search — sleep longer
-                await asyncio.sleep(interval * 2)
+                item = await _pick_next_item(source=fallback)
+
+            if not item:
+                # Nothing searchable — sleep a jittered interval and try again
+                sleep_for = _jittered_sleep(cfg["base_interval"])
+                log.debug(f"Tracker: queue empty, sleeping {sleep_for}s")
+                await asyncio.sleep(sleep_for)
                 continue
 
             # Fire the search
             await _execute_search(item)
 
-            # Wait the configured interval
-            await asyncio.sleep(interval)
+            # Jittered sleep before next tick
+            sleep_for = _jittered_sleep(cfg["base_interval"])
+            log.info(f"Tracker: next tick in {sleep_for}s (mode={cfg['mode']})")
+            await asyncio.sleep(sleep_for)
 
         except asyncio.CancelledError:
             log.info("Hunt loop cancelled.")
             break
         except Exception as e:
             log.error(f"Hunt loop error: {e}")
-            await asyncio.sleep(30)
+            await asyncio.sleep(60)
 
     log.info("Hunt loop stopped.")
 
 
-async def _pick_next_item() -> Optional[dict]:
+async def _pick_next_item(source: str) -> Optional[dict]:
     """
-    Pick the next missing item to search, alternating between Radarr and Sonarr
-    so neither source starves the other. Respects cooldowns and smart TV ordering.
+    Pick next eligible item for the given source ('radarr' or 'sonarr').
+
+    Ordering:
+      1. Never-searched first (search_count ASC — 0 before 1+)
+      2. Newest release first (release_date DESC, NULLs last)
+      3. Oldest last_searched first (longest-ago gets next shot)
+
+    Filters:
+      - status = 'missing'
+      - cooldown_until past OR NULL
+      - release_date NULL OR <= today  (skip unreleased)
+      - For sonarr: earlier-season-blocks-later-season logic preserved
     """
-    global _last_search_source
+    now_iso   = _now_iso()
+    today_ymd = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
-    # Alternate: if last was radarr, try sonarr first (and vice versa)
-    if _last_search_source == "radarr":
-        order = ["sonarr", "radarr"]
-    else:
-        order = ["radarr", "sonarr"]
+    async with aiosqlite.connect(_DYNAMIC_DB) as db:
+        db.row_factory = aiosqlite.Row
 
-    for source in order:
         if source == "radarr":
-            item = await _pick_radarr_item()
-        else:
-            item = await _pick_sonarr_item()
-        if item:
-            _last_search_source = source
-            return item
+            async with db.execute("""
+                SELECT * FROM tracker_items
+                WHERE source='radarr' AND status='missing'
+                  AND (cooldown_until IS NULL OR cooldown_until <= ?)
+                  AND (release_date IS NULL OR release_date <= ?)
+                ORDER BY
+                    search_count ASC,
+                    CASE WHEN release_date IS NULL THEN 1 ELSE 0 END,
+                    release_date DESC,
+                    COALESCE(last_searched, '0000') ASC
+                LIMIT 1
+            """, (now_iso, today_ymd)) as cur:
+                row = await cur.fetchone()
+                return dict(row) if row else None
 
-    return None
-
-
-async def _pick_radarr_item() -> Optional[dict]:
-    """Pick the next eligible missing Radarr movie."""
-    now = _now_iso()
-    async with aiosqlite.connect(_DYNAMIC_DB) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute("""
-            SELECT * FROM tracker_items
-            WHERE source='radarr' AND status='missing'
-              AND (cooldown_until IS NULL OR cooldown_until <= ?)
-            ORDER BY search_count ASC, added_at ASC
-            LIMIT 1
-        """, (now,)) as cur:
-            row = await cur.fetchone()
-            return dict(row) if row else None
-
-
-async def _pick_sonarr_item() -> Optional[dict]:
-    """
-    Pick the next eligible missing Sonarr episode.
-    Earliest season first — won't search season 3 if season 2 is still missing
-    (unless the earlier season is user-skipped).
-    """
-    now = _now_iso()
-    async with aiosqlite.connect(_DYNAMIC_DB) as db:
-        db.row_factory = aiosqlite.Row
+        # Sonarr — respect season-blocking
         async with db.execute("""
             SELECT * FROM tracker_items
             WHERE source='sonarr' AND status='missing'
               AND (cooldown_until IS NULL OR cooldown_until <= ?)
-            ORDER BY series_id ASC, season_number ASC, episode_number ASC
-        """, (now,)) as cur:
+              AND (release_date IS NULL OR release_date <= ?)
+            ORDER BY
+                search_count ASC,
+                CASE WHEN release_date IS NULL THEN 1 ELSE 0 END,
+                release_date DESC,
+                COALESCE(last_searched, '0000') ASC
+        """, (now_iso, today_ymd)) as cur:
             all_eps = [dict(r) async for r in cur]
 
-    if not all_eps:
+        if not all_eps:
+            return None
+
+        # Group by series to enforce season order within each series
+        series_map: dict[int, list] = {}
+        for ep in all_eps:
+            sid = ep["series_id"]
+            series_map.setdefault(sid, []).append(ep)
+
+        # Walk the already-sorted list and return the first ep that isn't
+        # blocked by an earlier missing season in its own series
+        for ep in all_eps:
+            sid = ep["series_id"]
+            target_season = ep["season_number"]
+            eps_in_series = series_map[sid]
+
+            earlier_missing = [
+                e for e in eps_in_series
+                if e["season_number"] < target_season
+                and e["status"] == "missing"
+                and not e.get("skipped_season", 0)
+            ]
+            if not earlier_missing:
+                return ep
+
         return None
-
-    # Group by series
-    series_map: dict[int, list] = {}
-    for ep in all_eps:
-        sid = ep["series_id"]
-        if sid not in series_map:
-            series_map[sid] = []
-        series_map[sid].append(ep)
-
-    # For each series, find the earliest eligible episode
-    for sid, eps in sorted(series_map.items()):
-        seasons_present = set()
-        for ep in eps:
-            seasons_present.add(ep["season_number"])
-
-        sorted_seasons = sorted(seasons_present)
-
-        for season_num in sorted_seasons:
-            # Check if an earlier season is still missing and NOT skipped
-            blocked = False
-            for earlier_season in sorted_seasons:
-                if earlier_season >= season_num:
-                    break
-                earlier_missing = [
-                    e for e in eps
-                    if e["season_number"] == earlier_season
-                    and e["status"] == "missing"
-                    and not e.get("skipped_season", 0)
-                ]
-                if earlier_missing:
-                    blocked = True
-                    break
-
-            if blocked:
-                continue
-
-            # Find first eligible episode in this season
-            season_eps = [e for e in eps if e["season_number"] == season_num
-                          and not e.get("skipped_season", 0)]
-            if season_eps:
-                # Pick the one with fewest search attempts
-                season_eps.sort(key=lambda x: (x["search_count"], x["episode_number"]))
-                return season_eps[0]
-
-    return None
 
 
 async def _execute_search(item: dict):
@@ -707,9 +754,10 @@ async def _execute_search(item: dict):
 @router.get("/status")
 async def tracker_status(user: dict = Depends(require_auth)):
     enabled = await _get_setting("tracker_enabled", "false") == "true"
-    interval = int(await _get_setting("tracker_interval", str(_DEFAULT_INTERVAL)))
+    cfg = await _get_mode_config()
     cooldown = int(await _get_setting("tracker_cooldown", str(_DEFAULT_COOLDOWN)))
-    max_daily = int(await _get_setting("tracker_max_daily", str(_DEFAULT_MAX_DAILY)))
+    max_daily_override = await _get_setting("tracker_max_daily", "")
+    max_daily = int(max_daily_override) if max_daily_override.isdigit() else cfg["max_daily"]
     logging_on = await _get_setting("tracker_logging", "true") == "true"
     today_count = await _count_searches_today()
 
@@ -755,7 +803,8 @@ async def tracker_status(user: dict = Depends(require_auth)):
     return {
         "enabled": enabled,
         "hunt_loop_active": _hunt_running,
-        "interval_seconds": interval,
+        "mode": cfg["mode"],
+        "base_interval": cfg["base_interval"],
         "cooldown_days": cooldown,
         "max_daily": max_daily,
         "searches_today": today_count,
@@ -923,14 +972,16 @@ async def clear_log(user: dict = Depends(require_auth)):
 
 @router.post("/settings")
 async def update_settings(req: SettingsRequest, user: dict = Depends(require_auth)):
-    if req.interval_seconds is not None:
-        v = max(30, min(600, req.interval_seconds))  # Clamp 30s–10min
-        await _set_setting("tracker_interval", str(v))
+    if req.mode is not None:
+        m = req.mode.strip().lower()
+        if m not in _MODES:
+            raise HTTPException(400, f"Invalid mode '{m}'. Must be 'gentle' or 'moderate'.")
+        await _set_setting("tracker_mode", m)
     if req.cooldown_days is not None:
         v = max(1, min(30, req.cooldown_days))  # Clamp 1–30 days
         await _set_setting("tracker_cooldown", str(v))
     if req.max_daily is not None:
-        v = max(10, min(500, req.max_daily))  # Clamp 10–500
+        v = max(5, min(200, req.max_daily))  # Clamp 5–200
         await _set_setting("tracker_max_daily", str(v))
     if req.logging_enabled is not None:
         await _set_setting("tracker_logging", "true" if req.logging_enabled else "false")
