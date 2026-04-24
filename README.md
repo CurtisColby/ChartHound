@@ -1,6 +1,6 @@
 # 🐕 ChartHound — The New World
 
-**A self-hosted music library management engine built for power users.**
+**A self-hosted music/media library management engine built for power users.**
 
 Tag your music with real Billboard chart data, discover missing chart hits, hunt albums by any artist, and automatically find missing movies and TV episodes — all from a single Dockerized dashboard that never exposes your API keys.
 
