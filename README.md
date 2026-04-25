@@ -1,13 +1,31 @@
 # 🐕 ChartHound — The New World
 
-**A self-hosted music/media library management engine built for power users.**
+**A self-hosted music *and media* library management engine built for power users.**
 
-Tag your music with real Billboard chart data, discover missing chart hits, hunt albums by any artist, and automatically find missing movies and TV episodes — all from a single Dockerized dashboard that never exposes your API keys.
+Tag your music with real Billboard chart data, discover missing chart hits, hunt albums by any artist — *and* automatically find missing movies and TV episodes from your Radarr/Sonarr libraries. All from a single Dockerized dashboard that never exposes your API keys.
 
 **Developed by Colby R. Curtis** · [Buy Me a Coffee](https://buymeacoffee.com/colbycurtis)
 
 > Built with Python (FastAPI), SQLite, and vanilla JavaScript.
 > Code support by Claude.ai (Anthropic).
+
+---
+
+## A Note From the Developer
+
+ChartHound started life as a janky little HTML file on my laptop.
+
+I was tired of my Plex music library being a graveyard of mistagged albums and missing chart hits, so I wrote a 200-line Python script to make custom playlists for my server. Then I needed a way to know which songs in my library were actually #1 hits, so I bolted on a chart database. Then I needed it to push playlists to Plex. Then to Emby. Then to Jellyfin.
+
+At some point I looked up and realized "just a playlist creator" wasn't going to cut it anymore. So I spent many evenings and weekends developing a full-featured music and media management tool — adding album hunting through MusicBrainz, missing-media tracking through Radarr and Sonarr, chart hit discovery, file-first metadata tagging, and a properly secured connection vault for all the API keys it now needed. My OCD had absolutely taken the wheel, and the "little tool just for me" had grown teeth.
+
+I'm a solo developer. ChartHound exists because I wanted it to exist. I write the code with Claude (Anthropic's AI) as my code support partner — Claude helps me think through architecture, catches my bugs in code review, and writes the boilerplate I'd otherwise have to type by hand. Every architectural decision, every feature, and every line of business logic is mine. The result is code I actually understand, written faster than I could write alone.
+
+Months of work later, I did a full security audit and hardening pass on April 24, 2026 — auditing the auth flow, encrypting credentials, locking down the registration endpoint, reviewing every endpoint for token exposure — before deciding to share ChartHound with the community. If you're a Plex, Emby, or Jellyfin user who cares about your music library the way I care about mine, I think you'll find a lot to like here.
+
+If ChartHound saves you time, [a coffee](https://buymeacoffee.com/colbycurtis) is appreciated but never expected. The tool is yours — go make your music library beautiful.
+
+— **Colby**
 
 ---
 
@@ -18,33 +36,29 @@ Tag your music with real Billboard chart data, discover missing chart hits, hunt
 - [Requirements](#requirements)
 - [Quick Start](#quick-start)
 - [Docker Compose Reference](#docker-compose-reference)
-- [First Boot & Setup Wizard](#first-boot--setup-wizard)
+- [First Boot](#first-boot)
+- [Getting API Keys](#getting-api-keys)
 - [The Tabs](#the-tabs)
-  - [The Kennel — Connection Vault](#the-kennel--connection-vault)
-  - [The Retriever — Metadata Tagger](#the-retriever--metadata-tagger)
-  - [The Sniffer — Chart Hit Finder](#the-sniffer--chart-hit-finder)
-  - [The Groomer — Playlist Builder](#the-groomer--playlist-builder)
-  - [The Bloodhound — Album Hunter](#the-bloodhound--album-hunter)
-  - [The Tracker — Missing Media Hunter](#the-tracker--missing-media-hunter)
-  - [The Veterinarian — Database Admin](#the-veterinarian--database-admin)
+- [The Little Things](#the-little-things)
 - [Reverse Proxy Setup](#reverse-proxy-setup)
 - [Updating ChartHound](#updating-charthound)
 - [Troubleshooting](#troubleshooting)
+- [Support ChartHound](#support-charthound)
 - [License](#license)
 
 ---
 
 ## Why ChartHound?
 
-Most music management tools focus on one thing — tagging, or searching, or playlist building. ChartHound combines all of them into a single self-hosted application that understands your entire media ecosystem.
+Most music tools focus on one thing — tagging, or searching, or playlist building. Most media tools focus only on movies and TV. ChartHound combines all of them into a single self-hosted application that understands your entire media ecosystem — music, movies, and TV all in one place.
 
-ChartHound knows which songs in your library were Billboard #1 hits, which albums you're missing from an artist's discography, and which movies in your Radarr watchlist still haven't been found. It writes real chart performance data directly into your music file metadata so your media server can display it. And it does all of this without ever sending your API keys or tokens outside your local network.
+ChartHound knows which songs in your library were Billboard #1 hits, which albums you're missing from an artist's discography, and which movies and TV episodes in your Radarr/Sonarr watchlists still haven't been found. It writes real chart performance data directly into your music file metadata so your media server can display it. It hunts down missing media in the background while you sleep. And it does all of this without ever sending your API keys or tokens outside your local network.
 
 ---
 
 ## Security Model
 
-ChartHound was designed from the ground up with security as a hard requirement — not an afterthought. Every architectural decision prioritizes keeping your credentials safe.
+ChartHound was designed from the ground up with security as a hard requirement — not an afterthought. A full security audit and hardening pass was completed on April 24, 2026, before the project was shared publicly.
 
 ### Encrypted Vault (The Kennel)
 
@@ -60,7 +74,7 @@ On first boot, ChartHound allows one user registration to create the admin accou
 
 ### Session Authentication
 
-Every API endpoint (except login/register and the health check) requires a valid JWT session token. Unauthenticated requests are rejected with a 401. There are no backdoor endpoints, no debug routes that bypass auth, no settings pages accessible without a session.
+Every API endpoint (except login/register and the health check) requires a valid JWT session token. Unauthenticated requests are rejected with a 401. There are no backdoor endpoints, no debug routes that bypass auth, no settings pages accessible without a session. Sessions last 7 days and gracefully redirect to the login screen with a clear banner when expired.
 
 ### Reverse Proxy Requirement
 
@@ -78,7 +92,7 @@ ChartHound connects to your existing media stack. You don't need all of these �
 
 **For metadata tagging (Retriever & Groomer):**
 - Plex, Emby, or Jellyfin (to scan your library)
-- Last.fm API key (free — for chart estimation and trending data)
+- **Last.fm API key** — *strongly recommended.* Crucial for popularity lookups on tracks not in the static Billboard chart database. ChartHound's metadata waterfall works without it, but you'll see significantly weaker chart estimation for non-static-DB tracks (independent releases, deep cuts, international hits, anything outside major US charts). Free, takes 30 seconds.
 
 **For music discovery (Sniffer & Bloodhound):**
 - Prowlarr (indexer manager)
@@ -89,9 +103,9 @@ ChartHound connects to your existing media stack. You don't need all of these �
 - Sonarr (TV management)
 - Prowlarr connected to Radarr/Sonarr (ChartHound tells Radarr/Sonarr to search — they handle Prowlarr internally)
 
-**Optional:**
-- Discogs personal access token (additional metadata source)
-- YouTube API key (future Scout tab)
+**Optional but recommended:**
+- Discogs personal access token (excellent genre and style metadata, especially for classic rock, jazz, soul, and any artist where MusicBrainz tags are sparse)
+- YouTube API key (for The Scout — music video curation)
 
 ---
 
@@ -165,17 +179,105 @@ Navigate to `http://YOUR-SERVER-IP:8585` in your browser. The setup wizard will 
 
 ---
 
-## First Boot & Setup Wizard
+## First Boot
 
-When you first open ChartHound, you'll see a login screen. Since no users exist yet, click **"Create Account"** to register your admin account. After registration, the signup option is permanently hidden (auto-lockdown).
+When you first open ChartHound, you'll see a login screen. Since no users exist yet, click **"Create Account"** to register your admin account. After registration, the signup option is permanently hidden (auto-lockdown — see [Security Model](#security-model) for details).
 
-The setup wizard walks you through three steps:
+Once logged in, head straight to **The Kennel** to connect your services. Each service card has a URL field, a token/API key field, a **Save** button, and a **Test** button. Always test after saving to verify the connection works. The [Getting API Keys](#getting-api-keys) section below walks you through how to obtain each one.
 
-1. **Welcome** — overview of ChartHound
-2. **Generate a SECRET_KEY** — shows the command if you haven't done it yet
-3. **Connect services** — directs you to The Kennel to add your API keys
+If you ever want a guided refresher on setup, **The Veterinarian** has a **Setup Wizard** button that walks through the steps again — useful when you're onboarding a friend onto their own ChartHound instance.
 
-After the wizard, head to **The Kennel** to connect your services. Each service card has a URL field, a token/API key field, a **Save** button, and a **Test** button. Always test after saving to verify the connection works.
+---
+
+## Getting API Keys
+
+Most of ChartHound's features rely on free third-party APIs. None of them require credit cards. Here's how to get the ones that matter most.
+
+### YouTube Data API v3 (for The Scout)
+
+The Scout uses the YouTube Data API v3 to search for music videos and build playlists. The free tier gives you 10,000 quota units per day — enough for around 90 fresh searches, with cached searches costing nothing.
+
+**Step 1 — Create a project**
+
+Go to the [Google Cloud Console](https://console.cloud.google.com/). If you don't have a project yet, click the project drop-down at the top of the page and select **New Project**. Name it something like `ChartHound` and click **Create**.
+
+**Step 2 — Enable the API**
+
+In the left navigation menu, go to **APIs & Services → Library**. Search for `YouTube Data API v3` and click on the result. Click **Enable**. (If it's already enabled, the button will read **Manage** — that's fine.)
+
+**Step 3 — Generate the key**
+
+Go to **APIs & Services → Credentials**. Click **+ Create Credentials → API Key**. A pop-up will show your new key. Copy it now — you'll paste it into ChartHound's Kennel.
+
+**Step 4 — Restrict the key (recommended)**
+
+Click the name of the key you just created. Under **Application restrictions**, you can leave it as **None** if you trust your server, or restrict it to specific IPs if you want extra safety. Under **API restrictions**, choose **Restrict key** and select **YouTube Data API v3** from the list. Click **Save**.
+
+**Step 5 — Paste it into The Kennel**
+
+In ChartHound, open **The Kennel**, find the YouTube card, paste your key into the **API Key** field, click **Save**, then click **Test**. If the test passes, you're done.
+
+> If the test fails with "key rejected," go back to the Google Cloud Console and check that the key isn't restricted to the wrong IP or HTTP referrer.
+
+### Last.fm API Key (strongly recommended)
+
+Last.fm is **crucial for popularity lookups on tracks that aren't in the static chart database.** ChartHound ships with over 108,000 real Billboard chart entries pre-loaded, but for any track outside that set — independent releases, deep cuts, international hits, anything not on a major US chart — Last.fm provides the popularity signal that lets the Sniffer, Groomer, and Retriever do their best work. **The waterfall metadata system works without it, but you'll see significantly weaker chart estimation for non-static-DB tracks.**
+
+It's free and takes 30 seconds.
+
+**Step 1 — Create a Last.fm API account**
+
+Go to [last.fm/api/account/create](https://www.last.fm/api/account/create). Fill in the application name (e.g., `ChartHound`), description, and contact email. Application Homepage and Callback URL can be left blank or filled with anything — ChartHound doesn't use OAuth.
+
+**Step 2 — Copy the API Key**
+
+Last.fm gives you both an API Key and a Shared Secret. ChartHound only needs the **API Key** (the longer string). Copy it.
+
+**Step 3 — Paste it into The Kennel**
+
+In ChartHound, open **The Kennel**, find the Last.fm card, paste the key, **Save**, then **Test**.
+
+### Discogs Personal Access Token (recommended for genre data)
+
+Discogs provides excellent genre and style metadata, especially for classic rock, jazz, soul, and any artist where MusicBrainz tags are sparse. It's optional but noticeably improves the metadata waterfall.
+
+**Step 1 — Create a Discogs account**
+
+Sign up at [discogs.com](https://www.discogs.com/) if you don't already have one. (Discogs is also a fantastic site for collectors — worth using even outside ChartHound.)
+
+**Step 2 — Generate a personal access token**
+
+Go to [discogs.com/settings/developers](https://www.discogs.com/settings/developers) and click **Generate new token**. Copy the token immediately — Discogs only shows it once.
+
+**Step 3 — Paste it into The Kennel**
+
+In ChartHound, open **The Kennel**, find the Discogs card, paste the token, **Save**, then **Test**.
+
+> Discogs rate-limits at 60 requests per minute. ChartHound respects this automatically.
+
+### Plex / Emby / Jellyfin Tokens
+
+Each media server hands out tokens differently:
+
+- **Plex:** Sign in at [plex.tv](https://www.plex.tv/), then visit any item in your web app. View the page source and search for `X-Plex-Token` — your token is the value. Or follow [this official Plex guide](https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/).
+- **Emby:** Dashboard → Advanced → API Keys → **+ New API Key**. Name it `ChartHound`.
+- **Jellyfin:** Dashboard → Advanced → API Keys → **+ Add Key**. Name it `ChartHound`.
+
+For all three, paste the token (and the server URL — usually something like `http://192.168.1.x:32400` for Plex or `http://192.168.1.x:8096` for Emby/Jellyfin) into the corresponding card in The Kennel and test.
+
+> **Jellyfin gotcha:** if the test fails despite a correct token, add Docker's bridge subnet (`172.28.0.0/16`) to Jellyfin's LAN Networks list (Dashboard → Networking → LAN Networks). Jellyfin blocks unrecognized internal IPs by default.
+
+### Radarr / Sonarr / Prowlarr
+
+For all three, the API key is in **Settings → General → API Key**. Copy it from the Arr app's UI and paste it into the matching ChartHound Kennel card along with the server URL.
+
+### qBittorrent
+
+qBittorrent uses username/password authentication, not an API key. Open the qBittorrent Web UI settings and confirm Web UI is enabled, then put the URL (`http://your-server:8080`), username (default `admin`), and password into ChartHound's qBittorrent card. ChartHound logs in once per session and uses the cookie.
+
+### A note on Spotify
+
+ChartHound has no Spotify integration — and that's deliberate. Spotify changed their developer terms to require a **Premium account** to use their API, which defeats the entire purpose of running your own self-hosted music library. ChartHound gets the popularity, charting, and metadata signals it needs from MusicBrainz, Last.fm, ListenBrainz, Deezer, Discogs, iTunes, and the static Billboard chart database — all free, all working without strings attached.
 
 ---
 
@@ -205,7 +307,7 @@ The Sniffer cross-references your music library against a database of over 108,0
 - **Chart Gap Fill** — Select which Billboard charts to check (Hot 100, Country, R&B, Rock, etc.), set a year range and peak position filter, and see every charting song you don't own.
 - **Trending** — Browse top tracks by genre using Last.fm data.
 
-For any missing track, click to search Prowlarr for album torrents. Results show seeders, size, and indexer. One-click grab sends the torrent to qBittorrent with a `charthound-music` category tag.
+For any missing track, click to search Prowlarr for album torrents. Results show seeders, size, and indexer. One-click grab sends the torrent to qBittorrent with a `charthound-music` category tag. The Sniffer's playlist generator dedupes by track identity and automatically picks the highest-quality version when you have multiple copies of the same song — see [The Little Things](#the-little-things) for details.
 
 ### The Groomer — Playlist Builder
 ✂️ *Build Playlists from What You Own*
@@ -214,7 +316,7 @@ The Groomer scans your library, looks up each track against the chart reference 
 
 It also generates star ratings (1–5) based on chart performance and can build smart playlists that you push directly to Plex, Emby, or Jellyfin.
 
-Features a skip cache system so re-scans skip tracks that have already been checked, making 33,000+ track libraries manageable.
+Features a skip cache system so re-scans skip tracks that have already been checked, making 33,000+ track libraries manageable. The Groomer is also where Last.fm shows its true value — for tracks not in the static Billboard database, the Last.fm popularity score becomes the primary signal for chart estimation. Without a Last.fm key, those tracks fall back to weaker heuristics.
 
 ### The Bloodhound — Album Hunter
 🔍 *Hunt Every Album by Any Artist*
@@ -238,20 +340,76 @@ The Tracker monitors your Radarr and Sonarr libraries for missing movies and TV 
 - **Smart TV ordering** — searches for the earliest missing season first; won't look for season 3 if season 2 is still missing
 - **Season search** — when an entire season is missing, fires a single SeasonSearch instead of individual episode searches
 - **Cooldown system** — won't re-search the same unfindable item until the cooldown expires (default 7 days)
-- **Daily cap** — limits total searches per day to prevent overloading (default 20 or 60 on moderate mode) Adds Jitter between searches so it doesnt look like a bot but like a human doing the searches.
+- **Daily cap** — limits total searches per day to prevent overloading (Moderate preset = 60/day)
 - **Manual override** — skip a stuck season to allow later seasons to be searched, or manually trigger a search for any specific item
 - **Activity log** — tracks every search, sync, and error with timestamps
 - **Runs in background** — continues hunting even when the browser is closed, survives container restarts
+- **Request jitter** — small randomized delay between searches so your indexers see human-like patterns instead of bot bursts
 
 ### The Veterinarian — Database Admin
 🩺 *Database Health & Admin Tools*
 
-Database health monitoring, skip cache statistics, maintenance tools (VACUUM, integrity checks), and a danger zone for clearing the database. Includes a debug console (off by default, 1000-line cap) for troubleshooting.
+The Veterinarian is where you check on ChartHound's internal database — track counts, artist counts, album counts, skip cache statistics, dynamic vs. static DB sizes, and maintenance tools (VACUUM, integrity checks). Includes an in-tab debug console (off by default, 1,000-line cap) for troubleshooting scans without polluting Docker logs.
 
-### Future Tabs
+The Veterinarian also hosts the **Clear Full Database** button — and it's in the danger zone for a reason. ChartHound's database accumulates valuable scan knowledge over time (see [The Little Things](#the-little-things) for why). Clearing it sends you back to first-scan speeds and discards weeks of learned data. Only use it if the database is corrupted or you want a genuinely fresh start. For routine maintenance, use VACUUM and integrity check instead — they tidy up without wiping anything.
 
-- **The Scout** (Milestone 9) — YouTube playlist creator
-- **The Lookout** (Milestone 10) — Local music video manager
+### Tab in Progress
+
+- **The Scout** (Milestone 9) — YouTube music video curator. Search YouTube by chart, genre, or artist; filter by HD, channel name (VEVO/Official/Topic), view count, and minimum duration; build playlists and hand them off to your YouTube account via deeplink (no OAuth needed, you save the playlist on YouTube's side with one click). Backend complete; frontend tab in active development.
+
+> Earlier plans for a local music video manager (The Lookout) have been cut from the project — if there's community demand, it may return.
+
+---
+
+## The Little Things
+
+Software like this lives or dies on the details. ChartHound has spent a lot of time on the things you'd never notice — until they save you from a problem you didn't know you had.
+
+### The Sniffer's deduplication logic
+
+When the Sniffer builds a playlist of missing chart hits, it doesn't just throw every match into the result list. It dedupes by track identity (artist + title, normalized) and — when you have multiple copies of the same song in your library — picks the highest-quality version automatically. A 320kbps MP3 wins over a 128kbps one. A FLAC wins over both. You don't see the lower-quality dupes; the playlist gets the best of what you own.
+
+### The Tracker's request jitter
+
+When the Tracker fires search commands at Radarr or Sonarr, it doesn't blast them out at predictable intervals. Each search has a small randomized delay (jitter) added before it goes out, so the request pattern looks more like a human clicking buttons than a bot pounding an API. This keeps your indexers happier and reduces the chance of getting rate-limited mid-batch.
+
+### The Groomer's skip cache
+
+Re-scanning a 33,000-track library is expensive. The Groomer remembers which tracks have already been processed and skips them on subsequent runs unless something changed. The first scan takes a while; every scan after that is fast. The cache is automatically invalidated when a track's path or metadata changes.
+
+### Your library gets faster the longer you use it
+
+ChartHound's database isn't just storage — it's a knowledge cache. Every scan teaches it something. Track fingerprints, chart matches, MusicBrainz IDs, Discogs lookups, Last.fm popularity scores, album-folder hashes, the skip cache, the path index, the genre-resolution waterfall results — all of it accumulates and gets reused on subsequent runs. The first scan of a 33,000-track library is the slowest one you'll ever do. Every scan after that gets faster as the database fills out and fewer tracks need fresh lookups.
+
+This is why the Veterinarian's "Clear Full Database" button is in the danger zone — and why you should treat it that way. Clearing the database wipes all that accumulated knowledge and sends you back to first-scan speeds. Only use it if the database has actually become corrupted, or if you want to genuinely start over. Day-to-day, a database that's been growing for weeks is a feature, not clutter.
+
+### File-first metadata writes
+
+Every metadata update goes to the *physical file* via Mutagen *before* ChartHound asks Plex/Emby/Jellyfin to refresh. This means your tags survive a media server migration. If you switch from Plex to Jellyfin tomorrow, your chart data goes with you because it lives in the files, not in some database you can't export.
+
+### Bounded debug consoles
+
+The Veterinarian's debug console (and other in-tab consoles) are capped at 1,000 lines and turned off by default. Debug output can pile up fast — a long-running scan can generate thousands of log lines per minute. The cap and opt-in behavior keep the UI snappy and the noise out of your way unless you explicitly ask for it.
+
+### Album batching for chart lookups
+
+When the Groomer scans your library, it groups tracks by album folder and makes one API call per album instead of one per track. For a 33,000-track library, that's the difference between ~33,000 API calls and ~3,000. Same data, an order of magnitude less work.
+
+### Aggressive caching everywhere
+
+Static chart data ships in a read-only SQLite database with the project. Lookups against your library check local SQLite first, external APIs second. The Scout's YouTube search results are cached for 30 days — a repeated search costs zero API quota. The whole architecture is designed around the assumption that your time and your API quotas matter.
+
+### Auto-lockdown registration
+
+The first user to register becomes the admin. The moment that user exists, the registration endpoint auto-disables and the "Sign Up" link is hidden from the UI. There's no checkbox to forget, no manual step to remember. ChartHound locks itself.
+
+### Encrypted credentials, never visible
+
+Every API key, token, and password is Fernet-encrypted before it touches the database. There is no "show password" button. There is no API endpoint that returns decrypted credentials. Keys are decrypted in memory only at the moment they're used, on the backend, never sent to the browser. If someone steals your `charthound.db` file, they get nothing usable without your `SECRET_KEY`.
+
+### iTunes rate-limit respect
+
+When ChartHound talks to iTunes for metadata, it strictly enforces a 20-requests-per-minute fixed window — Apple's documented limit. We never burst-fire requests, even during big batch operations. It takes longer; it doesn't get our IPs throttled.
 
 ---
 
@@ -342,6 +500,45 @@ You haven't replaced the placeholder key in your `docker-compose.yml`. Generate 
 **qBittorrent on a different machine:**
 ChartHound and qBittorrent don't need to be on the same server. Enter the qBittorrent machine's LAN IP and port in The Kennel (e.g., `http://192.168.1.100:8080`).
 
+**Session expired banner appears unexpectedly:**
+ChartHound sessions last 7 days. After that you'll see a clear "session expired" banner on the login screen — log back in and you're good. Your data, settings, and connections are all preserved.
+
+---
+
+## Support ChartHound
+
+ChartHound is free for personal use today, and that isn't changing anytime soon. The current license is non-commercial — it's the tool I built for myself, shared with anyone who can use it. If it saves you time or makes your library better, here are some ways to chip in.
+
+### Buy Me a Coffee
+
+The easiest way. One-time tips of any amount.
+
+[☕ buymeacoffee.com/colbycurtis](https://buymeacoffee.com/colbycurtis)
+
+### Monthly sponsorship *(coming soon)*
+
+GitHub Sponsors enrollment is in progress. Once active, it'll let you set up recurring contributions starting around $2/month with a custom-amount option. Watch this space — link will go live as soon as enrollment completes.
+
+### Cryptocurrency
+
+For users who prefer crypto, donations are welcome:
+
+- **Bitcoin (BTC · Native SegWit):**  
+  `bc1qdr9j5al9qq29cskrjxvm4myzq4se4c3kk6p8hv`
+- **Ethereum (ETH · ERC-20 OK):**  
+  `0x60D4519eA1CcBAB149403e232C54468572f783C7`
+
+These addresses match the ones in ChartHound's in-app donation panel, so you can verify them by checking your own UI.
+
+### Other ways to help (free)
+
+If money isn't on the table, there's plenty else that helps:
+
+- **⭐ Star the repo on GitHub** — visibility helps more than people think
+- **🐛 Report bugs** — open an issue with reproduction steps and I'll get to it
+- **💡 Share use cases** — tell me how you're using ChartHound, what's working, what's not. Real user feedback shapes the roadmap.
+- **📣 Spread the word** — tell other Plex/Emby/Jellyfin users. r/selfhosted, r/Plex, the Awesome-Selfhosted list, your homelab Discord.
+
 ---
 
 ## License
@@ -350,7 +547,7 @@ ChartHound and qBittorrent don't need to be on the same server. Enter the qBitto
 
 This software is licensed for **personal, non-commercial use only**. You may view the source code and run the software for personal use. Modification, redistribution, forking (beyond local personal use), and commercial use are strictly prohibited without prior written consent. See [LICENSE.md](LICENSE.md) for full terms.
 
-**ChartHound** and all tab names (The Kennel, The Retriever, The Sniffer, The Groomer, The Bloodhound, The Tracker, The Scout, The Lookout) are protected identifiers of this project.
+**ChartHound** and all tab names (The Kennel, The Retriever, The Sniffer, The Groomer, The Bloodhound, The Tracker, The Veterinarian, The Scout) are protected identifiers of this project.
 
 ---
 
