@@ -1984,11 +1984,169 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
 
     <!-- THE SCOUT -->
     <div class="tab-panel" id="panel-scout">
-      <div class="placeholder-panel" style="--tab-color:var(--c7)">
-        <div class="ph-icon">▶</div><div class="ph-title">THE SCOUT</div>
-        <div class="ph-tagline">YOUTUBE PLAYLIST CREATOR</div>
-        <div class="ph-sub">Search YouTube by chart · genre · artist.<br>Build YouTube playlists and push to your account.<br>YouTube API credentials stored encrypted in The Kennel.</div>
-        <div class="ph-coming">MILESTONE 9</div>
+      <div style="display:grid;grid-template-columns:320px 1fr;min-height:calc(100vh - 120px)">
+
+        <!-- ═════════════════════════════ LEFT PANEL ═════════════════════════════ -->
+        <div style="border-right:1px solid var(--border);padding:1.25rem;display:flex;flex-direction:column;gap:1rem;overflow-y:auto;background:var(--surface);">
+
+          <!-- QUOTA BAR -->
+          <div>
+            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--blue);margin-bottom:.45rem;display:flex;align-items:center;gap:.5rem">
+              YOUTUBE API QUOTA
+              <span style="flex:1;height:1px;background:var(--border);display:block"></span>
+              <button onclick="scoutQuotaRefresh()" title="Refresh quota" style="background:none;border:none;color:var(--muted2);font-family:var(--mono);font-size:.52rem;cursor:pointer;padding:.1rem .3rem">↻</button>
+            </div>
+            <div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:.55rem .7rem">
+              <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:.6rem;margin-bottom:.35rem">
+                <span id="sct-quota-used" style="color:var(--text)">— / —</span>
+                <span id="sct-quota-pct" style="color:var(--muted)">—</span>
+              </div>
+              <div style="height:6px;background:var(--surface2);border-radius:3px;overflow:hidden">
+                <div id="sct-quota-fill" style="height:100%;width:0%;background:var(--blue);transition:width .3s"></div>
+              </div>
+              <div id="sct-quota-reset" style="font-family:var(--mono);font-size:.5rem;color:var(--muted2);margin-top:.35rem;letter-spacing:.5px">RESETS 00:00 UTC</div>
+            </div>
+          </div>
+
+          <!-- SEARCH INPUT -->
+          <div>
+            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--blue);margin-bottom:.45rem;display:flex;align-items:center;gap:.5rem">SEARCH<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
+            <div style="display:flex;gap:.4rem">
+              <input type="text" id="sct-query" placeholder="e.g. fleetwood mac dreams" onkeydown="if(event.key==='Enter')scoutSearch()" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:.72rem;padding:.55rem .7rem;outline:none">
+              <button onclick="scoutSearch()" style="padding:.5rem .75rem;background:var(--blue);color:#000;border:none;border-radius:5px;font-family:var(--mono);font-size:.62rem;cursor:pointer">🔍</button>
+            </div>
+            <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted2);margin-top:.4rem;letter-spacing:.5px">Search costs 100 + 1/result units</div>
+          </div>
+
+          <!-- FILTERS -->
+          <div>
+            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--blue);margin-bottom:.45rem;display:flex;align-items:center;gap:.5rem">FILTERS<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
+
+            <!-- Filter chips: HD, Skip Shorts, VEVO -->
+            <div style="display:flex;flex-wrap:wrap;gap:.35rem;margin-bottom:.65rem">
+              <button id="sct-chip-hd" onclick="scoutToggleChip('hd')" class="sct-chip" style="padding:.3rem .55rem;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer;letter-spacing:.5px">HD ONLY</button>
+              <button id="sct-chip-shorts" onclick="scoutToggleChip('shorts')" class="sct-chip" style="padding:.3rem .55rem;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer;letter-spacing:.5px">SKIP SHORTS</button>
+              <button id="sct-chip-vevo" onclick="scoutToggleChip('vevo')" class="sct-chip" style="padding:.3rem .55rem;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer;letter-spacing:.5px">VEVO/OFFICIAL</button>
+            </div>
+
+            <!-- Min duration -->
+            <div style="margin-bottom:.55rem">
+              <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:.55rem;color:var(--muted);margin-bottom:.2rem;letter-spacing:.5px">
+                <span>MIN DURATION</span>
+                <span id="sct-mindur-label" style="color:var(--text)">60s</span>
+              </div>
+              <input type="range" id="sct-mindur" min="0" max="600" step="30" value="60" oninput="scoutOnRange()" style="width:100%;accent-color:var(--blue)">
+            </div>
+
+            <!-- Min views -->
+            <div style="margin-bottom:.55rem">
+              <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:.55rem;color:var(--muted);margin-bottom:.2rem;letter-spacing:.5px">
+                <span>MIN VIEWS</span>
+                <span id="sct-minviews-label" style="color:var(--text)">0</span>
+              </div>
+              <input type="range" id="sct-minviews" min="0" max="10000000" step="10000" value="0" oninput="scoutOnRange()" style="width:100%;accent-color:var(--blue)">
+            </div>
+
+            <!-- Channel include / exclude -->
+            <div style="margin-bottom:.45rem">
+              <div style="font-family:var(--mono);font-size:.55rem;color:var(--muted);margin-bottom:.2rem;letter-spacing:.5px">CHANNEL CONTAINS</div>
+              <input type="text" id="sct-chan-inc" placeholder="(optional)" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:var(--mono);font-size:.62rem;padding:.4rem .55rem;outline:none;box-sizing:border-box">
+            </div>
+            <div>
+              <div style="font-family:var(--mono);font-size:.55rem;color:var(--muted);margin-bottom:.2rem;letter-spacing:.5px">CHANNEL EXCLUDES</div>
+              <input type="text" id="sct-chan-exc" placeholder="(optional)" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:var(--mono);font-size:.62rem;padding:.4rem .55rem;outline:none;box-sizing:border-box">
+            </div>
+
+            <!-- Max results -->
+            <div style="margin-top:.65rem">
+              <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:.55rem;color:var(--muted);margin-bottom:.2rem;letter-spacing:.5px">
+                <span>MAX RESULTS</span>
+                <span id="sct-maxres-label" style="color:var(--text)">10</span>
+              </div>
+              <input type="range" id="sct-maxres" min="1" max="20" step="1" value="10" oninput="scoutOnRange()" style="width:100%;accent-color:var(--blue)">
+            </div>
+          </div>
+
+          <!-- ACTIVITY LOG -->
+          <div style="flex:1;display:flex;flex-direction:column;min-height:0">
+            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--blue);margin-bottom:.4rem;display:flex;align-items:center;gap:.5rem">
+              ACTIVITY LOG
+              <span style="flex:1;height:1px;background:var(--border);display:block"></span>
+              <button onclick="document.getElementById('sct-log').innerHTML=''" style="background:none;border:none;color:var(--muted2);font-family:var(--mono);font-size:.52rem;cursor:pointer;padding:.1rem .3rem;letter-spacing:.5px" title="Clear log">✕ CLEAR</button>
+            </div>
+            <div id="sct-log" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:.7rem;font-family:var(--mono);font-size:.58rem;color:var(--muted);flex:1;min-height:120px;max-height:220px;overflow-y:auto;line-height:1.8"></div>
+          </div>
+        </div>
+
+        <!-- ═════════════════════════════ RIGHT PANEL ═════════════════════════════ -->
+        <div style="display:flex;flex-direction:column;padding:1.25rem 1.75rem;gap:1rem;overflow-y:auto">
+
+          <!-- STATUS / HOW-IT-WORKS -->
+          <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1rem 1.5rem">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.5rem">
+              <div style="font-family:var(--display);font-size:1.1rem;letter-spacing:1.5px" id="sct-status-title">READY TO SCOUT</div>
+              <div style="font-family:var(--mono);font-size:.58rem;color:var(--muted)" id="sct-status-sub">Search YouTube → add to playlist → open in your account</div>
+            </div>
+            <div style="display:flex;gap:1.5rem;flex-wrap:wrap">
+              <div style="text-align:center;min-width:70px">
+                <div style="font-family:var(--display);font-size:1.6rem;color:var(--text)" id="sct-s-found">0</div>
+                <div style="font-family:var(--mono);font-size:.48rem;color:var(--muted);letter-spacing:1px">FOUND</div>
+              </div>
+              <div style="text-align:center;min-width:70px">
+                <div style="font-family:var(--display);font-size:1.6rem;color:var(--blue)" id="sct-s-selected">0</div>
+                <div style="font-family:var(--mono);font-size:.48rem;color:var(--muted);letter-spacing:1px">IN PLAYLIST</div>
+              </div>
+              <div style="text-align:center;min-width:70px">
+                <div style="font-family:var(--display);font-size:1.6rem;color:var(--green)" id="sct-s-cache">—</div>
+                <div style="font-family:var(--mono);font-size:.48rem;color:var(--muted);letter-spacing:1px">CACHE</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- HOW IT WORKS -->
+          <div style="background:var(--surface);border:1px dashed var(--blue);border-radius:8px;padding:.7rem 1rem;font-family:var(--mono);font-size:.58rem;color:var(--muted);line-height:1.7">
+            <span style="color:var(--blue);letter-spacing:1px">HOW IT WORKS:</span>
+            Search → click <span style="color:var(--blue)">+ ADD</span> on the videos you want → click <span style="color:var(--blue)">▶ OPEN IN YOUTUBE</span>. YouTube opens with your videos queued; click <em>Save</em> on YouTube's side to commit the playlist to your account. ChartHound never touches your YouTube account directly.
+          </div>
+
+          <!-- RESULTS -->
+          <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;flex:1;min-height:240px;display:flex;flex-direction:column">
+            <div style="padding:.7rem 1rem;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+              <div style="font-family:var(--mono);font-size:.6rem;letter-spacing:2px;color:var(--blue)">SEARCH RESULTS</div>
+              <div style="font-family:var(--mono);font-size:.55rem;color:var(--muted)" id="sct-results-meta"></div>
+            </div>
+            <div id="sct-results" style="padding:.5rem;display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:.65rem;overflow-y:auto;flex:1"></div>
+            <div id="sct-results-empty" style="text-align:center;padding:3rem 1rem;color:var(--muted2);font-family:var(--mono);font-size:.65rem;line-height:2">
+              NO RESULTS YET<br>
+              <span style="color:var(--border)">───────────────────────────</span><br>
+              Type a query and hit search to begin
+            </div>
+          </div>
+
+          <!-- PLAYLIST BUILDER -->
+          <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;display:flex;flex-direction:column;max-height:340px">
+            <div style="padding:.7rem 1rem;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:.5rem;flex-wrap:wrap">
+              <div style="font-family:var(--mono);font-size:.6rem;letter-spacing:2px;color:var(--blue)">
+                PLAYLIST BUILDER <span id="sct-pl-count" style="color:var(--muted);margin-left:.5rem">(0/50)</span>
+              </div>
+              <div style="display:flex;gap:.4rem;flex-wrap:wrap">
+                <input type="text" id="sct-pl-title" placeholder="Playlist title" value="ChartHound Playlist" maxlength="120" style="background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:.62rem;padding:.4rem .6rem;outline:none;width:180px">
+                <button onclick="scoutClearPlaylist()" style="padding:.4rem .7rem;background:var(--surface2);color:var(--red);border:1px solid var(--border);border-radius:5px;font-family:var(--mono);font-size:.58rem;cursor:pointer;letter-spacing:.5px">✕ CLEAR</button>
+              </div>
+            </div>
+            <div id="sct-playlist" style="padding:.5rem;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:.35rem"></div>
+            <div id="sct-playlist-empty" style="text-align:center;padding:1.5rem 1rem;color:var(--muted2);font-family:var(--mono);font-size:.6rem;line-height:1.8">
+              Add videos from results above. Max 50 per playlist.
+            </div>
+            <div style="padding:.7rem 1rem;background:var(--surface2);border-top:1px solid var(--border);display:flex;gap:.4rem;flex-wrap:wrap;justify-content:flex-end">
+              <button id="sct-pl-open" onclick="scoutBuildPlaylist('open')" disabled style="padding:.45rem .85rem;background:var(--blue);color:#000;border:none;border-radius:5px;font-family:var(--mono);font-size:.62rem;cursor:pointer;letter-spacing:.5px;opacity:.4">▶ OPEN IN YOUTUBE</button>
+              <button id="sct-pl-copy" onclick="scoutBuildPlaylist('copy')" disabled style="padding:.45rem .85rem;background:var(--surface);color:var(--blue);border:1px solid var(--blue);border-radius:5px;font-family:var(--mono);font-size:.62rem;cursor:pointer;letter-spacing:.5px;opacity:.4">📋 COPY URLS</button>
+              <button id="sct-pl-md"   onclick="scoutBuildPlaylist('md')"   disabled style="padding:.45rem .85rem;background:var(--surface);color:var(--blue);border:1px solid var(--blue);border-radius:5px;font-family:var(--mono);font-size:.62rem;cursor:pointer;letter-spacing:.5px;opacity:.4">📝 MARKDOWN</button>
+              <button id="sct-pl-txt"  onclick="scoutBuildPlaylist('txt')"  disabled style="padding:.45rem .85rem;background:var(--surface);color:var(--blue);border:1px solid var(--blue);border-radius:5px;font-family:var(--mono);font-size:.62rem;cursor:pointer;letter-spacing:.5px;opacity:.4">💾 PLAIN TEXT</button>
+            </div>
+          </div>
+
+        </div>
       </div>
     </div>
 
@@ -2296,6 +2454,7 @@ function switchTab(name) {
   if (name === 'bloodhound') bhInit();
   if (name === 'tracker') trkInit();
   if (name === 'vet') vetInit();
+  if (name === 'scout') scoutInit();
 }
 function checkRetrieverBanners() {
   const b = document.getElementById('retrieverLfmBanner');
@@ -6759,6 +6918,360 @@ async function trkClearLog() {
 
 // Stop tracker poll when leaving tab
 window._dbgTabPatch = true;
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//   THE SCOUT — Cycle 3 Frontend JS
+//   Backend contracts:
+//     POST /api/scout/search          → {results, from_cache, quota_used_today}
+//     POST /api/scout/build-playlist  → {deeplink, plain_text, markdown, ...}
+//     GET  /api/scout/quota-status    → {units_used, units_cap, percent_used}
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ── State ──────────────────────────────────────────────────────────────────────
+let scoutPlaylist  = [];   // [{video_id, title, channel, thumbnail, duration_sec}]
+let scoutLastResults = []; // last search payload (for re-render after add/remove)
+let scoutChips     = { hd:false, shorts:false, vevo:false };
+let scoutQuotaCache = null;
+
+// ── Init (called from switchTab) ──────────────────────────────────────────────
+function scoutInit() {
+  scoutQuotaRefresh();
+  scoutRenderPlaylist();
+  scoutOnRange();
+}
+
+// ── Logging helper ────────────────────────────────────────────────────────────
+function scoutLog(msg, color) {
+  const el = document.getElementById('sct-log');
+  if (!el) return;
+  const ts = new Date().toLocaleTimeString();
+  const c  = color || 'var(--muted)';
+  el.innerHTML += `<div style="color:${c}"><span style="color:var(--muted2)">[${ts}]</span> ${msg}</div>`;
+  el.scrollTop = el.scrollHeight;
+}
+
+// ── Quota bar ─────────────────────────────────────────────────────────────────
+async function scoutQuotaRefresh() {
+  try {
+    const r = await authFetch(`${API}/api/scout/quota-status`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const d = await r.json();
+    scoutQuotaCache = d;
+    const used = d.units_used || 0;
+    const cap  = d.units_cap  || 10000;
+    const safety = d.units_safety || 500;
+    const effCap = cap - safety;
+    const pct  = Math.min(100, Math.round(100 * used / effCap));
+    document.getElementById('sct-quota-used').textContent = `${used.toLocaleString()} / ${effCap.toLocaleString()}`;
+    document.getElementById('sct-quota-pct').textContent  = `${pct}%`;
+    const fill = document.getElementById('sct-quota-fill');
+    fill.style.width = pct + '%';
+    fill.style.background = pct > 90 ? 'var(--red)' : pct > 70 ? 'var(--orange)' : 'var(--blue)';
+  } catch (e) {
+    scoutLog(`Quota fetch failed: ${e.message}`, 'var(--red)');
+  }
+}
+
+// ── Filter chip toggles ───────────────────────────────────────────────────────
+function scoutToggleChip(name) {
+  scoutChips[name] = !scoutChips[name];
+  const btn = document.getElementById(`sct-chip-${name}`);
+  if (scoutChips[name]) {
+    btn.style.background = 'var(--blue)';
+    btn.style.color      = '#000';
+    btn.style.border     = '1px solid var(--blue)';
+  } else {
+    btn.style.background = 'var(--surface2)';
+    btn.style.color      = 'var(--muted)';
+    btn.style.border     = '1px solid var(--border)';
+  }
+  // SKIP SHORTS chip is a shortcut to bump min-duration to 60 if currently lower
+  if (name === 'shorts' && scoutChips.shorts) {
+    const r = document.getElementById('sct-mindur');
+    if (parseInt(r.value, 10) < 60) { r.value = 60; scoutOnRange(); }
+  }
+}
+
+// ── Range slider live labels ──────────────────────────────────────────────────
+function scoutOnRange() {
+  const dur = parseInt(document.getElementById('sct-mindur').value, 10);
+  document.getElementById('sct-mindur-label').textContent = dur === 0 ? 'any' : `${dur}s`;
+  const v = parseInt(document.getElementById('sct-minviews').value, 10);
+  document.getElementById('sct-minviews-label').textContent =
+    v === 0 ? 'any' : v >= 1000000 ? `${(v/1000000).toFixed(1)}M` : `${(v/1000).toFixed(0)}k`;
+  document.getElementById('sct-maxres-label').textContent = document.getElementById('sct-maxres').value;
+}
+
+// ── Build filter payload from UI ──────────────────────────────────────────────
+function scoutBuildFilters() {
+  const channelInc = (document.getElementById('sct-chan-inc').value || '').trim();
+  // VEVO chip OR-injects a channel filter; if user has typed their own, theirs wins
+  const effectiveInc = channelInc || (scoutChips.vevo ? 'VEVO' : '');
+  return {
+    min_duration_seconds:     parseInt(document.getElementById('sct-mindur').value, 10),
+    min_view_count:           parseInt(document.getElementById('sct-minviews').value, 10),
+    definition:               scoutChips.hd ? 'high' : 'any',
+    channel_must_contain:     effectiveInc,
+    channel_must_not_contain: (document.getElementById('sct-chan-exc').value || '').trim(),
+  };
+}
+
+// ── Format helpers ────────────────────────────────────────────────────────────
+function scoutFmtDur(sec) {
+  sec = parseInt(sec, 10) || 0;
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  if (h) return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  return `${m}:${String(s).padStart(2,'0')}`;
+}
+function scoutFmtViews(n) {
+  n = parseInt(n, 10) || 0;
+  if (n >= 1e9) return (n/1e9).toFixed(1).replace(/\.0$/,'') + 'B';
+  if (n >= 1e6) return (n/1e6).toFixed(1).replace(/\.0$/,'') + 'M';
+  if (n >= 1e3) return (n/1e3).toFixed(1).replace(/\.0$/,'') + 'k';
+  return String(n);
+}
+function scoutEsc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// ── Search ────────────────────────────────────────────────────────────────────
+async function scoutSearch() {
+  const q = (document.getElementById('sct-query').value || '').trim();
+  if (!q) { scoutLog('Empty query — type something first', 'var(--orange)'); return; }
+
+  const filters    = scoutBuildFilters();
+  const maxResults = parseInt(document.getElementById('sct-maxres').value, 10);
+
+  const titleEl = document.getElementById('sct-status-title');
+  const subEl   = document.getElementById('sct-status-sub');
+  titleEl.textContent = 'SEARCHING…';
+  subEl.textContent   = `"${q}"`;
+  document.getElementById('sct-results').innerHTML = '';
+  document.getElementById('sct-results-empty').style.display = 'none';
+  scoutLog(`Search: "${q}" (max ${maxResults}, HD=${scoutChips.hd ? 'yes' : 'any'})`, 'var(--blue)');
+
+  try {
+    const r = await authFetch(`${API}/api/scout/search`, {
+      method: 'POST',
+      body: JSON.stringify({ query: q, max_results: maxResults, filters }),
+    });
+    if (!r.ok) {
+      const errBody = await r.json().catch(() => ({}));
+      const detail = errBody.detail || `HTTP ${r.status}`;
+      scoutLog(`✕ ${detail}`, 'var(--red)');
+      titleEl.textContent = 'SEARCH FAILED';
+      subEl.textContent   = detail;
+      document.getElementById('sct-results-empty').style.display = 'block';
+      document.getElementById('sct-results-empty').innerHTML =
+        `<span style="color:var(--red)">${scoutEsc(detail)}</span>`;
+      toast(detail, 'err');
+      return;
+    }
+    const data = await r.json();
+    scoutLastResults = data.results || [];
+    document.getElementById('sct-s-found').textContent = scoutLastResults.length;
+    document.getElementById('sct-s-cache').textContent = data.from_cache ? 'HIT' : 'MISS';
+    document.getElementById('sct-s-cache').style.color = data.from_cache ? 'var(--green)' : 'var(--muted)';
+    document.getElementById('sct-results-meta').textContent =
+      `${scoutLastResults.length} result${scoutLastResults.length === 1 ? '' : 's'} · ${data.from_cache ? 'cache hit (0 units)' : 'live (' + (data.quota_used_today || '?') + ' used today)'}`;
+    titleEl.textContent = scoutLastResults.length ? 'RESULTS READY' : 'NO MATCHES';
+    subEl.textContent   = `"${q}"`;
+    scoutRenderResults();
+    scoutQuotaRefresh();
+    scoutLog(`✓ ${scoutLastResults.length} results · ${data.from_cache ? 'cache' : 'live'}`, 'var(--green)');
+  } catch (e) {
+    scoutLog(`✕ ${e.message}`, 'var(--red)');
+    titleEl.textContent = 'SEARCH FAILED';
+    subEl.textContent   = e.message;
+    document.getElementById('sct-results-empty').style.display = 'block';
+    toast(`Scout search failed: ${e.message}`, 'err');
+  }
+}
+
+// ── Render result cards ───────────────────────────────────────────────────────
+function scoutRenderResults() {
+  const wrap = document.getElementById('sct-results');
+  const empty = document.getElementById('sct-results-empty');
+  if (!scoutLastResults.length) {
+    wrap.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+  const inPlaylist = new Set(scoutPlaylist.map(v => v.video_id));
+  wrap.innerHTML = scoutLastResults.map(v => {
+    const added   = inPlaylist.has(v.video_id);
+    const isHD    = (v.definition || '').toLowerCase() === 'hd';
+    const thumb   = v.thumbnail || '';
+    return `
+      <div style="background:var(--bg);border:1px solid ${added ? 'var(--blue)' : 'var(--border)'};border-radius:8px;overflow:hidden;display:flex;flex-direction:column">
+        <div style="position:relative;background:var(--surface2);aspect-ratio:16/9;overflow:hidden">
+          ${thumb ? `<img src="${scoutEsc(thumb)}" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block">` : ''}
+          <div style="position:absolute;bottom:.3rem;right:.3rem;background:rgba(0,0,0,.78);color:#fff;font-family:var(--mono);font-size:.55rem;padding:.15rem .35rem;border-radius:3px">${scoutFmtDur(v.duration_sec)}</div>
+          ${isHD ? '<div style="position:absolute;top:.3rem;left:.3rem;background:var(--blue);color:#000;font-family:var(--mono);font-size:.5rem;padding:.1rem .35rem;border-radius:3px;letter-spacing:.5px">HD</div>' : ''}
+        </div>
+        <div style="padding:.55rem .65rem;display:flex;flex-direction:column;gap:.3rem;flex:1">
+          <div title="${scoutEsc(v.title)}" style="font-family:var(--mono);font-size:.65rem;color:var(--text);line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${scoutEsc(v.title)}</div>
+          <div style="font-family:var(--mono);font-size:.55rem;color:var(--muted);display:flex;justify-content:space-between;gap:.5rem">
+            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${scoutEsc(v.channel)}">${scoutEsc(v.channel)}</span>
+            <span style="color:var(--muted2);white-space:nowrap">${scoutFmtViews(v.view_count)} views</span>
+          </div>
+          <div style="display:flex;gap:.35rem;margin-top:auto">
+            <button onclick="scoutAddToPlaylist('${scoutEsc(v.video_id)}')" ${added ? 'disabled' : ''} style="flex:1;padding:.35rem;background:${added ? 'var(--surface2)' : 'var(--blue)'};color:${added ? 'var(--muted)' : '#000'};border:none;border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:${added ? 'default' : 'pointer'};letter-spacing:.5px">${added ? '✓ ADDED' : '+ ADD'}</button>
+            <a href="${scoutEsc(v.url)}" target="_blank" rel="noopener" style="padding:.35rem .55rem;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:4px;font-family:var(--mono);font-size:.55rem;text-decoration:none;letter-spacing:.5px">↗</a>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// ── Playlist mutators ─────────────────────────────────────────────────────────
+function scoutAddToPlaylist(videoId) {
+  if (scoutPlaylist.length >= 50) {
+    scoutLog('✕ Playlist cap (50) reached', 'var(--red)');
+    toast('Playlist max is 50 videos', 'err');
+    return;
+  }
+  if (scoutPlaylist.some(v => v.video_id === videoId)) return;
+  const found = scoutLastResults.find(v => v.video_id === videoId);
+  if (!found) return;
+  scoutPlaylist.push({
+    video_id:     found.video_id,
+    title:        found.title,
+    channel:      found.channel,
+    thumbnail:    found.thumbnail,
+    duration_sec: found.duration_sec,
+  });
+  scoutRenderResults();
+  scoutRenderPlaylist();
+  scoutLog(`+ ${found.title}`, 'var(--green)');
+}
+function scoutRemoveFromPlaylist(videoId) {
+  scoutPlaylist = scoutPlaylist.filter(v => v.video_id !== videoId);
+  scoutRenderResults();
+  scoutRenderPlaylist();
+}
+function scoutMovePlaylist(videoId, dir) {
+  const i = scoutPlaylist.findIndex(v => v.video_id === videoId);
+  if (i < 0) return;
+  const j = i + dir;
+  if (j < 0 || j >= scoutPlaylist.length) return;
+  [scoutPlaylist[i], scoutPlaylist[j]] = [scoutPlaylist[j], scoutPlaylist[i]];
+  scoutRenderPlaylist();
+}
+function scoutClearPlaylist() {
+  if (!scoutPlaylist.length) return;
+  scoutPlaylist = [];
+  scoutRenderResults();
+  scoutRenderPlaylist();
+  scoutLog('Playlist cleared', 'var(--muted)');
+}
+
+// ── Render playlist rows ──────────────────────────────────────────────────────
+function scoutRenderPlaylist() {
+  const wrap  = document.getElementById('sct-playlist');
+  const empty = document.getElementById('sct-playlist-empty');
+  const count = scoutPlaylist.length;
+  document.getElementById('sct-pl-count').textContent = `(${count}/50)`;
+  document.getElementById('sct-s-selected').textContent = count;
+
+  ['sct-pl-open','sct-pl-copy','sct-pl-md','sct-pl-txt'].forEach(id => {
+    const b = document.getElementById(id);
+    b.disabled = count === 0;
+    b.style.opacity = count === 0 ? '.4' : '1';
+    b.style.cursor  = count === 0 ? 'default' : 'pointer';
+  });
+
+  if (!count) {
+    wrap.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+  wrap.innerHTML = scoutPlaylist.map((v, i) => `
+    <div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:.4rem .55rem;display:flex;align-items:center;gap:.55rem">
+      <div style="font-family:var(--mono);font-size:.6rem;color:var(--muted2);min-width:1.5rem;text-align:center">${i + 1}</div>
+      ${v.thumbnail ? `<img src="${scoutEsc(v.thumbnail)}" loading="lazy" style="width:56px;height:32px;object-fit:cover;border-radius:3px;flex-shrink:0">` : '<div style="width:56px;height:32px;background:var(--surface2);border-radius:3px;flex-shrink:0"></div>'}
+      <div style="flex:1;min-width:0">
+        <div title="${scoutEsc(v.title)}" style="font-family:var(--mono);font-size:.6rem;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${scoutEsc(v.title)}</div>
+        <div style="font-family:var(--mono);font-size:.52rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${scoutEsc(v.channel)} · ${scoutFmtDur(v.duration_sec)}</div>
+      </div>
+      <div style="display:flex;gap:.2rem;flex-shrink:0">
+        <button onclick="scoutMovePlaylist('${scoutEsc(v.video_id)}', -1)" ${i === 0 ? 'disabled' : ''} title="Move up" style="padding:.2rem .4rem;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:3px;font-family:var(--mono);font-size:.6rem;cursor:${i === 0 ? 'default' : 'pointer'};opacity:${i === 0 ? '.4' : '1'}">▲</button>
+        <button onclick="scoutMovePlaylist('${scoutEsc(v.video_id)}', 1)" ${i === count - 1 ? 'disabled' : ''} title="Move down" style="padding:.2rem .4rem;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:3px;font-family:var(--mono);font-size:.6rem;cursor:${i === count - 1 ? 'default' : 'pointer'};opacity:${i === count - 1 ? '.4' : '1'}">▼</button>
+        <button onclick="scoutRemoveFromPlaylist('${scoutEsc(v.video_id)}')" title="Remove" style="padding:.2rem .4rem;background:var(--surface2);color:var(--red);border:1px solid var(--border);border-radius:3px;font-family:var(--mono);font-size:.6rem;cursor:pointer">✕</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ── Build / open / export playlist ────────────────────────────────────────────
+async function scoutBuildPlaylist(action) {
+  if (!scoutPlaylist.length) return;
+  const title = (document.getElementById('sct-pl-title').value || 'ChartHound Playlist').trim() || 'ChartHound Playlist';
+  const ids = scoutPlaylist.map(v => v.video_id);
+  try {
+    const r = await authFetch(`${API}/api/scout/build-playlist`, {
+      method: 'POST',
+      body: JSON.stringify({ video_ids: ids, title }),
+    });
+    if (!r.ok) {
+      const errBody = await r.json().catch(() => ({}));
+      const detail = errBody.detail || `HTTP ${r.status}`;
+      scoutLog(`✕ Build failed: ${detail}`, 'var(--red)');
+      toast(detail, 'err');
+      return;
+    }
+    const d = await r.json();
+    if (action === 'open') {
+      window.open(d.deeplink, '_blank', 'noopener');
+      scoutLog(`▶ Opened playlist (${d.count} videos) — click Save in YouTube`, 'var(--blue)');
+      toast('Opened in YouTube — click Save on YouTube to commit', 'ok');
+    } else if (action === 'copy') {
+      await scoutCopyText(d.plain_text, `${d.count} URLs copied`);
+    } else if (action === 'md') {
+      scoutDownload(`${title}.md`, d.markdown);
+      scoutLog(`💾 ${title}.md downloaded`, 'var(--blue)');
+    } else if (action === 'txt') {
+      scoutDownload(`${title}.txt`, d.plain_text);
+      scoutLog(`💾 ${title}.txt downloaded`, 'var(--blue)');
+    }
+  } catch (e) {
+    scoutLog(`✕ ${e.message}`, 'var(--red)');
+    toast(`Build failed: ${e.message}`, 'err');
+  }
+}
+
+async function scoutCopyText(text, okMsg) {
+  try {
+    await navigator.clipboard.writeText(text);
+    scoutLog(`📋 ${okMsg}`, 'var(--green)');
+    toast(okMsg, 'ok');
+  } catch (e) {
+    // Fallback for non-secure contexts
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); scoutLog(`📋 ${okMsg}`, 'var(--green)'); toast(okMsg, 'ok'); }
+    catch { scoutLog('Clipboard unavailable — try the export buttons', 'var(--orange)'); }
+    document.body.removeChild(ta);
+  }
+}
+
+function scoutDownload(filename, content) {
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 
 </script>
 </body>
