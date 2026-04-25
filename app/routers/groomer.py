@@ -182,7 +182,20 @@ def _lookup_static(artist: str, title: str, charts: list) -> Optional[dict]:
         conn = sqlite3.connect(_STATIC_DB, check_same_thread=False)
         conn.row_factory = sqlite3.Row
 
-        # ── Step 1: chart_reference (Billboard CSVs) ──────────────────────────
+        # Attach dynamic DB read-only so we can UNION chart_reference_extras.
+        # Safe no-op if extras table doesn't exist yet — we wrap extras queries in try/except.
+        has_extras = False
+        try:
+            conn.execute(f"ATTACH DATABASE '{_DYNAMIC_DB}' AS dyn")
+            # Probe for table existence once per call
+            probe = conn.execute(
+                "SELECT name FROM dyn.sqlite_master WHERE type='table' AND name='chart_reference_extras'"
+            ).fetchone()
+            has_extras = bool(probe)
+        except Exception:
+            has_extras = False
+
+        # ── Step 1: chart_reference (Billboard CSVs) + extras (user-imported) ─
         chart_filter = ""
         params: list = [artist_n, title_n]
         if charts:
@@ -190,25 +203,60 @@ def _lookup_static(artist: str, title: str, charts: list) -> Optional[dict]:
             chart_filter = f"AND chart_name IN ({placeholders})"
             params += charts
 
-        rows = conn.execute(f"""
-            SELECT chart_name, peak_position, weeks_on_chart, chart_year,
-                   artist_norm, title_norm, data_source
-            FROM chart_reference
-            WHERE artist_norm = ? AND title_norm = ?
-            {chart_filter}
-            ORDER BY peak_position ASC
-            LIMIT 20
-        """, params).fetchall()
-
-        # Fuzzy fallback if exact norm match fails
-        if not rows:
-            candidates = conn.execute(f"""
+        if has_extras:
+            # UNION ALL — extras rows sit alongside static rows; ORDER BY picks best peak
+            union_params = list(params) + list(params)  # params needed twice
+            rows = conn.execute(f"""
                 SELECT chart_name, peak_position, weeks_on_chart, chart_year,
                        artist_norm, title_norm, data_source
                 FROM chart_reference
-                WHERE artist_norm LIKE ? {chart_filter}
-                LIMIT 200
-            """, [artist_n[:6] + "%"] + (charts if charts else [])).fetchall()
+                WHERE artist_norm = ? AND title_norm = ?
+                {chart_filter}
+                UNION ALL
+                SELECT chart_name, peak_position, weeks_on_chart, chart_year,
+                       artist_norm, title_norm, data_source
+                FROM dyn.chart_reference_extras
+                WHERE artist_norm = ? AND title_norm = ?
+                {chart_filter}
+                ORDER BY peak_position ASC
+                LIMIT 20
+            """, union_params).fetchall()
+        else:
+            rows = conn.execute(f"""
+                SELECT chart_name, peak_position, weeks_on_chart, chart_year,
+                       artist_norm, title_norm, data_source
+                FROM chart_reference
+                WHERE artist_norm = ? AND title_norm = ?
+                {chart_filter}
+                ORDER BY peak_position ASC
+                LIMIT 20
+            """, params).fetchall()
+
+        # Fuzzy fallback if exact norm match fails
+        if not rows:
+            like_params = [artist_n[:6] + "%"] + (charts if charts else [])
+            if has_extras:
+                union_like = list(like_params) + list(like_params)
+                candidates = conn.execute(f"""
+                    SELECT chart_name, peak_position, weeks_on_chart, chart_year,
+                           artist_norm, title_norm, data_source
+                    FROM chart_reference
+                    WHERE artist_norm LIKE ? {chart_filter}
+                    UNION ALL
+                    SELECT chart_name, peak_position, weeks_on_chart, chart_year,
+                           artist_norm, title_norm, data_source
+                    FROM dyn.chart_reference_extras
+                    WHERE artist_norm LIKE ? {chart_filter}
+                    LIMIT 400
+                """, union_like).fetchall()
+            else:
+                candidates = conn.execute(f"""
+                    SELECT chart_name, peak_position, weeks_on_chart, chart_year,
+                           artist_norm, title_norm, data_source
+                    FROM chart_reference
+                    WHERE artist_norm LIKE ? {chart_filter}
+                    LIMIT 200
+                """, like_params).fetchall()
 
             best = None
             best_score = 0.0
@@ -526,6 +574,7 @@ async def tagged_count(_=Depends(require_auth)):
 @router.get("/db_stats")
 async def db_stats(_=Depends(require_auth)):
     static_total = 0
+    extras_total = 0
     dynamic_chart_data = 0
 
     if os.path.exists(_STATIC_DB):
@@ -543,11 +592,20 @@ async def db_stats(_=Depends(require_auth)):
             async with db.execute("SELECT COUNT(*) FROM chart_data") as cur:
                 row = await cur.fetchone()
                 dynamic_chart_data = row[0] if row else 0
+            # User-imported chart entries (chart_reference_extras may not exist yet)
+            try:
+                async with db.execute("SELECT COUNT(*) FROM chart_reference_extras") as cur:
+                    row = await cur.fetchone()
+                    extras_total = row[0] if row else 0
+            except Exception:
+                extras_total = 0
     except Exception:
         pass
 
     return {
         "static_entries":  static_total,
+        "extras_entries":  extras_total,
+        "total_entries":   static_total + extras_total,
         "cached_results":  dynamic_chart_data,
         "static_db_ready": os.path.exists(_STATIC_DB),
     }
@@ -622,6 +680,7 @@ async def vet_db_health(_=Depends(require_auth)):
         "tracks": 0, "artists": 0, "albums": 0,
         "chart_data": 0, "connections": 0,
         "chart_reference": 0, "billboard_pop": 0,
+        "chart_reference_extras": 0,
     }
     try:
         async with aiosqlite.connect(_DYNAMIC_DB) as db:
@@ -629,6 +688,7 @@ async def vet_db_health(_=Depends(require_auth)):
                 ("tracks", "tracks"), ("artists", "artists"),
                 ("albums", "albums"), ("chart_data", "chart_data"),
                 ("connections", "connections"),
+                ("chart_reference_extras", "chart_reference_extras"),
             ]:
                 try:
                     async with db.execute(f"SELECT COUNT(*) FROM {table}") as cur:
@@ -691,6 +751,1068 @@ async def vet_integrity_check(_=Depends(require_auth)):
     except Exception as e:
         log.error(f"Integrity check failed: {e}")
         raise HTTPException(500, f"Integrity check failed: {e}")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  VETERINARIAN — STATIC DB SOURCES (user-imported chart data)
+#
+#  The shipped static DB (`charthound_static.db`) is mounted read-only, so user
+#  imports go into a sibling table in the DYNAMIC DB: `chart_reference_extras`.
+#  All chart lookups (Groomer scans + Sniffer Chart Gap Fill) UNION across both.
+#
+#  First source: utdata Hot 100 post-2018
+#    Repo: https://github.com/utdata/rwd-billboard-data
+#    Raw:  https://raw.githubusercontent.com/utdata/rwd-billboard-data/main/data-out/hot-100-current.csv
+#    Columns: chart_week, current_week, title, performer, last_week,
+#             peak_pos, wks_on_chart  (and a few more we ignore)
+#  More sources will follow the same pattern in this block.
+# ══════════════════════════════════════════════════════════════════════════════
+
+# Registry of importable sources the UI can show.
+# id         — stable key used by the API + settings
+# label      — human string shown in UI
+# data_tag   — value stored in `data_source` column so we can count per-source
+# importer   — name of the async function that does the work
+_STATIC_SOURCES = [
+    {
+        "id":       "utdata",
+        "label":    "utdata Hot 100 post-2018",
+        "data_tag": "utdata_hot100",
+        "importer": "_import_utdata_hot100",
+    },
+    {
+        "id":       "chart2000",
+        "label":    "Chart2000.com 2000–2024 (global)",
+        "data_tag": "chart2000_monthly",
+        "importer": "_import_chart2000",
+    },
+    {
+        "id":       "tsort",
+        "label":    "tsort.info 1900+ Historical (global)",
+        "data_tag": "tsort_historical",
+        "importer": "_import_tsort",
+    },
+    {
+        "id":       "kworb_us",
+        "label":    "Kworb iTunes US (current)",
+        "data_tag": "kworb_itunes_us",
+        "importer": "_import_kworb_us",
+    },
+    {
+        "id":       "ccm",
+        "label":    "Billboard Christian Songs (current week)",
+        "data_tag": "ccm_weekly",
+        "importer": "_import_ccm",
+    },
+    {
+        "id":       "uk_official",
+        "label":    "UK Official Charts Singles (current week)",
+        "data_tag": "uk_official_singles",
+        "importer": "_import_uk_official",
+    },
+]
+
+# In-memory state for the import job. Only one import runs at a time.
+_vet_import_job = {
+    "status":    "idle",   # idle | running | done | error
+    "source_id": None,
+    "inserted":  0,
+    "skipped":   0,
+    "message":   "",
+    "started_at": None,
+    "finished_at": None,
+}
+
+
+async def _ensure_extras_table():
+    """Create chart_reference_extras in the dynamic DB if missing. Idempotent."""
+    try:
+        async with aiosqlite.connect(_DYNAMIC_DB) as db:
+            await db.executescript("""
+                CREATE TABLE IF NOT EXISTS chart_reference_extras (
+                    ref_id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    chart_name      TEXT    NOT NULL,
+                    artist          TEXT    NOT NULL,
+                    title           TEXT    NOT NULL,
+                    artist_norm     TEXT    NOT NULL,
+                    title_norm      TEXT    NOT NULL,
+                    peak_position   INTEGER,
+                    weeks_on_chart  INTEGER,
+                    chart_year      INTEGER,
+                    data_source     TEXT,
+                    added_at        TEXT NOT NULL DEFAULT (datetime('now')),
+                    UNIQUE(chart_name, artist_norm, title_norm, chart_year)
+                );
+                CREATE INDEX IF NOT EXISTS idx_extras_artist_title
+                    ON chart_reference_extras(artist_norm, title_norm);
+                CREATE INDEX IF NOT EXISTS idx_extras_chart
+                    ON chart_reference_extras(chart_name);
+                CREATE INDEX IF NOT EXISTS idx_extras_source
+                    ON chart_reference_extras(data_source);
+            """)
+            await db.commit()
+    except Exception as e:
+        log.warning(f"_ensure_extras_table: {e}")
+
+
+async def _count_extras(data_tag: Optional[str] = None) -> int:
+    """Count rows in chart_reference_extras, optionally filtered by data_source."""
+    try:
+        async with aiosqlite.connect(_DYNAMIC_DB) as db:
+            if data_tag:
+                async with db.execute(
+                    "SELECT COUNT(*) FROM chart_reference_extras WHERE data_source=?",
+                    (data_tag,)
+                ) as cur:
+                    row = await cur.fetchone()
+            else:
+                async with db.execute(
+                    "SELECT COUNT(*) FROM chart_reference_extras"
+                ) as cur:
+                    row = await cur.fetchone()
+            return row[0] if row else 0
+    except Exception:
+        return 0
+
+
+# ── utdata importer ──────────────────────────────────────────────────────────
+
+_UTDATA_CSV_URL = (
+    "https://raw.githubusercontent.com/utdata/rwd-billboard-data/main/"
+    "data-out/hot-100-current.csv"
+)
+
+
+async def _import_utdata_hot100():
+    """
+    Fetch the utdata Hot 100 CSV and collapse weekly rows into one row per
+    (artist, title) keeping the best (lowest) peak_position and highest
+    wks_on_chart we saw. Writes into chart_reference_extras with
+    data_source='utdata_hot100' and chart_name='hot100'.
+    """
+    import csv
+    import io
+
+    global _vet_import_job
+    inserted = 0
+    skipped = 0
+
+    try:
+        async with httpx.AsyncClient(timeout=120.0, follow_redirects=True) as client:
+            r = await client.get(_UTDATA_CSV_URL)
+            r.raise_for_status()
+            text = r.text
+    except Exception as e:
+        raise RuntimeError(f"Failed to fetch utdata CSV: {e}")
+
+    reader = csv.DictReader(io.StringIO(text))
+
+    # Collapse weekly rows: key = (artist_norm, title_norm)
+    # Value: dict with best peak, max weeks, latest chart_year, display names
+    aggregate: dict = {}
+    for row in reader:
+        try:
+            performer = (row.get("performer") or "").strip()
+            title     = (row.get("title") or "").strip()
+            if not performer or not title:
+                skipped += 1
+                continue
+
+            a_norm = _norm(performer)
+            t_norm = _norm(title)
+            if not a_norm or not t_norm:
+                skipped += 1
+                continue
+
+            try:
+                peak = int(row.get("peak_pos") or row.get("current_week") or 100)
+            except (TypeError, ValueError):
+                peak = 100
+            try:
+                weeks = int(row.get("wks_on_chart") or 1)
+            except (TypeError, ValueError):
+                weeks = 1
+
+            chart_week = (row.get("chart_week") or "").strip()
+            year = None
+            if len(chart_week) >= 4:
+                try:
+                    year = int(chart_week[:4])
+                except ValueError:
+                    year = None
+
+            key = (a_norm, t_norm)
+            if key in aggregate:
+                cur = aggregate[key]
+                if peak < cur["peak_position"]:
+                    cur["peak_position"] = peak
+                if weeks > cur["weeks_on_chart"]:
+                    cur["weeks_on_chart"] = weeks
+                if year and (cur["chart_year"] is None or year > cur["chart_year"]):
+                    cur["chart_year"] = year
+            else:
+                aggregate[key] = {
+                    "artist":         performer,
+                    "title":          title,
+                    "artist_norm":    a_norm,
+                    "title_norm":     t_norm,
+                    "peak_position":  peak,
+                    "weeks_on_chart": weeks,
+                    "chart_year":     year,
+                }
+        except Exception:
+            skipped += 1
+            continue
+
+    # Bulk insert (UPSERT-style via INSERT OR IGNORE + UPDATE-better-peak)
+    try:
+        async with aiosqlite.connect(_DYNAMIC_DB) as db:
+            for v in aggregate.values():
+                try:
+                    cur = await db.execute(
+                        """INSERT INTO chart_reference_extras
+                           (chart_name, artist, title, artist_norm, title_norm,
+                            peak_position, weeks_on_chart, chart_year, data_source)
+                           VALUES ('hot100', ?, ?, ?, ?, ?, ?, ?, 'utdata_hot100')
+                           ON CONFLICT(chart_name, artist_norm, title_norm, chart_year)
+                           DO UPDATE SET
+                               peak_position  = MIN(peak_position, excluded.peak_position),
+                               weeks_on_chart = MAX(weeks_on_chart, excluded.weeks_on_chart)""",
+                        (v["artist"], v["title"], v["artist_norm"], v["title_norm"],
+                         v["peak_position"], v["weeks_on_chart"], v["chart_year"])
+                    )
+                    if cur.rowcount:
+                        inserted += 1
+                except Exception:
+                    skipped += 1
+            await db.commit()
+    except Exception as e:
+        raise RuntimeError(f"DB write failed: {e}")
+
+    _vet_import_job["inserted"] = inserted
+    _vet_import_job["skipped"]  = skipped
+    _vet_import_job["message"]  = f"Imported {inserted:,} unique tracks ({skipped:,} rows skipped)."
+    log.info(f"utdata import complete: +{inserted} inserted, {skipped} skipped")
+
+
+# ── Shared helpers for new importers ─────────────────────────────────────────
+
+async def _bulk_upsert_extras(rows: list, data_tag: str, chart_name: str) -> tuple:
+    """
+    Bulk INSERT OR UPSERT into chart_reference_extras.
+    `rows` is a list of dicts each with: artist, title, artist_norm, title_norm,
+    peak_position, weeks_on_chart (optional, default 1), chart_year (optional).
+    Returns (inserted, skipped).
+    """
+    inserted = 0
+    skipped = 0
+    if not rows:
+        return (0, 0)
+    try:
+        async with aiosqlite.connect(_DYNAMIC_DB) as db:
+            for v in rows:
+                try:
+                    cur = await db.execute(
+                        """INSERT INTO chart_reference_extras
+                           (chart_name, artist, title, artist_norm, title_norm,
+                            peak_position, weeks_on_chart, chart_year, data_source)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                           ON CONFLICT(chart_name, artist_norm, title_norm, chart_year)
+                           DO UPDATE SET
+                               peak_position  = MIN(peak_position, excluded.peak_position),
+                               weeks_on_chart = MAX(weeks_on_chart, excluded.weeks_on_chart)""",
+                        (chart_name, v["artist"], v["title"], v["artist_norm"], v["title_norm"],
+                         v.get("peak_position") or 100,
+                         v.get("weeks_on_chart") or 1,
+                         v.get("chart_year"),
+                         data_tag)
+                    )
+                    if cur.rowcount:
+                        inserted += 1
+                except Exception:
+                    skipped += 1
+            # Idempotent delete-then-reinsert was handled by UPSERT; no need for bulk DELETE.
+            await db.commit()
+    except Exception as e:
+        raise RuntimeError(f"DB write failed: {e}")
+    return (inserted, skipped)
+
+
+async def _purge_source(data_tag: str) -> int:
+    """Delete all rows with the given data_tag. Used before snapshot-style re-imports."""
+    try:
+        async with aiosqlite.connect(_DYNAMIC_DB) as db:
+            cur = await db.execute(
+                "DELETE FROM chart_reference_extras WHERE data_source=?", (data_tag,)
+            )
+            n = cur.rowcount
+            await db.commit()
+            return n
+    except Exception:
+        return 0
+
+
+def _strip_html_tags(s: str) -> str:
+    """Lightweight HTML tag stripper for scraped text cells."""
+    return re.sub(r"<[^>]+>", "", s or "").replace("&amp;", "&").replace("&#039;", "'").replace("&quot;", '"').strip()
+
+
+# ── Chart2000.com importer ───────────────────────────────────────────────────
+
+_CHART2000_CANDIDATE_URLS = [
+    # Chart2000.com serves an incomplete HTTPS certificate chain that most non-browser
+    # clients reject. Using http:// here is safe: this is public chart data with no auth
+    # or PII in transit, and the CSV is validated downstream via our parser + empty-result guard.
+    "http://chart2000.com/data/chart2000-month-0-3-0050.csv",
+    "http://chart2000.com/data/chart2000-items-0-3-0050.csv",
+    "http://chart2000.com/data/chart2000-song-0-3-0050.csv",
+]
+
+
+async def _import_chart2000():
+    """
+    Fetch a Chart2000.com monthly CSV, collapse (artist, title) across months keeping
+    best peak_position and accumulated weeks_on_chart. 2000–2024 global data.
+    """
+    import csv
+    import io
+
+    global _vet_import_job
+    text = None
+    last_err = None
+    try:
+        async with httpx.AsyncClient(timeout=120.0, follow_redirects=True) as client:
+            for url in _CHART2000_CANDIDATE_URLS:
+                try:
+                    r = await client.get(url)
+                    if r.status_code == 200 and r.text:
+                        text = r.text
+                        log.info(f"chart2000: fetched {url} ({len(text):,} bytes)")
+                        break
+                except Exception as e:
+                    last_err = e
+                    continue
+    except Exception as e:
+        raise RuntimeError(f"Failed to reach chart2000.com: {e}")
+
+    if not text:
+        raise RuntimeError(f"No chart2000 CSV reachable. Last error: {last_err}")
+
+    reader = csv.DictReader(io.StringIO(text))
+    aggregate: dict = {}
+    skipped = 0
+    for row in reader:
+        try:
+            # Chart2000 schema: artist,name,category,position,score,from,to,us,uk,de,fr,ca,au
+            # `name` is the title column (NOT `title`). `category` is 'song' or 'album'.
+            category = (row.get("category") or "").strip().lower()
+            if category and category != "song":
+                skipped += 1
+                continue
+
+            artist = (row.get("artist") or "").strip()
+            title  = (row.get("name")   or "").strip()
+            if not artist or not title:
+                skipped += 1
+                continue
+            a_norm = _norm(artist)
+            t_norm = _norm(title)
+            if not a_norm or not t_norm:
+                skipped += 1
+                continue
+
+            # Chart2000's 'position' is a global all-time ranking across 2000+ songs.
+            # Raw position #1 is Gnarls Barkley "Crazy", #100 is deep chart territory.
+            # For CH purposes (peak 1-100 = charted), map position into buckets.
+            # Fall back to 'score' for rows without position (common).
+            peak = None
+            pos_raw = row.get("position")
+            if pos_raw not in (None, ""):
+                try:
+                    p = int(float(pos_raw))
+                    if   p <= 50:   peak = 1
+                    elif p <= 200:  peak = 5
+                    elif p <= 500:  peak = 15
+                    elif p <= 1000: peak = 30
+                    elif p <= 2000: peak = 60
+                    else:           peak = 90
+                except (TypeError, ValueError):
+                    peak = None
+            if peak is None:
+                # No position → use score to estimate. Score is an indicative value;
+                # real chart-toppers score in the tens of thousands.
+                score_raw = row.get("score")
+                if score_raw not in (None, ""):
+                    try:
+                        s = float(score_raw)
+                        if   s >= 20000: peak = 5
+                        elif s >= 10000: peak = 15
+                        elif s >= 5000:  peak = 30
+                        elif s >= 1500:  peak = 50
+                        elif s >= 500:   peak = 75
+                        else:            peak = 95
+                    except (TypeError, ValueError):
+                        peak = None
+            if peak is None:
+                peak = 100
+
+            # Year from "from" field, which is "MMM YYYY" (e.g. "Oct 2006")
+            year = None
+            from_str = (row.get("from") or "").strip()
+            m = re.search(r"(\d{4})", from_str)
+            if m:
+                try:
+                    year = int(m.group(1))
+                except (TypeError, ValueError):
+                    year = None
+
+            # Weeks on chart: months between 'from' and 'to', rough approximation
+            weeks = 1
+            to_str = (row.get("to") or "").strip()
+            if from_str and to_str:
+                try:
+                    dt_from = datetime.strptime(from_str, "%b %Y")
+                    dt_to   = datetime.strptime(to_str,   "%b %Y")
+                    months = max(1, (dt_to.year - dt_from.year) * 12 + (dt_to.month - dt_from.month))
+                    weeks = months * 4  # approximate weeks from months
+                except Exception:
+                    weeks = 1
+
+            key = (a_norm, t_norm)
+            if key in aggregate:
+                cur = aggregate[key]
+                if peak < cur["peak_position"]:
+                    cur["peak_position"] = peak
+                if weeks > cur["weeks_on_chart"]:
+                    cur["weeks_on_chart"] = weeks
+                if year and (cur["chart_year"] is None or year < cur["chart_year"]):
+                    cur["chart_year"] = year  # earliest = chart entry year
+            else:
+                aggregate[key] = {
+                    "artist": artist, "title": title,
+                    "artist_norm": a_norm, "title_norm": t_norm,
+                    "peak_position": peak, "weeks_on_chart": weeks, "chart_year": year,
+                }
+        except Exception:
+            skipped += 1
+            continue
+
+    inserted, skipped_db = await _bulk_upsert_extras(
+        list(aggregate.values()), "chart2000_monthly", "chart2000"
+    )
+    total_skipped = skipped + skipped_db
+    _vet_import_job["inserted"] = inserted
+    _vet_import_job["skipped"]  = total_skipped
+    _vet_import_job["message"]  = f"Imported {inserted:,} unique tracks from Chart2000.com ({total_skipped:,} rows skipped)."
+    log.info(f"chart2000 import complete: +{inserted} inserted, {total_skipped} skipped")
+
+
+# ── tsort.info importer ──────────────────────────────────────────────────────
+
+# tsort.info serves an incomplete HTTPS certificate chain (same issue as chart2000.com)
+# that most non-browser clients reject. Using http:// here is safe: public chart data,
+# no auth or PII in transit, CSV validated downstream via our parser + empty-result guard.
+_TSORT_VERSION_URL = "http://tsort.info/music/faq_version_numbers.htm"
+_TSORT_CHART_URL   = "http://tsort.info/tsort-chart-{version}.csv"
+# Fallback list: newest first. tsort.info deletes old versions when new ones ship,
+# so this needs periodic refresh. As of Apr 2026 the current version is 2-9-0001.
+_TSORT_FALLBACK_VERSIONS = ["2-9-0001", "2-8-0050", "2-8-0044"]
+
+
+async def _tsort_discover_version(client) -> Optional[str]:
+    """Scrape the current version suffix from the FAQ page. Returns e.g. '2-8-0044'."""
+    try:
+        r = await client.get(_TSORT_VERSION_URL)
+        if r.status_code != 200 or not r.text:
+            return None
+        # Look for "CSV File: tsort-chart-X-Y-ZZZZ.csv"
+        m = re.search(r"tsort-chart-([0-9]+-[0-9]+-[0-9]+)\.csv", r.text)
+        if m:
+            return m.group(1)
+    except Exception:
+        return None
+    return None
+
+
+async def _import_tsort():
+    """
+    Fetch tsort.info full chart CSV (~71k rows, 1900+). Columns include artist, title,
+    year, position, duration and more. Use position as peak; year as chart_year.
+    """
+    import csv
+    import io
+
+    global _vet_import_job
+    text = None
+    version_used = None
+    try:
+        async with httpx.AsyncClient(timeout=180.0, follow_redirects=True) as client:
+            # Discover version, fall back to known-good if scrape fails
+            versions_to_try = []
+            v = await _tsort_discover_version(client)
+            if v:
+                versions_to_try.append(v)
+            versions_to_try.extend([x for x in _TSORT_FALLBACK_VERSIONS if x not in versions_to_try])
+
+            for ver in versions_to_try:
+                try:
+                    url = _TSORT_CHART_URL.format(version=ver)
+                    r = await client.get(url)
+                    if r.status_code == 200 and r.text:
+                        text = r.text
+                        version_used = ver
+                        log.info(f"tsort: fetched version {ver} ({len(text):,} bytes)")
+                        break
+                except Exception:
+                    continue
+    except Exception as e:
+        raise RuntimeError(f"Failed to reach tsort.info: {e}")
+
+    if not text:
+        raise RuntimeError("No tsort CSV reachable with any known version.")
+
+    reader = csv.DictReader(io.StringIO(text))
+    aggregate: dict = {}
+    skipped = 0
+    # Pre-compile regex for the notes field: "... peak 94 - Mar 2019 (2 weeks)"
+    _peak_re  = re.compile(r"peak\s+(\d+)", re.IGNORECASE)
+    _weeks_re = re.compile(r"\((\d+)\s*weeks?\)", re.IGNORECASE)
+    for row in reader:
+        try:
+            # tsort schema: artist, name, type, year, score, songentry_pos, ..., notes
+            # Skip albums early — save work
+            rtype = (row.get("type") or "").strip().lower()
+            if rtype == "album":
+                skipped += 1
+                continue
+
+            artist = (row.get("artist") or "").strip()
+            title  = (row.get("name")   or "").strip()  # tsort uses 'name' not 'title'
+            if not artist or not title:
+                skipped += 1
+                continue
+            a_norm = _norm(artist)
+            t_norm = _norm(title)
+            if not a_norm or not t_norm:
+                skipped += 1
+                continue
+
+            notes = row.get("notes") or ""
+
+            # Peak: prefer notes "peak NN", fall back to score bucketing
+            peak = None
+            m = _peak_re.search(notes)
+            if m:
+                try:
+                    p = int(m.group(1))
+                    if 1 <= p <= 100:
+                        peak = p
+                    elif p > 100:
+                        peak = 100
+                except (TypeError, ValueError):
+                    peak = None
+            if peak is None:
+                # tsort 'score' is a cumulative chart-success value. Higher = more successful.
+                score_raw = (row.get("score") or "").strip()
+                if score_raw:
+                    try:
+                        s = float(score_raw)
+                        if   s >= 100: peak = 1
+                        elif s >= 30:  peak = 5
+                        elif s >= 10:  peak = 15
+                        elif s >= 3:   peak = 40
+                        elif s >= 1:   peak = 70
+                        else:          peak = 90
+                    except (TypeError, ValueError):
+                        peak = None
+            if peak is None:
+                peak = 100
+
+            # Weeks from notes "(N weeks)"
+            weeks = 1
+            m = _weeks_re.search(notes)
+            if m:
+                try:
+                    weeks = max(1, int(m.group(1)))
+                except (TypeError, ValueError):
+                    weeks = 1
+
+            # Year: tsort has a 'year' column; value can be 'unknown'
+            year = None
+            yr_raw = (row.get("year") or "").strip()
+            if yr_raw and yr_raw.lower() != "unknown":
+                try:
+                    year = int(yr_raw[:4])
+                except (TypeError, ValueError):
+                    year = None
+
+            key = (a_norm, t_norm)
+            if key in aggregate:
+                cur = aggregate[key]
+                if peak < cur["peak_position"]:
+                    cur["peak_position"] = peak
+                if weeks > cur["weeks_on_chart"]:
+                    cur["weeks_on_chart"] = weeks
+            else:
+                aggregate[key] = {
+                    "artist": artist, "title": title,
+                    "artist_norm": a_norm, "title_norm": t_norm,
+                    "peak_position": peak, "weeks_on_chart": weeks, "chart_year": year,
+                }
+        except Exception:
+            skipped += 1
+            continue
+
+    inserted, skipped_db = await _bulk_upsert_extras(
+        list(aggregate.values()), "tsort_historical", "tsort"
+    )
+    total_skipped = skipped + skipped_db
+    _vet_import_job["inserted"] = inserted
+    _vet_import_job["skipped"]  = total_skipped
+    vers = f" (version {version_used})" if version_used else ""
+    _vet_import_job["message"]  = f"Imported {inserted:,} unique tracks from tsort.info{vers} ({total_skipped:,} rows skipped)."
+    log.info(f"tsort import complete: version={version_used}, +{inserted} inserted, {total_skipped} skipped")
+
+
+# ── Kworb iTunes US importer (HTML scrape, current week only) ────────────────
+
+_KWORB_US_URL = "https://kworb.net/charts/itunes/us.html"
+
+
+async def _import_kworb_us():
+    """
+    Scrape Kworb's iTunes US top 100 page. Current snapshot only — wipes previous
+    Kworb rows before inserting so each import reflects the latest chart.
+    """
+    global _vet_import_job
+
+    try:
+        async with httpx.AsyncClient(
+            timeout=60.0, follow_redirects=True,
+            headers={"User-Agent": "Mozilla/5.0 (ChartHound music metadata tool)"}
+        ) as client:
+            r = await client.get(_KWORB_US_URL)
+            r.raise_for_status()
+            html = r.text
+    except Exception as e:
+        raise RuntimeError(f"Failed to fetch Kworb US: {e}")
+
+    # Parse rows: each data row in a Kworb chart table has cells for rank, title, artist.
+    # Anchor on <tr>…<td>…</td>…</tr> blocks inside the main table.
+    rows_raw = re.findall(r"<tr[^>]*>(.*?)</tr>", html, flags=re.DOTALL | re.IGNORECASE)
+    entries = []
+    skipped = 0
+    seen = set()
+    rank = 0
+    for tr in rows_raw:
+        cells = re.findall(r"<td[^>]*>(.*?)</td>", tr, flags=re.DOTALL | re.IGNORECASE)
+        # Kworb iTunes page layout: 3 cells per row:
+        #   cell[0] = Pos (e.g. "1"), cell[1] = P+ change ("+1"/"NEW"/"-2"),
+        #   cell[2] = "Artist - Title" (wrapped in <div>)
+        if len(cells) < 3:
+            continue
+        combined = _strip_html_tags(cells[2])
+        if not combined:
+            continue
+
+        artist = None
+        title  = None
+        # "Artist - Title" split. Use the FIRST " - " only; titles can contain " - " themselves.
+        if " - " in combined:
+            parts = combined.split(" - ", 1)
+            artist = parts[0].strip()
+            title  = parts[1].strip()
+        else:
+            skipped += 1
+            continue
+
+        if not artist or not title:
+            skipped += 1
+            continue
+        a_norm = _norm(artist)
+        t_norm = _norm(title)
+        if not a_norm or not t_norm:
+            skipped += 1
+            continue
+
+        key = (a_norm, t_norm)
+        if key in seen:
+            continue
+        seen.add(key)
+        rank += 1
+        if rank > 100:
+            break
+        entries.append({
+            "artist": artist, "title": title,
+            "artist_norm": a_norm, "title_norm": t_norm,
+            "peak_position": rank, "weeks_on_chart": 1,
+            "chart_year": datetime.utcnow().year,
+        })
+
+    # Snapshot-style: wipe prior rows so count reflects current chart exactly
+    await _purge_source("kworb_itunes_us")
+
+    if not entries:
+        raise RuntimeError(
+            "Kworb HTML parsed but 0 chart entries extracted. "
+            "Page structure may have changed — please open an issue with the current HTML."
+        )
+
+    inserted, skipped_db = await _bulk_upsert_extras(entries, "kworb_itunes_us", "kworb_us")
+    total_skipped = skipped + skipped_db
+
+    _vet_import_job["inserted"] = inserted
+    _vet_import_job["skipped"]  = total_skipped
+    _vet_import_job["message"]  = f"Imported {inserted:,} entries from Kworb iTunes US ({total_skipped:,} rows skipped)."
+    log.info(f"kworb_us import complete: +{inserted} inserted, {total_skipped} skipped")
+
+
+# ── Billboard Christian Songs scraper (CCM) ──────────────────────────────────
+
+_BILLBOARD_CCM_URL = "https://www.billboard.com/charts/christian-songs/"
+
+
+async def _import_ccm():
+    """
+    Scrape Billboard Christian Songs chart (current week only). Billboard uses a
+    consistent HTML pattern where each chart entry has artist in one <span> and
+    title in an <h3>. One-shot snapshot: wipes prior CCM rows before insert.
+    """
+    global _vet_import_job
+
+    try:
+        async with httpx.AsyncClient(
+            timeout=60.0, follow_redirects=True,
+            headers={"User-Agent": "Mozilla/5.0 (ChartHound music metadata tool)"}
+        ) as client:
+            r = await client.get(_BILLBOARD_CCM_URL)
+            r.raise_for_status()
+            html = r.text
+    except Exception as e:
+        raise RuntimeError(f"Failed to fetch Billboard Christian chart: {e}")
+
+    # Billboard chart rows contain: <h3 id="title-of-a-story" ...>TITLE</h3>
+    # followed by <span class="...">ARTIST</span>. Pattern is consistent across charts.
+    # We grep for title/artist pairs in document order and pair them sequentially.
+    titles  = re.findall(
+        r'<h3[^>]*id="title-of-a-story"[^>]*>\s*([^<]+?)\s*</h3>',
+        html, flags=re.IGNORECASE
+    )
+    artists = re.findall(
+        r'<span[^>]*class="[^"]*c-label[^"]*a-no-trucate[^"]*"[^>]*>\s*([^<]+?)\s*</span>',
+        html, flags=re.IGNORECASE
+    )
+
+    entries = []
+    skipped = 0
+    rank = 0
+    for title, artist in zip(titles, artists):
+        title  = _strip_html_tags(title).strip()
+        artist = _strip_html_tags(artist).strip()
+        if not title or not artist:
+            skipped += 1
+            continue
+        a_norm = _norm(artist)
+        t_norm = _norm(title)
+        if not a_norm or not t_norm:
+            skipped += 1
+            continue
+        rank += 1
+        if rank > 50:
+            break
+        entries.append({
+            "artist": artist, "title": title,
+            "artist_norm": a_norm, "title_norm": t_norm,
+            "peak_position": rank, "weeks_on_chart": 1,
+            "chart_year": datetime.utcnow().year,
+        })
+
+    await _purge_source("ccm_weekly")
+
+    if not entries:
+        raise RuntimeError(
+            "Billboard CCM HTML parsed but 0 chart entries extracted. "
+            "Page structure may have changed — please open an issue with the current HTML."
+        )
+
+    inserted, skipped_db = await _bulk_upsert_extras(entries, "ccm_weekly", "ccm")
+    total_skipped = skipped + skipped_db
+
+    _vet_import_job["inserted"] = inserted
+    _vet_import_job["skipped"]  = total_skipped
+    _vet_import_job["message"]  = f"Imported {inserted:,} entries from Billboard Christian Songs ({total_skipped:,} rows skipped)."
+    log.info(f"ccm import complete: +{inserted} inserted, {total_skipped} skipped")
+
+
+# ── UK Official Charts scraper ───────────────────────────────────────────────
+
+_UK_OFFICIAL_URL = "https://www.officialcharts.com/charts/singles-chart/"
+
+
+async def _import_uk_official():
+    """
+    Scrape OfficialCharts.com top 100 UK singles for the current week.
+    Snapshot-style: wipes prior rows before insert.
+    """
+    global _vet_import_job
+
+    try:
+        async with httpx.AsyncClient(
+            timeout=60.0, follow_redirects=True,
+            headers={"User-Agent": "Mozilla/5.0 (ChartHound music metadata tool)"}
+        ) as client:
+            r = await client.get(_UK_OFFICIAL_URL)
+            r.raise_for_status()
+            html = r.text
+    except Exception as e:
+        raise RuntimeError(f"Failed to fetch UK Official Charts: {e}")
+
+    # OfficialCharts.com chart pages contain alternating <a href> links in document order:
+    #   /songs/ARTIST-SLUG-TITLE-SLUG/      (links to the song page)
+    #   /artist/[ID/]ARTIST-SLUG/           (links to the artist page)
+    # Each chart row emits this pair. Href slugs are more stable than visible-HTML layout
+    # (which has been redesigned multiple times) so we parse slugs directly.
+    entries = []
+    skipped = 0
+
+    # Extract all song-slug and artist-slug href values in document order.
+    # Match in a single scan so ordering is preserved.
+    href_pattern = re.compile(
+        r'href="(/songs/([^/"]+)/|/artist/(?:\d+/)?([^/"]+)/)"',
+        flags=re.IGNORECASE
+    )
+
+    # Pair them up: walk linearly, when we see a song slug save it,
+    # on the next artist slug emit (song, artist) and reset.
+    pending_song = None
+    pairs = []
+    for m in href_pattern.finditer(html):
+        song_slug   = m.group(2)
+        artist_slug = m.group(3)
+        if song_slug:
+            pending_song = song_slug
+        elif artist_slug and pending_song:
+            pairs.append((pending_song, artist_slug))
+            pending_song = None
+
+    def _deslug(s: str) -> str:
+        """'justin-bieber-ft-nicki-minaj' -> 'Justin Bieber Ft Nicki Minaj'."""
+        if not s:
+            return ""
+        words = [w for w in s.replace("_", "-").split("-") if w]
+        return " ".join(w.capitalize() for w in words)
+
+    rank = 0
+    seen = set()
+    for song_slug, artist_slug in pairs:
+        # Title is the song slug with the artist slug prefix stripped.
+        # e.g. song="justin-bieber-daisies", artist="justin-bieber" -> title_slug="daisies"
+        title_slug = song_slug
+        if song_slug.lower().startswith(artist_slug.lower() + "-"):
+            title_slug = song_slug[len(artist_slug) + 1:]
+        elif song_slug.lower() == artist_slug.lower():
+            # Title equals artist slug? skip — malformed pair
+            skipped += 1
+            continue
+
+        artist = _deslug(artist_slug)
+        title  = _deslug(title_slug)
+        if not artist or not title:
+            skipped += 1
+            continue
+
+        a_norm = _norm(artist)
+        t_norm = _norm(title)
+        if not a_norm or not t_norm:
+            skipped += 1
+            continue
+
+        key = (a_norm, t_norm)
+        if key in seen:
+            continue
+        seen.add(key)
+        rank += 1
+        if rank > 100:
+            break
+        entries.append({
+            "artist": artist, "title": title,
+            "artist_norm": a_norm, "title_norm": t_norm,
+            "peak_position": rank, "weeks_on_chart": 1,
+            "chart_year": datetime.utcnow().year,
+        })
+
+    await _purge_source("uk_official_singles")
+
+    if not entries:
+        raise RuntimeError(
+            "UK Official HTML parsed but 0 chart entries extracted. "
+            "Page structure may have changed — please open an issue with the current HTML."
+        )
+
+    inserted, skipped_db = await _bulk_upsert_extras(entries, "uk_official_singles", "uk_official")
+    total_skipped = skipped + skipped_db
+
+    _vet_import_job["inserted"] = inserted
+    _vet_import_job["skipped"]  = total_skipped
+    _vet_import_job["message"]  = f"Imported {inserted:,} entries from UK Official Charts ({total_skipped:,} rows skipped)."
+    log.info(f"uk_official import complete: +{inserted} inserted, {total_skipped} skipped")
+
+
+# Map id → importer function (populated AFTER functions are defined)
+_IMPORTER_MAP = {
+    "utdata":      _import_utdata_hot100,
+    "chart2000":   _import_chart2000,
+    "tsort":       _import_tsort,
+    "kworb_us":    _import_kworb_us,
+    "ccm":         _import_ccm,
+    "uk_official": _import_uk_official,
+}
+
+
+async def _run_import(source_id: str):
+    """Background task — updates _vet_import_job as it runs."""
+    global _vet_import_job
+    importer = _IMPORTER_MAP.get(source_id)
+    if not importer:
+        _vet_import_job.update({
+            "status": "error",
+            "message": f"No importer registered for '{source_id}'.",
+            "finished_at": datetime.utcnow().isoformat(),
+        })
+        return
+    try:
+        await _ensure_extras_table()
+        await importer()
+        _vet_import_job.update({
+            "status": "done",
+            "finished_at": datetime.utcnow().isoformat(),
+        })
+    except Exception as e:
+        log.error(f"Import '{source_id}' failed: {e}")
+        _vet_import_job.update({
+            "status": "error",
+            "message": f"Import failed: {e}",
+            "finished_at": datetime.utcnow().isoformat(),
+        })
+
+
+# ── ENDPOINTS ────────────────────────────────────────────────────────────────
+
+async def _latest_import_at(data_tag: str) -> Optional[str]:
+    """Return ISO timestamp of most recently added row for this data_tag, or None."""
+    try:
+        async with aiosqlite.connect(_DYNAMIC_DB) as db:
+            async with db.execute(
+                "SELECT MAX(added_at) FROM chart_reference_extras WHERE data_source=?",
+                (data_tag,)
+            ) as cur:
+                row = await cur.fetchone()
+                return row[0] if row and row[0] else None
+    except Exception:
+        return None
+
+
+def _is_stale(iso_ts: Optional[str], days: int = 30) -> bool:
+    """True if the timestamp is older than `days` days. Returns False if timestamp missing."""
+    if not iso_ts:
+        return False
+    try:
+        # Handle both 'YYYY-MM-DD HH:MM:SS' (SQLite default) and ISO-8601 with 'T'
+        ts = iso_ts.replace("T", " ").split(".")[0]
+        dt = datetime.strptime(ts, "%Y-%m-%d %H:%M:%S")
+        age = datetime.utcnow() - dt
+        return age.days > days
+    except Exception:
+        return False
+
+
+@router.get("/vet/static-sources")
+async def vet_static_sources(_=Depends(require_auth)):
+    """Return catalog of importable sources with loaded status + entry counts + staleness."""
+    await _ensure_extras_table()
+    out = []
+    for src in _STATIC_SOURCES:
+        count = await _count_extras(src["data_tag"])
+        last_at = await _latest_import_at(src["data_tag"]) if count > 0 else None
+        out.append({
+            "id":            src["id"],
+            "label":         src["label"],
+            "loaded":        count > 0,
+            "entries":       count,
+            "last_imported": last_at,
+            "stale":         _is_stale(last_at, days=30),
+        })
+    total_extras = await _count_extras()
+    return {"sources": out, "total_extras": total_extras}
+
+
+class StaticImportRequest(BaseModel):
+    source_id: str
+
+
+@router.post("/vet/static-sources/import")
+async def vet_static_sources_import(
+    req: StaticImportRequest,
+    background_tasks: BackgroundTasks,
+    _=Depends(require_auth)
+):
+    """Kick off an import. Only one runs at a time."""
+    global _vet_import_job
+    if _vet_import_job["status"] == "running":
+        raise HTTPException(409, "An import is already running. Wait for it to finish.")
+    if req.source_id not in _IMPORTER_MAP:
+        raise HTTPException(400, f"Unknown source_id '{req.source_id}'.")
+    _vet_import_job = {
+        "status":      "running",
+        "source_id":   req.source_id,
+        "inserted":    0,
+        "skipped":     0,
+        "message":     "Starting import…",
+        "started_at":  datetime.utcnow().isoformat(),
+        "finished_at": None,
+    }
+    # Fire-and-forget background task (same pattern as Sniffer/Tracker)
+    asyncio.create_task(_run_import(req.source_id))
+    return {"ok": True, "source_id": req.source_id, "message": "Import started."}
+
+
+@router.get("/vet/static-sources/status")
+async def vet_static_sources_status(_=Depends(require_auth)):
+    """Poll current import job."""
+    return dict(_vet_import_job)
+
+
+class StaticSourceDeleteRequest(BaseModel):
+    source_id: str
+
+
+@router.post("/vet/static-sources/delete")
+async def vet_static_sources_delete(
+    req: StaticSourceDeleteRequest,
+    _=Depends(require_auth)
+):
+    """Wipe all rows for a given imported source. Safety valve if an import went bad."""
+    src = next((s for s in _STATIC_SOURCES if s["id"] == req.source_id), None)
+    if not src:
+        raise HTTPException(400, f"Unknown source_id '{req.source_id}'.")
+    try:
+        async with aiosqlite.connect(_DYNAMIC_DB) as db:
+            cur = await db.execute(
+                "DELETE FROM chart_reference_extras WHERE data_source=?",
+                (src["data_tag"],)
+            )
+            deleted = cur.rowcount
+            await db.commit()
+        log.info(f"Deleted {deleted} rows for source '{req.source_id}'")
+        return {"ok": True, "deleted": deleted}
+    except Exception as e:
+        raise HTTPException(500, f"Delete failed: {e}")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  END STATIC DB SOURCES
+# ══════════════════════════════════════════════════════════════════════════════
+
 
 class ScanRequest(BaseModel):
     source:        str            # 'plex' | 'emby' | 'jellyfin' | 'local'

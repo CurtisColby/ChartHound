@@ -1413,12 +1413,19 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
           <div>
             <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--pink);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">CHART DATABASE<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
             <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem">
+              <div id="grm-ref-static-row" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.35rem">
                 <span style="font-family:var(--mono);font-size:.6rem;color:var(--muted)">Reference entries</span>
                 <span style="font-family:var(--display);font-size:1.1rem;color:var(--teal)" id="grm-ref-count">—</span>
               </div>
+              <div id="grm-ref-extras-row" style="display:none;justify-content:space-between;align-items:center;margin-bottom:.35rem">
+                <span style="font-family:var(--mono);font-size:.6rem;color:var(--muted)">User-added entries</span>
+                <span style="font-family:var(--display);font-size:.95rem;color:var(--amber)" id="grm-ref-extras-count">—</span>
+              </div>
               <div style="font-family:var(--mono);font-size:.55rem;color:var(--muted2);margin-bottom:.6rem" id="grm-ref-status">Loading…</div>
-              <div style="font-family:var(--mono);font-size:.52rem;color:var(--muted2);line-height:1.6">Historical Billboard chart data ships pre-loaded. No downloads needed.</div>
+              <div id="grm-ref-tip" style="display:none;font-family:var(--mono);font-size:.52rem;color:var(--teal);line-height:1.6;cursor:pointer;padding:.35rem .5rem;border:1px dashed rgba(45,212,191,.35);border-radius:5px" onclick="grmJumpToVetSources()" title="Open The Veterinarian to add more chart data">
+                💡 Add more chart data in The Veterinarian →
+              </div>
+              <div id="grm-ref-footnote" style="font-family:var(--mono);font-size:.52rem;color:var(--muted2);line-height:1.6">Historical Billboard chart data ships pre-loaded. No downloads needed.</div>
             </div>
           </div>
 
@@ -1869,7 +1876,17 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
             </div>
 
             <label style="font-family:var(--mono);font-size:.52rem;color:var(--muted);letter-spacing:1px;display:block;margin-bottom:.25rem">COOLDOWN (days before re-search)</label>
-            <input type="number" id="trk-cooldown" min="1" max="30" value="7" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:.72rem;padding:.4rem .6rem;outline:none;margin-bottom:.6rem" onchange="trkSaveSettings()">
+            <div style="display:flex;gap:.5rem;margin-bottom:.6rem">
+              <div style="flex:1">
+                <div style="font-family:var(--mono);font-size:.48rem;color:var(--muted2);letter-spacing:.5px;margin-bottom:.15rem">🎬 RADARR</div>
+                <input type="number" id="trk-cooldown-radarr" min="1" max="30" value="7" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:.72rem;padding:.4rem .6rem;outline:none" onchange="trkSaveSettings()">
+              </div>
+              <div style="flex:1">
+                <div style="font-family:var(--mono);font-size:.48rem;color:var(--muted2);letter-spacing:.5px;margin-bottom:.15rem">📺 SONARR</div>
+                <input type="number" id="trk-cooldown-sonarr" min="1" max="30" value="7" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:.72rem;padding:.4rem .6rem;outline:none" onchange="trkSaveSettings()">
+              </div>
+            </div>
+            <div style="font-family:var(--mono);font-size:.48rem;color:var(--muted2);line-height:1.5;margin:-.35rem 0 .5rem">Tip: TV libraries often have way more missing episodes than movies — a longer Sonarr cooldown keeps you off indexer radar.</div>
 
             <div style="display:flex;align-items:center;gap:.5rem;margin-top:.2rem">
               <input type="checkbox" id="trk-logging" checked onchange="trkSaveSettings()" style="accent-color:var(--crimson)">
@@ -2075,24 +2092,26 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
             </div>
           </div>
 
-          <!-- Static DB Sources (future) -->
-          <div class="card" style="padding:1.25rem 1.5rem;margin-top:.75rem">
+          <!-- Static DB Sources -->
+          <div class="card" id="vet-static-sources" style="padding:1.25rem 1.5rem;margin-top:.75rem">
             <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.75rem">
               <div style="font-family:var(--display);font-size:1.1rem;letter-spacing:1.5px;color:var(--red)">📊 STATIC DB SOURCES</div>
+              <button class="btn btn-outline btn-sm" onclick="vetLoadStaticSources()" style="margin-left:auto;font-size:.55rem" title="Refresh counts">🔄 REFRESH</button>
             </div>
             <p style="font-family:var(--mono);font-size:.58rem;color:var(--muted);line-height:1.8;margin-bottom:.75rem">
-              Chart data sources loaded into the static database. Future updates will add one-click import from GitHub and Kaggle.
+              Chart data sources. Shipped sources live in the read-only static DB. User-imported sources are appended to your dynamic DB and merged into all chart lookups automatically.
             </p>
             <div class="card" style="padding:.5rem .75rem;background:var(--bg)">
-              <div class="vault-row"><div class="vault-row-label">✅ Billboard Pop 1890–2015</div><div class="vault-row-status ok" id="vet-src-whitburn">Loaded</div></div>
-              <div class="vault-row"><div class="vault-row-label">✅ Billboard Hot 100 / Country / R&B / Rock / Dance / Adult Pop</div><div class="vault-row-status ok" id="vet-src-billboard">Loaded</div></div>
-              <div class="vault-row"><div class="vault-row-label">⬜ utdata Hot 100 post-2018</div><div class="vault-row-status" style="color:var(--amber)">Coming Soon</div></div>
-              <div class="vault-row"><div class="vault-row-label">⬜ Kaggle Billboard Hot 100 Weekly</div><div class="vault-row-status" style="color:var(--amber)">Coming Soon</div></div>
-              <div class="vault-row"><div class="vault-row-label">⬜ Kaggle Kworb Global Charts</div><div class="vault-row-status" style="color:var(--amber)">Coming Soon</div></div>
-              <div class="vault-row"><div class="vault-row-label">⬜ Chart2000.com 1900–1995</div><div class="vault-row-status" style="color:var(--amber)">Coming Soon</div></div>
-              <div class="vault-row"><div class="vault-row-label">⬜ CCM / Gospel Charts</div><div class="vault-row-status" style="color:var(--amber)">Coming Soon</div></div>
-              <div class="vault-row"><div class="vault-row-label">⬜ UK Official Charts (OfficialCharts.com)</div><div class="vault-row-status" style="color:var(--amber)">Coming Soon</div></div>
+              <!-- Shipped (always loaded) -->
+              <div class="vault-row"><div class="vault-row-label">✅ Billboard Pop 1890–2015</div><div class="vault-row-status ok">Loaded</div></div>
+              <div class="vault-row"><div class="vault-row-label">✅ Billboard Hot 100 / Country / R&B / Rock / Dance / Adult Pop</div><div class="vault-row-status ok">Loaded</div></div>
+
+              <!-- Importable sources — populated by vetLoadStaticSources() -->
+              <div id="vet-src-list">
+                <div style="padding:.5rem 0;font-family:var(--mono);font-size:.55rem;color:var(--muted2)">Loading sources…</div>
+              </div>
             </div>
+            <div id="vet-import-status" style="font-family:var(--mono);font-size:.55rem;color:var(--muted2);margin-top:.6rem;min-height:.9rem"></div>
           </div>
 
           <!-- Guided Tour -->
@@ -4188,12 +4207,37 @@ async function grmLoadStats() {
     const r = await fetch(`${API}/api/groomer/db_stats`, {headers:authHdrs()});
     if (!r.ok) return;
     const d = await r.json();
+    const staticEntries = d.static_entries || 0;
+    const extrasEntries = d.extras_entries || 0;
+    const totalEntries  = d.total_entries  || (staticEntries + extrasEntries);
+
     const rc = document.getElementById('grm-ref-count');
-    if (rc) rc.textContent = (d.static_entries||0).toLocaleString();
+    if (rc) rc.textContent = staticEntries.toLocaleString();
+
+    // Extras row + labels — show only if user has imported anything
+    const extrasRow   = document.getElementById('grm-ref-extras-row');
+    const extrasCount = document.getElementById('grm-ref-extras-count');
+    const tipEl       = document.getElementById('grm-ref-tip');
+    const staticLabel = document.querySelector('#grm-ref-static-row span:first-child');
+    if (extrasEntries > 0) {
+      if (extrasRow) extrasRow.style.display = 'flex';
+      if (extrasCount) extrasCount.textContent = extrasEntries.toLocaleString();
+      if (tipEl) tipEl.style.display = 'none';
+      if (staticLabel) staticLabel.textContent = 'Static entries';
+    } else {
+      if (extrasRow) extrasRow.style.display = 'none';
+      if (tipEl) tipEl.style.display = 'block';
+      if (staticLabel) staticLabel.textContent = 'Reference entries';
+    }
+
     const st = document.getElementById('grm-ref-status');
     if (st) {
       if (d.static_db_ready) {
-        st.textContent = `✓ Static DB ready · ${(d.static_entries||0).toLocaleString()} chart entries`;
+        if (extrasEntries > 0) {
+          st.textContent = '✓ Ready · ' + totalEntries.toLocaleString() + ' total chart entries';
+        } else {
+          st.textContent = '✓ Static DB ready · ' + staticEntries.toLocaleString() + ' chart entries';
+        }
         st.style.color = 'var(--green)';
       } else {
         st.textContent = '⚠ charthound_static.db not found — check volume mount';
@@ -4206,6 +4250,23 @@ async function grmLoadStats() {
       grmStartPoll();
     }
   } catch {}
+}
+
+function grmJumpToVetSources() {
+  try {
+    if (typeof switchTab === 'function') switchTab('veterinarian');
+    setTimeout(function() {
+      var card = document.getElementById('vet-static-sources');
+      if (card) {
+        card.scrollIntoView({behavior:'smooth', block:'start'});
+        // Brief teal flash to draw the eye
+        var orig = card.style.boxShadow;
+        card.style.transition = 'box-shadow .4s';
+        card.style.boxShadow = '0 0 0 2px var(--teal)';
+        setTimeout(function(){ card.style.boxShadow = orig || 'none'; }, 900);
+      }
+    }, 150);
+  } catch(e) { /* silent */ }
 }
 
 // Chart status now comes from static DB via grmLoadStats — no separate load needed
@@ -5892,6 +5953,119 @@ let _vetDbgRunning = false;
 function vetInit() {
   vetLoadHealth();
   vetLoadSkipCache();
+  vetLoadStaticSources();
+}
+
+// ── Static DB Sources (user-imported chart data) ──────────────────────────
+var _vetImportPollTimer = null;
+
+async function vetLoadStaticSources() {
+  var list = document.getElementById('vet-src-list');
+  if (!list) return;
+  try {
+    var r = await fetch(`${API}/api/groomer/vet/static-sources`, {headers:authHdrs()});
+    if (!r.ok) {
+      list.innerHTML = '<div style="padding:.4rem 0;font-family:var(--mono);font-size:.55rem;color:var(--red)">Failed to load sources</div>';
+      return;
+    }
+    var d = await r.json();
+    var html = '';
+    (d.sources || []).forEach(function(s) {
+      var loaded = s.loaded;
+      var statusHtml, btnHtml;
+      if (loaded) {
+        // Format last-imported date as a short "Apr 12" string; show stale badge if > 30 days.
+        var dateSuffix = '';
+        var staleBadge = '';
+        if (s.last_imported) {
+          try {
+            var dt = new Date(String(s.last_imported).replace(' ', 'T') + 'Z');
+            if (!isNaN(dt.getTime())) {
+              var MO = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+              dateSuffix = ' · ' + MO[dt.getUTCMonth()] + ' ' + dt.getUTCDate();
+            }
+          } catch(_) {}
+        }
+        if (s.stale) {
+          staleBadge = ' <span style="color:var(--amber);font-family:var(--mono);font-size:.5rem;padding:.05rem .3rem;border:1px solid var(--amber);border-radius:3px;margin-left:.25rem" title="This source was imported more than 30 days ago. Click IMPORT again to refresh.">⚠ STALE</span>';
+        }
+        statusHtml = '<span class="vault-row-status ok">Loaded · ' + s.entries.toLocaleString() + ' entries' + dateSuffix + '</span>' + staleBadge;
+        btnHtml = '<button class="btn btn-outline btn-sm" onclick="vetImportSource(\'' + s.id + '\',\'' + esc(s.label) + '\')" style="font-size:.5rem;padding:.15rem .45rem;margin-left:.5rem;' + (s.stale ? 'border-color:var(--amber);color:var(--amber)' : '') + '" title="Re-import to refresh">↻</button>'
+                + '<button class="btn btn-outline btn-sm" onclick="vetDeleteSource(\'' + s.id + '\',\'' + esc(s.label) + '\')" style="font-size:.5rem;padding:.15rem .45rem;margin-left:.25rem" title="Remove this source">✕</button>';
+      } else {
+        statusHtml = '<span style="font-family:var(--mono);font-size:.55rem;color:var(--amber)">Not loaded</span>';
+        btnHtml = '<button class="btn btn-outline btn-sm" onclick="vetImportSource(\'' + s.id + '\',\'' + esc(s.label) + '\')" style="font-size:.5rem;padding:.15rem .55rem;margin-left:.5rem;border-color:var(--green);color:var(--green)" title="Import this source">⬇ IMPORT</button>';
+      }
+      html += '<div class="vault-row">'
+           +   '<div class="vault-row-label">' + (loaded ? '✅' : '⬜') + ' ' + esc(s.label) + '</div>'
+           +   '<div style="display:flex;align-items:center;gap:.25rem">' + statusHtml + btnHtml + '</div>'
+           + '</div>';
+    });
+    list.innerHTML = html;
+    // Refresh Groomer chart-database card too, since totals changed
+    if (typeof grmLoadStats === 'function') grmLoadStats();
+  } catch(e) {
+    list.innerHTML = '<div style="padding:.4rem 0;font-family:var(--mono);font-size:.55rem;color:var(--red)">Error: ' + esc(e.message) + '</div>';
+  }
+}
+
+async function vetImportSource(sourceId, label) {
+  if (!confirm('Import "' + label + '"?\n\nThis downloads chart data and appends it to your dynamic database. Your music files and static DB are not touched. Takes 10–60 seconds depending on source size.')) return;
+  var statusEl = document.getElementById('vet-import-status');
+  try {
+    var r = await fetch(`${API}/api/groomer/vet/static-sources/import`, {
+      method:'POST', headers:authHdrs(),
+      body: JSON.stringify({source_id: sourceId})
+    });
+    var d = await r.json();
+    if (!r.ok) {
+      toast('Import failed: ' + (d.detail || 'unknown'), 'error');
+      return;
+    }
+    toast('Import started: ' + label, 'ok');
+    if (statusEl) statusEl.textContent = '⏳ Importing ' + label + '…';
+    // Poll /status every 2s until done/error
+    clearInterval(_vetImportPollTimer);
+    _vetImportPollTimer = setInterval(async function() {
+      try {
+        var sr = await fetch(`${API}/api/groomer/vet/static-sources/status`, {headers:authHdrs()});
+        var sd = await sr.json();
+        if (sd.status === 'done') {
+          clearInterval(_vetImportPollTimer);
+          if (statusEl) statusEl.textContent = '✓ ' + (sd.message || 'Import complete');
+          toast('✓ ' + label + ' imported', 'ok');
+          vetLoadStaticSources();
+          vetLoadHealth();
+        } else if (sd.status === 'error') {
+          clearInterval(_vetImportPollTimer);
+          if (statusEl) statusEl.textContent = '✗ ' + (sd.message || 'Import failed');
+          toast('Import failed: ' + (sd.message || 'unknown'), 'error');
+        } else if (sd.status === 'running') {
+          if (statusEl) statusEl.textContent = '⏳ Importing ' + label + '… (' + (sd.inserted || 0).toLocaleString() + ' so far)';
+        }
+      } catch(e) { /* keep polling */ }
+    }, 2000);
+  } catch(e) {
+    toast('Error: ' + e.message, 'error');
+  }
+}
+
+async function vetDeleteSource(sourceId, label) {
+  if (!confirm('Remove "' + label + '" from your database?\n\nThis deletes all imported chart entries for this source. Your shipped static DB is not touched. You can re-import later.')) return;
+  try {
+    var r = await fetch(`${API}/api/groomer/vet/static-sources/delete`, {
+      method:'POST', headers:authHdrs(),
+      body: JSON.stringify({source_id: sourceId})
+    });
+    var d = await r.json();
+    if (r.ok) {
+      toast(label + ' removed (' + (d.deleted || 0).toLocaleString() + ' rows)', 'ok');
+      vetLoadStaticSources();
+      vetLoadHealth();
+    } else {
+      toast('Delete failed: ' + (d.detail || 'unknown'), 'error');
+    }
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
 }
 
 async function vetLoadHealth() {
@@ -6164,12 +6338,13 @@ function trkInit() {
   trkLoadItems();
   trkLoadLog();
   trkInjectScrollNav();
-  // Poll status every 15s while on tracker tab
+  // Poll status + log every 15s while on tracker tab
   clearInterval(_trkPollTimer);
   _trkPollTimer = setInterval(function() {
     var panel = document.getElementById('panel-tracker');
     if (panel && panel.classList.contains('active')) {
       trkRefreshStatus();
+      trkLoadLog();
     } else {
       clearInterval(_trkPollTimer);
     }
@@ -6178,14 +6353,24 @@ function trkInit() {
 
 function trkInjectScrollNav() {
   if (document.getElementById('trk-scroll-nav')) return;
-  var panel = document.getElementById('panel-tracker');
-  if (!panel) return;
-  var nav = document.createElement('div');
+  const scroller = document.querySelector('.content-area') || document.documentElement;
+  const nav = document.createElement('div');
   nav.id = 'trk-scroll-nav';
-  nav.style.cssText = 'position:fixed;right:1.5rem;bottom:1.5rem;display:flex;flex-direction:column;gap:.35rem;z-index:50';
-  var btnStyle = 'width:36px;height:36px;border-radius:50%;border:1px solid var(--crimson);background:var(--surface);color:var(--crimson);font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center';
-  nav.innerHTML = '<button style="' + btnStyle + '" title="Scroll to top" onclick="(document.querySelector(\'.content-area\')||document.documentElement).scrollTo({top:0,behavior:\'smooth\'})">↑</button><button style="' + btnStyle + '" title="Scroll to bottom" onclick="(document.querySelector(\'.content-area\')||document.documentElement).scrollTo({top:99999,behavior:\'smooth\'})">↓</button>';
-  panel.appendChild(nav);
+  nav.style.cssText = 'position:fixed;right:1.5rem;bottom:5rem;z-index:500;display:flex;flex-direction:column;gap:.4rem;opacity:0;transition:opacity .3s;pointer-events:none;';
+  const btnStyle = 'width:36px;height:36px;border-radius:50%;background:var(--surface2);border:1px solid var(--border2);color:var(--muted);font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;line-height:1;';
+  nav.innerHTML = `
+    <button style="${btnStyle}" title="Scroll to top"
+      onclick="(document.querySelector('.content-area')||document.documentElement).scrollTo({top:0,behavior:'smooth'})">↑</button>
+    <button style="${btnStyle}" title="Scroll to bottom"
+      onclick="(document.querySelector('.content-area')||document.documentElement).scrollTo({top:99999,behavior:'smooth'})">↓</button>`;
+  document.body.appendChild(nav);
+  scroller.addEventListener('scroll', () => {
+    const panel = document.getElementById('panel-tracker');
+    const tabActive = panel && panel.classList.contains('active');
+    const show = tabActive && scroller.scrollTop > 200;
+    nav.style.opacity       = show ? '1'    : '0';
+    nav.style.pointerEvents = show ? 'auto' : 'none';
+  }, {passive:true});
 }
 
 async function trkRefreshStatus() {
@@ -6233,7 +6418,10 @@ async function trkRefreshStatus() {
 
     // Settings
     trkPaintModeButtons(d.mode || 'gentle');
-    document.getElementById('trk-cooldown').value  = d.cooldown_days || 7;
+    var cdR = document.getElementById('trk-cooldown-radarr');
+    var cdS = document.getElementById('trk-cooldown-sonarr');
+    if (cdR) cdR.value = d.cooldown_days_radarr || d.cooldown_days || 7;
+    if (cdS) cdS.value = d.cooldown_days_sonarr || d.cooldown_days || 7;
     document.getElementById('trk-logging').checked = d.logging_enabled !== false;
 
     // Status sub
@@ -6491,7 +6679,8 @@ async function trkSaveSettings() {
     await fetch(API + '/api/tracker/settings', {
       method:'POST', headers:authHdrs(),
       body: JSON.stringify({
-        cooldown_days: parseInt(document.getElementById('trk-cooldown').value) || 7,
+        cooldown_days_radarr: parseInt(document.getElementById('trk-cooldown-radarr').value) || 7,
+        cooldown_days_sonarr: parseInt(document.getElementById('trk-cooldown-sonarr').value) || 7,
         logging_enabled: document.getElementById('trk-logging').checked,
       })
     });

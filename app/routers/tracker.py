@@ -68,6 +68,48 @@ _DEFAULT_COOLDOWN = 7
 _JITTER_PCT       = 0.5    # ±50% randomization on every sleep
 _FLOOR_INTERVAL   = 300    # absolute minimum sleep (5 min) — safety net
 
+
+async def _get_cooldown_days(source: str) -> int:
+    """
+    Return cooldown-days for the given source ('radarr' or 'sonarr').
+    Per-source keys take precedence; falls back to legacy single key, then default.
+    Clamped 1–30.
+    """
+    per_key = f"tracker_cooldown_{source}"
+    v = await _get_setting(per_key, "")
+    if not v or not v.isdigit():
+        # Legacy single-key fallback (pre-split behaviour)
+        v = await _get_setting("tracker_cooldown", str(_DEFAULT_COOLDOWN))
+    try:
+        n = int(v)
+    except (TypeError, ValueError):
+        n = _DEFAULT_COOLDOWN
+    return max(1, min(30, n))
+
+
+async def _migrate_cooldown_setting():
+    """
+    One-time migration: if legacy `tracker_cooldown` exists but per-source keys
+    don't, copy the legacy value into both per-source keys. Idempotent.
+    """
+    try:
+        legacy = await _get_setting("tracker_cooldown", "")
+        radarr = await _get_setting("tracker_cooldown_radarr", "")
+        sonarr = await _get_setting("tracker_cooldown_sonarr", "")
+        if legacy and legacy.isdigit():
+            if not radarr:
+                await _set_setting("tracker_cooldown_radarr", legacy)
+            if not sonarr:
+                await _set_setting("tracker_cooldown_sonarr", legacy)
+        else:
+            # No legacy — seed defaults if missing (first-run users)
+            if not radarr:
+                await _set_setting("tracker_cooldown_radarr", str(_DEFAULT_COOLDOWN))
+            if not sonarr:
+                await _set_setting("tracker_cooldown_sonarr", str(_DEFAULT_COOLDOWN))
+    except Exception as e:
+        log.warning(f"cooldown migration warning: {e}")
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  DB MIGRATIONS — run on import (safe to repeat)
 # ══════════════════════════════════════════════════════════════════════════════
@@ -235,10 +277,12 @@ class SkipSeasonRequest(BaseModel):
     season_number: int
 
 class SettingsRequest(BaseModel):
-    mode:             Optional[str]  = None   # 'gentle' or 'moderate'
-    cooldown_days:    Optional[int]  = None
-    max_daily:        Optional[int]  = None
-    logging_enabled:  Optional[bool] = None
+    mode:                   Optional[str]  = None   # 'gentle' or 'moderate'
+    cooldown_days:          Optional[int]  = None   # back-compat — writes BOTH per-source keys
+    cooldown_days_radarr:   Optional[int]  = None
+    cooldown_days_sonarr:   Optional[int]  = None
+    max_daily:              Optional[int]  = None
+    logging_enabled:        Optional[bool] = None
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -248,6 +292,7 @@ class SettingsRequest(BaseModel):
 async def tracker_startup():
     """Initialize tables and resume hunt loop if it was enabled."""
     await _ensure_tracker_tables()
+    await _migrate_cooldown_setting()
     enabled = await _get_setting("tracker_enabled", "false")
     if enabled == "true":
         log.info("Tracker was enabled — resuming hunt loop.")
@@ -650,7 +695,7 @@ async def _execute_search(item: dict):
     item_id = item["item_id"]
     ext_id = item["external_id"]
     title = item["title"]
-    cooldown_days = int(await _get_setting("tracker_cooldown", str(_DEFAULT_COOLDOWN)))
+    cooldown_days = await _get_cooldown_days(source)
     cooldown_until = (datetime.now(timezone.utc) + timedelta(days=cooldown_days)).strftime("%Y-%m-%d %H:%M:%S")
 
     try:
@@ -755,7 +800,8 @@ async def _execute_search(item: dict):
 async def tracker_status(user: dict = Depends(require_auth)):
     enabled = await _get_setting("tracker_enabled", "false") == "true"
     cfg = await _get_mode_config()
-    cooldown = int(await _get_setting("tracker_cooldown", str(_DEFAULT_COOLDOWN)))
+    cooldown_radarr = await _get_cooldown_days("radarr")
+    cooldown_sonarr = await _get_cooldown_days("sonarr")
     max_daily_override = await _get_setting("tracker_max_daily", "")
     max_daily = int(max_daily_override) if max_daily_override.isdigit() else cfg["max_daily"]
     logging_on = await _get_setting("tracker_logging", "true") == "true"
@@ -805,7 +851,9 @@ async def tracker_status(user: dict = Depends(require_auth)):
         "hunt_loop_active": _hunt_running,
         "mode": cfg["mode"],
         "base_interval": cfg["base_interval"],
-        "cooldown_days": cooldown,
+        "cooldown_days":         cooldown_radarr,   # back-compat: old UI binds to this
+        "cooldown_days_radarr":  cooldown_radarr,
+        "cooldown_days_sonarr":  cooldown_sonarr,
         "max_daily": max_daily,
         "searches_today": today_count,
         "logging_enabled": logging_on,
@@ -977,9 +1025,19 @@ async def update_settings(req: SettingsRequest, user: dict = Depends(require_aut
         if m not in _MODES:
             raise HTTPException(400, f"Invalid mode '{m}'. Must be 'gentle' or 'moderate'.")
         await _set_setting("tracker_mode", m)
-    if req.cooldown_days is not None:
-        v = max(1, min(30, req.cooldown_days))  # Clamp 1–30 days
-        await _set_setting("tracker_cooldown", str(v))
+    # Per-source cooldowns (preferred)
+    if req.cooldown_days_radarr is not None:
+        v = max(1, min(30, req.cooldown_days_radarr))
+        await _set_setting("tracker_cooldown_radarr", str(v))
+    if req.cooldown_days_sonarr is not None:
+        v = max(1, min(30, req.cooldown_days_sonarr))
+        await _set_setting("tracker_cooldown_sonarr", str(v))
+    # Back-compat: old UI posts a single `cooldown_days` — apply to both sources
+    if req.cooldown_days is not None and req.cooldown_days_radarr is None and req.cooldown_days_sonarr is None:
+        v = max(1, min(30, req.cooldown_days))
+        await _set_setting("tracker_cooldown_radarr", str(v))
+        await _set_setting("tracker_cooldown_sonarr", str(v))
+        await _set_setting("tracker_cooldown", str(v))  # keep legacy key synced
     if req.max_daily is not None:
         v = max(5, min(200, req.max_daily))  # Clamp 5–200
         await _set_setting("tracker_max_daily", str(v))
