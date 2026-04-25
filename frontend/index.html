@@ -3769,7 +3769,7 @@ function refreshAllDots() {
 }
 
 // ── Kennel conn-card rollup ──
-var _connRollupInitDone = {};  // per-service: has user interacted? prevents auto-collapse override
+var _connRollupInitDone = {};  // per-service: has user interacted? prevents auto-collapse override on subsequent refreshAllDots() calls within the same page load
 function injectConnRollupButtons() {
   const cards = document.querySelectorAll('.conn-card[id^="connCard-"]');
   cards.forEach(function(card) {
@@ -3783,13 +3783,14 @@ function injectConnRollupButtons() {
       btn.onclick = function(e) { e.stopPropagation(); toggleConnCard(service); };
       header.appendChild(btn);
     }
-    // Auto-collapse connected cards on first render (only if user hasn't touched it)
+    // First render this page-load: check localStorage for saved user choice, else fall back to auto-collapse-if-connected
     if (!_connRollupInitDone[service]) {
-      if (connState[service]) {
-        card.classList.add('collapsed');
-      } else {
-        card.classList.remove('collapsed');
-      }
+      let saved = null;
+      try { saved = localStorage.getItem('ch_connCard_' + service); } catch(e) {}
+      if (saved === 'collapsed')      card.classList.add('collapsed');
+      else if (saved === 'open')      card.classList.remove('collapsed');
+      else if (connState[service])    card.classList.add('collapsed');     // default: connected → collapsed
+      else                             card.classList.remove('collapsed'); // default: not connected → open
       _connRollupInitDone[service] = true;
     }
     // Update button label based on current state
@@ -3802,6 +3803,8 @@ function toggleConnCard(service) {
   card.classList.toggle('collapsed');
   const btn = card.querySelector('.conn-collapse-btn');
   if (btn) btn.textContent = card.classList.contains('collapsed') ? '▼ EXPAND' : '▲ COLLAPSE';
+  // Persist user choice across page loads
+  try { localStorage.setItem('ch_connCard_' + service, card.classList.contains('collapsed') ? 'collapsed' : 'open'); } catch(e) {}
 }
 
 // TOAST
