@@ -155,6 +155,54 @@ services:
       # ══════════════════════════════════════════════════════════
       - CH_OPEN_REGISTRATION=false
 
+      # ══════════════════════════════════════════════════════════
+      # CH_ALLOWED_ORIGINS (REQUIRED for browser access)
+      # ══════════════════════════════════════════════════════════
+      # ChartHound only accepts browser commands coming from the
+      # specific URLs you list here. This is a CSRF protection —
+      # without it, any malicious website could send commands to
+      # your server while you are logged in.
+      #
+      # WHAT IS AN "ORIGIN"?
+      # An origin is whatever appears in your browser's address bar
+      # before any path. Examples below use placeholder values —
+      # YOU MUST REPLACE THEM with your own URLs.
+      #
+      # FORMAT RULES:
+      # - Comma-separated, no spaces between entries
+      # - Include the http:// or https:// prefix
+      # - Include the port (e.g. :8585) if it is not 80 or 443
+      # - No trailing slash on any URL
+      #
+      # FIND YOUR LAN IP (use this, not the example below):
+      #   Linux/Mac:           hostname -I
+      #   Windows PowerShell:  ipconfig
+      #   Synology:            Control Panel → Network → Network Interface
+      #
+      # COMMON SETUPS — pick the closest match and edit the values:
+      #
+      # Single user, browse from server only:
+      #   - CH_ALLOWED_ORIGINS=http://localhost:8585
+      #
+      # Browse from any device on your LAN (replace 192.168.1.50
+      # with YOUR actual server IP from the command above):
+      #   - CH_ALLOWED_ORIGINS=http://localhost:8585,http://192.168.1.50:8585
+      #
+      # LAN + reverse proxy with HTTPS (Caddy/nginx/Traefik users —
+      # replace BOTH the IP and the domain with your own):
+      #   - CH_ALLOWED_ORIGINS=http://localhost:8585,http://192.168.1.50:8585,https://charthound.yourdomain.com
+      #
+      # IF YOU GET IT WRONG:
+      # The UI will load (it is just static files) but every action
+      # button will fail with a CORS error in your browser console.
+      # Fix: add the missing origin here, then run:
+      #   docker compose down && docker compose up -d
+      #
+      # If you leave this empty, ChartHound defaults to localhost only
+      # and prints a warning in the startup logs.
+      # ══════════════════════════════════════════════════════════
+      - CH_ALLOWED_ORIGINS=CHANGE_ME_TO_YOUR_BROWSER_URLS
+
       # Database paths inside container — do not change these lines
       - DATABASE_URL=/data/charthound.db
       - STATIC_DB_URL=/data/charthound_static.db

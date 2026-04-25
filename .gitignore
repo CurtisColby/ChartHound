@@ -40,3 +40,6 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# Local backup snapshots created during patches/audits
+backups/
