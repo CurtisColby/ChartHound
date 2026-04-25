@@ -707,45 +707,13 @@ async def _execute_search(item: dict):
             # MoviesSearch command
             payload = {"name": "MoviesSearch", "movieIds": [ext_id]}
         else:
-            # For Sonarr: check if the entire season is missing → SeasonSearch
-            # Otherwise EpisodeSearch for individual episodes
+            # For Sonarr: always emit SeasonSearch and let Sonarr handle
+            # the pack-vs-episode decision internally. This avoids brittle
+            # count-and-decide logic and an extra Sonarr API round-trip.
             series_id = item.get("series_id")
             season_num = item.get("season_number")
-
-            # Count missing episodes in this season
-            async with aiosqlite.connect(_DYNAMIC_DB) as db:
-                async with db.execute(
-                    """SELECT COUNT(*) FROM tracker_items
-                       WHERE source='sonarr' AND series_id=? AND season_number=?
-                       AND status='missing'""",
-                    (series_id, season_num)
-                ) as cur:
-                    missing_in_season = (await cur.fetchone())[0]
-
-            # Check total episodes in season from Sonarr
-            try:
-                async with httpx.AsyncClient(timeout=15.0, verify=False) as client:
-                    er = await client.get(
-                        f"{base}/api/v3/episode",
-                        params={"seriesId": series_id},
-                        headers={"X-Api-Key": token}
-                    )
-                    er.raise_for_status()
-                    all_season_eps = [
-                        e for e in er.json()
-                        if e.get("seasonNumber") == season_num and e.get("monitored", False)
-                    ]
-                    total_in_season = len(all_season_eps)
-            except Exception:
-                total_in_season = missing_in_season  # Fallback: assume all missing
-
-            if missing_in_season >= total_in_season and total_in_season > 0:
-                # Entire season is missing — SeasonSearch is more efficient
-                payload = {"name": "SeasonSearch", "seriesId": series_id, "seasonNumber": season_num}
-                log.info(f"Tracker: SeasonSearch for {title} (full season {season_num} missing)")
-            else:
-                # Individual episode search
-                payload = {"name": "EpisodeSearch", "episodeIds": [ext_id]}
+            payload = {"name": "SeasonSearch", "seriesId": series_id, "seasonNumber": season_num}
+            log.info(f"Tracker: SeasonSearch for {title} (season {season_num})")
 
         # Fire the command
         async with httpx.AsyncClient(timeout=20.0, verify=False) as client:
