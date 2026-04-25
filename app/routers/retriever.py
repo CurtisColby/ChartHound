@@ -34,6 +34,27 @@ log = logging.getLogger("charthound.retriever")
 router = APIRouter(prefix="/api/retriever", tags=["retriever"])
 settings = get_settings()
 
+
+# ── Path containment helper (C2/C3/H1 FIX) ───────────────────────────────────
+def _is_within_music_prefix(p: str) -> bool:
+    """
+    Return True iff `p` resolves to a path inside settings.docker_music_prefix
+    (or equals it exactly). Defends against:
+      - absolute paths outside /music (e.g. "/etc")
+      - sibling-dir bypass via plain startswith (e.g. "/musique" vs "/music")
+      - "../" traversal
+      - symlinks pointing outside the music tree
+    """
+    try:
+        base = os.path.realpath(settings.docker_music_prefix)
+        target = os.path.realpath(p)
+    except Exception:
+        return False
+    if target == base:
+        return True
+    return target.startswith(base + os.sep)
+# ─────────────────────────────────────────────────────────────────────────────
+
 # ── Rate Limiter (iTunes Leaky Bucket — Constitution §3) ─────────────────────
 class ItunesRateLimiter:
     """Hard cap: max 20 iTunes requests per minute."""
@@ -1271,8 +1292,8 @@ async def browse_music(path: str = "", user: dict = Depends(require_auth)):
     target = os.path.join(base, path.strip("/")) if path else base
     target = os.path.normpath(target)
 
-    # Security: must stay within music mount
-    if not target.startswith(base):
+    # H1 FIX: realpath + strict containment (handles symlinks + sibling-dir bypass)
+    if not _is_within_music_prefix(target):
         raise HTTPException(400, "Path outside music directory")
     if not os.path.exists(target):
         raise HTTPException(404, f"Path not found: {target}")
@@ -1308,13 +1329,14 @@ async def read_tags_from_folders(req: ReadTagsRequest, user: dict = Depends(requ
     offset    = getattr(req, 'offset', 0)
 
     # Security: all paths must be within music mount
+    # H1 FIX: realpath + strict containment
     safe_paths = []
     for p in req.paths:
         p = p.strip()
         if not p.startswith("/"):
             p = os.path.join(base, p)
         p = os.path.normpath(p)
-        if not p.startswith(base):
+        if not _is_within_music_prefix(p):
             continue
         if os.path.exists(p):
             safe_paths.append(p)
@@ -1487,6 +1509,7 @@ async def start_scan(req: ScanRequest, background_tasks: BackgroundTasks,
             raise HTTPException(409, "A scan is already running. Stop it first.")
 
     # Determine and validate scan path
+    # C3 FIX: every subfolder must resolve inside docker_music_prefix
     if req.scope == "subfolder" and req.subfolders:
         # Multi-folder queue — validate all and join with | separator
         validated = []
@@ -1494,6 +1517,10 @@ async def start_scan(req: ScanRequest, background_tasks: BackgroundTasks,
             p = sf.strip()
             if not p.startswith("/"):
                 p = os.path.join(settings.docker_music_prefix, p)
+            p = os.path.normpath(p)
+            if not _is_within_music_prefix(p):
+                raise HTTPException(400,
+                    f"Subfolder outside music directory: {p}")
             if not os.path.exists(p):
                 raise HTTPException(404,
                     f"Subfolder not found: {p}. "
@@ -1504,6 +1531,10 @@ async def start_scan(req: ScanRequest, background_tasks: BackgroundTasks,
         scan_path = req.subfolder.strip()
         if not scan_path.startswith("/"):
             scan_path = os.path.join(settings.docker_music_prefix, scan_path)
+        scan_path = os.path.normpath(scan_path)
+        if not _is_within_music_prefix(scan_path):
+            raise HTTPException(400,
+                f"Subfolder outside music directory: {scan_path}")
         if not os.path.exists(scan_path):
             raise HTTPException(404,
                 f"Subfolder not found: {scan_path}. "
@@ -1690,13 +1721,16 @@ async def manual_override(req: ManualOverrideRequest, user: dict = Depends(requi
             cursor = await db.execute(
                 "SELECT file_path, year FROM tracks WHERE track_id=?", (track_id,))
             track = await cursor.fetchone()
-        if track and os.path.exists(track["file_path"]):
+        # C2 FIX: enforce music-prefix containment on every write target
+        if track and os.path.exists(track["file_path"]) and \
+                _is_within_music_prefix(track["file_path"]):
             write_targets.append((track["file_path"], track_id, track["year"]))
         else:
             fail_count += 1
 
     for fp in (req.file_paths or []):
-        if os.path.exists(fp):
+        # C2 FIX: enforce music-prefix containment on every write target
+        if os.path.exists(fp) and _is_within_music_prefix(fp):
             write_targets.append((fp, None, None))
         else:
             fail_count += 1
@@ -1775,9 +1809,10 @@ async def album_override(req: AlbumOverrideRequest, user: dict = Depends(require
         console_msgs.append(f"   Moods → {', '.join(moods)}")
 
     for fp in req.file_paths:
-        if not os.path.exists(fp):
+        # C2 FIX: enforce music-prefix containment before any write
+        if not os.path.exists(fp) or not _is_within_music_prefix(fp):
             fail_list.append(fp)
-            console_msgs.append(f"   ⚠️  File not found: {os.path.basename(fp)}")
+            console_msgs.append(f"   ⚠️  File not found or outside /music: {os.path.basename(fp)}")
             continue
 
         try:

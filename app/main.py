@@ -84,9 +84,25 @@ app = FastAPI(
     redoc_url=None,
 )
 
+# C1 FIX: CORS allowlist from CH_ALLOWED_ORIGINS env var.
+# Falls back to localhost-only if unset. Wildcard origins + credentials
+# is a textbook CSRF enabler; never re-enable both.
+_raw_origins = getattr(settings, "ch_allowed_origins", "") or ""
+_allowed_origins = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+if not _allowed_origins:
+    _allowed_origins = [
+        "http://localhost:8585",
+        "http://127.0.0.1:8585",
+    ]
+    log.warning(
+        "⚠  CH_ALLOWED_ORIGINS not set — defaulting to localhost only. "
+        "Add your LAN/domain origins to docker-compose.yml for browser access."
+    )
+log.info(f"CORS allowed origins: {_allowed_origins}")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -106,6 +122,11 @@ app.include_router(tracker.router)
 
 @app.get("/api/health", response_model=HealthResponse, tags=["system"])
 async def health():
+    """
+    M1 FIX: Public health endpoint returns minimum info needed for liveness checks.
+    Internal-disclosure fields (db_path, secret_key_placeholder) moved to
+    authed-only equivalents in kennel.py.
+    """
     try:
         count = await get_user_count()
         ls = lockdown_status(count)
@@ -115,9 +136,9 @@ async def health():
     return HealthResponse(
         status="ok",
         version="1.0.0",
-        db_path=settings.database_url,
+        db_path="",  # M1: redacted from public response
         lockdown_active=locked,
-        secret_key_placeholder=(settings.secret_key == PLACEHOLDER_KEY),
+        secret_key_placeholder=False,  # M1: redacted; see /api/kennel/secret-key-status (authed)
     )
 
 

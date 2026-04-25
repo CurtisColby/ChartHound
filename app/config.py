@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     # Default: False (Lockdown Mode). Set to "true" in docker-compose.yml
     # only when you need to add a new user. Remove afterward.
     ch_open_registration: bool = False
+    # ── CORS Allowed Origins (C1 audit fix) ───────────────────────
+    # Comma-separated list of browser origins allowed to make
+    # authenticated requests. Set in docker-compose.yml.
+    ch_allowed_origins: str = ""
 
     # ── Database ──────────────────────────────────────────────────
     database_url: str = "/data/charthound.db"

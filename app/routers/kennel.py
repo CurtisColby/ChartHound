@@ -485,7 +485,10 @@ async def get_sniffer_path(user: dict = Depends(require_auth)):
 
 
 @router.get("/secret-key-status")
-async def secret_key_status():
-    """Check if SECRET_KEY is still the placeholder value."""
+async def secret_key_status(user: dict = Depends(require_auth)):
+    """
+    M2 FIX: Now requires auth. Was previously public, leaking encryption-config
+    state to unauthenticated callers. Frontend should call this post-login.
+    """
     is_placeholder = settings.secret_key == "CHANGE_ME_GENERATE_A_STRONG_RANDOM_KEY"
     return {"placeholder": is_placeholder}
