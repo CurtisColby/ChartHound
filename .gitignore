@@ -43,3 +43,6 @@ Thumbs.db
 
 # Local backup snapshots created during patches/audits
 backups/
+
+# Internal dev journal — local + project knowledge only, never to GitHub
+Current_State_Summary.md
