@@ -59,6 +59,8 @@ body::before{content:'';position:fixed;inset:0;background-image:url("data:image/
 .login-btn{width:100%;padding:.75rem;background:var(--gold);color:#000;border:none;border-radius:6px;font-family:var(--display);font-size:1.1rem;letter-spacing:2px;cursor:pointer;transition:all .2s;margin-top:.5rem;}
 .login-btn:hover{background:var(--amber);box-shadow:0 0 20px rgba(245,166,35,.4);}
 .login-err{font-family:var(--mono);font-size:.65rem;color:var(--red);text-align:center;min-height:1rem;margin-top:.75rem;}
+.login-info{font-family:var(--mono);font-size:.65rem;color:var(--teal);text-align:center;background:rgba(0,200,200,.08);border:1px solid var(--teal);border-radius:6px;padding:.6rem .75rem;margin-bottom:1rem;line-height:1.4;}
+.login-info.hidden{display:none;}
 .login-toggle{font-family:var(--mono);font-size:.6rem;color:var(--muted);text-align:center;margin-top:1rem;cursor:pointer;transition:color .15s;}
 .login-toggle:hover{color:var(--gold);}
 .login-toggle.hidden{display:none;}
@@ -381,6 +383,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
     <div class="login-logo"><div class="login-logo-icon"></div><h1>CHARTHOUND</h1></div>
     <div class="login-sub">THE NEW WORLD · v1.0</div>
     <div class="login-credit">Developed by Colby R. Curtis · Claude.ai code support</div>
+    <div class="login-info hidden" id="loginInfo"></div>
     <label class="login-label" for="loginUser">USERNAME</label>
     <input class="login-input" type="text" id="loginUser" placeholder="your username" autocomplete="username">
     <label class="login-label" for="loginPass">PASSWORD</label>
@@ -2185,12 +2188,58 @@ async function tryAutoLogin() {
   try {
     const r = await fetch(`${API}/api/health`, {headers: authHdrs()});
     if (r.ok) { const d = await r.json(); showApp(d.secret_key_placeholder); return; }
+    if (r.status === 401) { handleSessionExpired(); return; }
   } catch {}
   clearAuth();
 }
 
 // AUTH
 function authHdrs() { return {'Authorization': `Bearer ${authToken}`, 'Content-Type': 'application/json'}; }
+
+// Tracks whether the session-expired banner has already fired this page-lifetime.
+// Prevents banner spam when multiple polling calls 401 in the same second.
+let _sessionExpiredFired = false;
+
+// Drop-in fetch wrapper that auto-injects auth headers and handles 401 globally.
+// Use this for new fetch calls and for any call that runs on a poll/timer.
+async function authFetch(url, opts) {
+  opts = opts || {};
+  const headers = Object.assign({}, authHdrs(), opts.headers || {});
+  const r = await fetch(url, Object.assign({}, opts, {headers}));
+  if (r.status === 401 && authToken) {
+    // Token was present but server rejected it. Treat as expired session.
+    handleSessionExpired();
+  }
+  return r;
+}
+
+// Triggered when a 401 reveals the JWT has expired during a session, OR when the
+// boot-time auto-login health check fails with 401. Bounces the user back to the
+// login screen with an explanatory banner so they understand what just happened.
+function handleSessionExpired() {
+  if (_sessionExpiredFired) return;
+  _sessionExpiredFired = true;
+  if (heartbeatTimer) clearInterval(heartbeatTimer);
+  if (scanPollTimer) clearInterval(scanPollTimer);
+  clearAuth();
+  // Hide app, show login
+  const hdr = document.getElementById('appHeader'); if (hdr) hdr.style.display = 'none';
+  const shl = document.getElementById('appShell');  if (shl) shl.style.display = 'none';
+  const skb = document.getElementById('secretKeyBanner'); if (skb) skb.classList.remove('show');
+  const ls  = document.getElementById('loginScreen'); if (ls) ls.classList.remove('hidden');
+  // Show the banner
+  const info = document.getElementById('loginInfo');
+  if (info) {
+    info.innerHTML = '⏱ Your session has expired.<br>Please log back in to reconnect.';
+    info.classList.remove('hidden');
+  }
+  // Clear any stale error from a previous attempt
+  const errEl = document.getElementById('loginErr');
+  if (errEl) errEl.textContent = '';
+  // Clear password field for the new login
+  const pw = document.getElementById('loginPass'); if (pw) pw.value = '';
+}
+
 function clearAuth() {
   authToken = ''; currentUser = '';
   localStorage.removeItem('ch_token'); localStorage.removeItem('ch_user');
@@ -2206,6 +2255,10 @@ async function doLogin() {
   const password = document.getElementById('loginPass').value;
   const errEl = document.getElementById('loginErr');
   errEl.textContent = '';
+  // Clear any session-expired banner from a previous expired session
+  const info = document.getElementById('loginInfo');
+  if (info) { info.classList.add('hidden'); info.innerHTML = ''; }
+  _sessionExpiredFired = false;
   if (!username || !password) { errEl.textContent = 'Enter username and password.'; return; }
   const ep = authMode === 'register' ? '/api/auth/register' : '/api/auth/login';
   try {
@@ -2416,6 +2469,7 @@ function updateClientURL() {
 async function loadAllStatuses() {
   try {
     const r = await fetch(`${API}/api/kennel/status`, {headers:authHdrs()});
+    if (r.status === 401 && authToken) { handleSessionExpired(); return; }
     if (!r.ok) return;
     const statuses = await r.json();
     for (const s of statuses) {
