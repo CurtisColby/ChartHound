@@ -77,7 +77,6 @@ The following are protected trademarks and identifiers of this project:
 - "The Groomer"
 - "The Bloodhound"
 - "The Tracker"
-- "The Scout"
 - "The Lookout"
 
 ---
