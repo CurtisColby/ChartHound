@@ -5942,17 +5942,22 @@ function bhCopyMagnet(cardId, resultIdx) {
     bhLog('✗ Copy failed: ' + e.message, 'err');
   }
 }
-
 function bhInjectScrollNav() {
-  if (document.getElementById('bh-scroll-nav')) return;
-  var panel = document.getElementById('panel-bloodhound');
-  if (!panel) return;
-  var nav = document.createElement('div');
-  nav.id = 'bh-scroll-nav';
-  nav.style.cssText = 'position:fixed;right:1.5rem;bottom:5rem;z-index:500;display:flex;flex-direction:column;gap:.4rem;opacity:0;transition:opacity .3s;pointer-events:none;';
-  var btnStyle = 'width:36px;height:36px;border-radius:50%;border:1px solid var(--orange);background:var(--surface);color:var(--orange);font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center';
-  nav.innerHTML = '<button style="' + btnStyle + '" title="Scroll to top" onclick="(document.querySelector(\'.content-area\')||document.documentElement).scrollTo({top:0,behavior:\'smooth\'})">↑</button><button style="' + btnStyle + '" title="Scroll to bottom" onclick="(document.querySelector(\'.content-area\')||document.documentElement).scrollTo({top:99999,behavior:\'smooth\'})">↓</button>';
-  panel.appendChild(nav);
+  if (document.getElementById("bh-scroll-nav")) return;
+  const bhScroller = document.querySelector(".content-area") || document.documentElement;
+  const nav = document.createElement("div");
+  nav.id = "bh-scroll-nav";
+  nav.style.cssText = "position:fixed;right:1.5rem;bottom:5rem;z-index:500;display:flex;flex-direction:column;gap:.4rem;opacity:0;transition:opacity .3s;pointer-events:none;";
+  const btnStyle = "width:36px;height:36px;border-radius:50%;background:var(--surface2);border:1px solid var(--border2);color:var(--orange);font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;line-height:1;";
+  nav.innerHTML = "<button style=\"" + btnStyle + "\" title=\"Scroll to top\" onclick=\"(document.querySelector(\x27.content-area\x27)||document.documentElement).scrollTo({top:0,behavior:\x27smooth\x27})\">↑</button><button style=\"" + btnStyle + "\" title=\"Scroll to bottom\" onclick=\"(document.querySelector(\x27.content-area\x27)||document.documentElement).scrollTo({top:99999,behavior:\x27smooth\x27})\">↓</button>";
+  document.body.appendChild(nav);
+  bhScroller.addEventListener("scroll", function() {
+    const panel = document.getElementById("panel-bloodhound");
+    const tabActive = panel && panel.classList.contains("active");
+    const show = tabActive && bhScroller.scrollTop > 200;
+    nav.style.opacity = show ? "1" : "0";
+    nav.style.pointerEvents = show ? "auto" : "none";
+  }, {passive:true});
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -6178,7 +6183,7 @@ async function vetDbgLoad() {
   const level = document.getElementById('vet-dbg-level')?.value || '';
   const name  = document.getElementById('vet-dbg-filter')?.value || '';
   try {
-    let url = `${API}/api/debug/logs?limit=1000`;
+    let url = `${API}/api/debug/lines?limit=1000`;
     if (level) url += `&level=${level}`;
     if (name)  url += `&name=${encodeURIComponent(name)}`;
     const r = await fetch(url, {headers:authHdrs()});
@@ -6186,7 +6191,7 @@ async function vetDbgLoad() {
     const d = await r.json();
     const el = document.getElementById('vet-dbg-log');
     if (!el) return;
-    const lines = d.logs || [];
+    const lines = d.lines || [];
     document.getElementById('vet-dbg-count').textContent = `${lines.length} entries · max 1,000`;
     const levelColors = {
       'DEBUG':'var(--muted2)','INFO':'var(--text)','WARNING':'var(--amber)',
@@ -6194,7 +6199,7 @@ async function vetDbgLoad() {
     };
     el.innerHTML = lines.map(l => {
       const c = levelColors[l.level] || 'var(--muted)';
-      return `<div style="color:${c}">[${l.time}] ${l.level} ${l.name}: ${esc(l.message)}</div>`;
+      return `<div style="color:${c}">[${l.ts}] ${l.level} ${l.name}: ${esc(l.msg)}</div>`;
     }).join('');
     el.scrollTop = el.scrollHeight;
   } catch {}
@@ -6208,10 +6213,10 @@ function vetDbgClear() {
 
 async function vetDbgDownload() {
   try {
-    const r = await fetch(`${API}/api/debug/logs?limit=1000`, {headers:authHdrs()});
+    const r = await fetch(`${API}/api/debug/lines?limit=1000`, {headers:authHdrs()});
     if (!r.ok) return;
     const d = await r.json();
-    const lines = (d.logs || []).map(l => `[${l.time}] ${l.level} ${l.name}: ${l.message}`).join('\n');
+    const lines = (d.lines || []).map(l => `[${l.ts}] ${l.level} ${l.name}: ${l.msg}`).join('\n');
     const blob = new Blob([lines], {type:'text/plain'});
     const url  = URL.createObjectURL(blob);
     const a = document.createElement('a');
