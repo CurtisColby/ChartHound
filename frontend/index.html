@@ -5949,7 +5949,7 @@ function bhInjectScrollNav() {
   if (!panel) return;
   var nav = document.createElement('div');
   nav.id = 'bh-scroll-nav';
-  nav.style.cssText = 'position:fixed;right:1.5rem;bottom:1.5rem;display:flex;flex-direction:column;gap:.35rem;z-index:50';
+  nav.style.cssText = 'position:fixed;right:1.5rem;bottom:5rem;z-index:500;display:flex;flex-direction:column;gap:.4rem;opacity:0;transition:opacity .3s;pointer-events:none;';
   var btnStyle = 'width:36px;height:36px;border-radius:50%;border:1px solid var(--orange);background:var(--surface);color:var(--orange);font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center';
   nav.innerHTML = '<button style="' + btnStyle + '" title="Scroll to top" onclick="(document.querySelector(\'.content-area\')||document.documentElement).scrollTo({top:0,behavior:\'smooth\'})">↑</button><button style="' + btnStyle + '" title="Scroll to bottom" onclick="(document.querySelector(\'.content-area\')||document.documentElement).scrollTo({top:99999,behavior:\'smooth\'})">↓</button>';
   panel.appendChild(nav);
