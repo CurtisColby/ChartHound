@@ -5,10 +5,12 @@ ChartHound — The Groomer Router
 Real Chart Data Playlist Builder
 
 Lookup waterfall per track:
-  1. charthound_static.db → chart_reference   (real Billboard data, confidence: high)
-  2. charthound_static.db → billboard_pop      (historical pop 1890-2015, confidence: high)
-  3. charthound.db        → chart_data cache   (previously computed, skip re-scan)
-  4. Last.fm listener count                    (pseudo peak estimate, confidence: low)
+  1. charthound.db        → chart_data cache   (previously computed, skip re-scan)
+  2. tracks.chart_status  → skip cache          (miss age-gate, skip instantly)
+  3. charthound_static.db → chart_reference     (real Billboard data, confidence: high)
+     charthound_static.db → billboard_pop       (historical pop 1890-2015, confidence: high)
+  4. Physical file COMMENT tag → read-back      (re-parse previously written ChartHound tags)
+  5. Last.fm listener count                     (genre-gated estimate, confidence: low)
 
 Scan modes:
   A) Media Server Mode — Plex / Emby / Jellyfin library pull, playlist push back
@@ -92,6 +94,148 @@ _CCM_KEYWORDS = {
     "contemporary christian","spiritual","jesus music",
 }
 _CCM_CHARTS = {"ccm","gospel","ccm-ac","ccm-rock","worship","sgospel","ugospel","tgospel"}
+
+# ── Reverse lookup: display name → chart key (for comment tag parsing) ────
+_CHART_KEY_FROM_DISPLAY = {v.lower(): k for k, v in CHART_DISPLAY.items()}
+# Add common alternates the parser might encounter
+_CHART_KEY_FROM_DISPLAY.update({
+    "uk singles": "uk",  "uk official": "uk",
+    "r&b/hip-hop": "rnb", "r&b": "rnb", "hip-hop": "rnb",
+    "mainstream rock": "rock", "adult contemp": "ac",
+    "adult pop": "adultpop", "adult contemporary": "ac",
+    "southern gospel": "sgospel", "urban gospel": "ugospel",
+    "traditional gospel": "tgospel",
+})
+
+# ── Comment tag regex — matches both exact and estimated formats ──────────
+# "Hot 100: #4 (22 wks)" or "CCM: ~#12 (1 wks)" or "Country: #1 (30 wks)"
+_COMMENT_ENTRY_RE = re.compile(
+    r"([^:]+):\s*(~?)#(\d+)\s*\((\d+)\s*wks?\)",
+    re.IGNORECASE,
+)
+
+
+def _parse_comment_tag(comment: str) -> list:
+    """
+    Parse a ChartHound comment string back into chart data dicts.
+    Input:  "Hot 100: #4 (22 wks) | Adult Pop: #1 (10 wks)"
+    Output: [
+        {"chart_name":"hot100", "peak_position":4, "weeks_on_chart":22, "confidence":"high"},
+        {"chart_name":"adultpop", "peak_position":1, "weeks_on_chart":10, "confidence":"high"},
+    ]
+    Returns empty list if comment is not ChartHound format.
+    """
+    if not comment or "#" not in comment:
+        return []
+    results = []
+    for m in _COMMENT_ENTRY_RE.finditer(comment):
+        display_name = m.group(1).strip()
+        is_estimate  = bool(m.group(2))   # '~' prefix = low confidence
+        peak         = int(m.group(3))
+        weeks        = int(m.group(4))
+        chart_key    = _CHART_KEY_FROM_DISPLAY.get(display_name.lower())
+        if not chart_key:
+            continue
+        results.append({
+            "chart_name":     chart_key,
+            "peak_position":  peak,
+            "weeks_on_chart": weeks,
+            "confidence":     "low" if is_estimate else "high",
+            "data_source":    "comment_readback",
+            "chart_year":     None,
+        })
+    return results
+
+
+def _read_comment_from_file(file_path: str) -> Optional[str]:
+    """
+    Read the COMMENT tag from a physical audio file via Mutagen.
+    Handles MP3 (ID3 COMM frame), FLAC (Vorbis COMMENT), M4A (©cmt atom).
+    Returns the raw comment string or None.
+    """
+    if not file_path or not os.path.exists(file_path):
+        return None
+    try:
+        from mutagen import File as MutagenFile
+        mf = MutagenFile(file_path, easy=False)
+        if not mf or not mf.tags:
+            return None
+
+        comment = None
+        ext = os.path.splitext(file_path)[1].lower()
+
+        if ext == ".mp3":
+            # ID3: look for COMM frame with desc='ChartHound' first, then any COMM
+            for key, val in mf.tags.items():
+                if key.startswith("COMM") and "ChartHound" in key:
+                    comment = val.text[0] if hasattr(val, 'text') and val.text else str(val)
+                    break
+            if not comment:
+                for key, val in mf.tags.items():
+                    if key.startswith("COMM"):
+                        text = val.text[0] if hasattr(val, 'text') and val.text else str(val)
+                        if text and "#" in text:
+                            comment = text
+                            break
+
+        elif ext == ".flac":
+            raw = mf.tags.get("COMMENT") or mf.tags.get("comment")
+            if raw:
+                comment = raw[0] if isinstance(raw, list) else str(raw)
+
+        elif ext in (".m4a", ".mp4", ".aac"):
+            raw = mf.tags.get("©cmt")
+            if raw:
+                comment = raw[0] if isinstance(raw, list) else str(raw)
+
+        else:
+            # Generic fallback
+            raw = mf.tags.get("COMMENT") or mf.tags.get("comment")
+            if raw:
+                comment = raw[0] if isinstance(raw, list) else str(raw)
+            if not comment:
+                for key, val in mf.tags.items():
+                    if key.startswith("COMM"):
+                        comment = val.text[0] if hasattr(val, 'text') and val.text else str(val)
+                        break
+
+        return str(comment) if comment and "#" in str(comment) else None
+    except Exception:
+        return None
+
+
+# ── Genre-to-chart validation ─────────────────────────────────────────────
+# Maps chart filter keys to genre keywords that would match files tagged
+# with those genres. Used to reject ABBA from CCM scans, etc.
+_CHART_GENRE_KEYWORDS = {
+    "ccm":      _CCM_KEYWORDS,
+    "gospel":   {"gospel", "southern gospel", "urban gospel", "traditional gospel", "religious", "spiritual"},
+    "sgospel":  {"southern gospel", "gospel", "religious"},
+    "ugospel":  {"urban gospel", "gospel", "religious"},
+    "tgospel":  {"traditional gospel", "gospel", "religious"},
+    "ccm-ac":   _CCM_KEYWORDS | {"adult contemporary"},
+    "ccm-rock": _CCM_KEYWORDS | {"rock"},
+    "worship":  {"worship", "praise", "christian", "ccm", "gospel"},
+    "country":  {"country", "americana", "bluegrass", "honky tonk", "outlaw country"},
+    "rnb":      {"r&b", "rnb", "soul", "hip hop", "hip-hop", "rap", "urban", "funk"},
+    "dance":    {"dance", "electronic", "edm", "house", "techno", "trance", "club", "disco"},
+    "rock":     {"rock", "alternative", "punk", "metal", "grunge", "hard rock", "indie rock"},
+}
+
+
+def _genre_matches_chart(genre_tags: list, chart_name: str) -> bool:
+    """
+    Returns True if the file's genre tags are compatible with the chart filter.
+    Charts not in _CHART_GENRE_KEYWORDS (hot100, adultpop, ac, uk) accept
+    any genre — they are broad/general charts.
+    """
+    keywords = _CHART_GENRE_KEYWORDS.get(chart_name)
+    if not keywords:
+        return True  # hot100, adultpop, ac, uk — no genre restriction
+    genre_text = " ".join(g.lower() for g in genre_tags if g)
+    if not genre_text:
+        return True  # no genre info on file — benefit of the doubt
+    return any(kw in genre_text for kw in keywords)
 
 
 def _detect_genre_bucket(genre_tags: list, chart_names: list) -> str:
@@ -2061,6 +2205,32 @@ async def _run_scan(req: ScanRequest):
             # Misses older than 6 months are re-checked. Configurable.
             _MISS_AGE_SECONDS = 6 * 30 * 24 * 3600   # ~6 months
             skipped_miss = 0   # counter for skip-cached misses
+            comment_readback_hits = 0  # counter for comment read-back matches
+
+            # ── PRE-FETCH PATH PREFIXES (once, not per-track) ────────────
+            _scan_server_prefix = ""
+            _scan_docker_prefix = "/music"
+            try:
+                async with db.execute(
+                    "SELECT key, value FROM app_settings "
+                    "WHERE key IN ('path_server_prefix','path_docker_prefix')"
+                ) as cur:
+                    prows = await cur.fetchall()
+                for r in prows:
+                    if r[0] == "path_server_prefix":   _scan_server_prefix = r[1] or ""
+                    elif r[0] == "path_docker_prefix":  _scan_docker_prefix = r[1] or "/music"
+            except Exception:
+                pass
+
+            def _to_docker_path(fp: str) -> str:
+                """Translate server/desktop path → container path for file reads."""
+                if not fp:
+                    return ""
+                if _scan_server_prefix and fp.startswith(_scan_server_prefix):
+                    return _scan_docker_prefix + fp[len(_scan_server_prefix):]
+                if fp.startswith(_scan_docker_prefix) or fp.startswith("/music"):
+                    return fp
+                return ""  # can't translate
 
             for idx, track in enumerate(tracks):
                 if _scan_job["stop_requested"]:
@@ -2149,58 +2319,120 @@ async def _run_scan(req: ScanRequest):
                             pass
 
                 else:
-                    # Step 2: Last.fm fallback — only fires when:
-                    #   a) use_estimates=True (user opted in), OR
-                    #   b) All selected charts are estimate-only (no static data at all)
-                    # This prevents 33k Last.fm calls on a Hot 100 scan
-                    all_estimate_only = len(estimate_only_charts) == len(req.charts)
-                    should_estimate = (req.use_estimates or all_estimate_only) and lfm_key
+                    # ── Step 2: COMMENT TAG READ-BACK ─────────────────────────
+                    # Before hitting Last.fm, check if the file already has a
+                    # ChartHound comment written from a previous scan. Parse it
+                    # back into chart data. Zero API calls, instant.
+                    comment_result = None
+                    file_path = track.get("file_path", "")
+                    docker_fp = _to_docker_path(file_path)
+                    if docker_fp:
+                        raw_comment = await loop.run_in_executor(
+                            None, _read_comment_from_file, docker_fp
+                        )
+                        if raw_comment:
+                            parsed_entries = _parse_comment_tag(raw_comment)
+                            # Filter to only entries matching requested charts
+                            matching = [e for e in parsed_entries
+                                        if e["chart_name"] in req.charts]
+                            if matching:
+                                # Use the best (lowest peak) entry as primary
+                                best = min(matching, key=lambda e: e["peak_position"])
+                                best["all_charts"] = matching
+                                best["star_rating"] = peak_to_stars(best["peak_position"])
+                                comment_result = best
+                                comment_readback_hits += 1
+                                log.debug(f"Comment read-back hit: {artist} — {title} → {raw_comment}")
 
-                    matched_via_lfm = False
-                    if should_estimate:
-                        await asyncio.sleep(0.2)  # rate limit: max 5 req/sec to Last.fm
-                        listeners = await _lastfm_listeners(artist, title, lfm_key)
-                        genre_tags = [track.get("genre_1",""), track.get("genre_2","")]
-                        bucket_charts = estimate_only_charts or req.charts
-                        bucket = _detect_genre_bucket(genre_tags, bucket_charts)
+                    if comment_result:
+                        await _store_result(db, track, comment_result, req)
+                        await _enrich_genre_from_file(db, track, loop)
+                        _scan_job["matched"] += 1
+                        if track_id:
+                            try:
+                                await db.execute(
+                                    "UPDATE tracks SET chart_status='hit', "
+                                    "chart_last_checked=datetime('now') WHERE track_id=?",
+                                    (track_id,)
+                                )
+                            except Exception:
+                                pass
+                    else:
+                        # ── Step 3: Last.fm fallback (genre-gated) ────────────
+                        # Only fires when:
+                        #   a) use_estimates=True (user opted in), OR
+                        #   b) All selected charts are estimate-only (no static data)
+                        # Genre gate: reject tracks whose genre tags don't match
+                        # the requested chart filter (prevents ABBA in CCM, etc.)
+                        all_estimate_only = len(estimate_only_charts) == len(req.charts)
+                        should_estimate = (req.use_estimates or all_estimate_only) and lfm_key
 
-                        if _meets_min_threshold(listeners, bucket):
-                            est_peak = _listeners_to_est_peak(listeners, bucket)
-                            stars    = _listeners_to_stars(listeners, bucket)
-                            chart_name = (estimate_only_charts[0]
-                                         if estimate_only_charts
-                                         else (req.charts[0] if req.charts else "hot100"))
-                            result = {
-                                "peak_position":  est_peak,
-                                "weeks_on_chart": 1,
-                                "chart_name":     chart_name,
-                                "chart_year":     None,
-                                "confidence":     "low",
-                                "data_source":    "lastfm_estimate",
-                                "all_charts":     [],
-                                "star_rating":    stars,
-                                "listener_count": listeners,
-                            }
-                            await _store_result(db, track, result, req)
-                            await _enrich_genre_from_file(db, track, loop)
-                            _scan_job["matched"] += 1
-                            matched_via_lfm = True
+                        matched_via_lfm = False
+                        if should_estimate:
+                            await asyncio.sleep(0.2)  # rate limit: max 5 req/sec to Last.fm
+                            listeners = await _lastfm_listeners(artist, title, lfm_key)
+                            genre_tags = [track.get("genre_1",""), track.get("genre_2","")]
+                            bucket_charts = estimate_only_charts or req.charts
+                            bucket = _detect_genre_bucket(genre_tags, bucket_charts)
+
+                            # ── GENRE GATE ────────────────────────────────────
+                            # Read genre from file if not already on track dict
+                            if not any(genre_tags):
+                                if docker_fp:
+                                    def _quick_genre(fp):
+                                        try:
+                                            from mutagen import File as MutagenFile
+                                            mf = MutagenFile(fp, easy=True)
+                                            if mf:
+                                                raw = mf.get("genre", [])
+                                                return [str(g) for g in raw[:3]]
+                                        except Exception:
+                                            pass
+                                        return []
+                                    genre_tags = await loop.run_in_executor(
+                                        None, _quick_genre, docker_fp
+                                    )
+
+                            # Check if file genre matches the chart being estimated
+                            chart_for_estimate = (estimate_only_charts[0]
+                                                 if estimate_only_charts
+                                                 else (req.charts[0] if req.charts else "hot100"))
+                            genre_ok = _genre_matches_chart(genre_tags, chart_for_estimate)
+
+                            if genre_ok and _meets_min_threshold(listeners, bucket):
+                                est_peak = _listeners_to_est_peak(listeners, bucket)
+                                stars    = _listeners_to_stars(listeners, bucket)
+                                result = {
+                                    "peak_position":  est_peak,
+                                    "weeks_on_chart": 1,
+                                    "chart_name":     chart_for_estimate,
+                                    "chart_year":     None,
+                                    "confidence":     "low",
+                                    "data_source":    "lastfm_estimate",
+                                    "all_charts":     [],
+                                    "star_rating":    stars,
+                                    "listener_count": listeners,
+                                }
+                                await _store_result(db, track, result, req)
+                                await _enrich_genre_from_file(db, track, loop)
+                                _scan_job["matched"] += 1
+                                matched_via_lfm = True
+                            else:
+                                _scan_job["failed"] += 1
                         else:
                             _scan_job["failed"] += 1
-                    else:
-                        _scan_job["failed"] += 1
 
-                    # Mark skip cache: hit if Last.fm matched, miss if not
-                    if track_id:
-                        try:
-                            status = "hit" if matched_via_lfm else "miss"
-                            await db.execute(
-                                "UPDATE tracks SET chart_status=?, "
-                                "chart_last_checked=datetime('now') WHERE track_id=?",
-                                (status, track_id)
-                            )
-                        except Exception:
-                            pass
+                        # Mark skip cache: hit if Last.fm matched, miss if not
+                        if track_id:
+                            try:
+                                status = "hit" if matched_via_lfm else "miss"
+                                await db.execute(
+                                    "UPDATE tracks SET chart_status=?, "
+                                    "chart_last_checked=datetime('now') WHERE track_id=?",
+                                    (status, track_id)
+                                )
+                            except Exception:
+                                pass
 
                 _scan_job["processed"] += 1
                 await asyncio.sleep(0)  # yield to event loop
@@ -2210,11 +2442,13 @@ async def _run_scan(req: ScanRequest):
             "status":  "done",
             "message": (f"Scan complete — {_scan_job['matched']:,} matched, "
                         f"{_scan_job['cached']:,} cached "
-                        f"({skipped_miss:,} skip-cached misses), "
+                        f"({skipped_miss:,} skip-cached misses, "
+                        f"{comment_readback_hits:,} comment read-backs), "
                         f"{_scan_job['failed']:,} unmatched "
                         f"in {elapsed:.0f}s"),
         })
-        log.info(f"Skip cache stats: {skipped_miss:,} misses skipped instantly")
+        log.info(f"Skip cache stats: {skipped_miss:,} misses skipped, "
+                 f"{comment_readback_hits:,} comment read-backs")
 
     except Exception as e:
         log.exception("Groomer scan error")
