@@ -1810,6 +1810,83 @@ async def vet_static_sources_delete(
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+#  WEEKLY AUTO-REFRESH SCHEDULER
+#
+#  On startup, checks each "snapshot-style" source (current-week scrapers).
+#  If the source has never been imported, or was last imported more than 7 days
+#  ago, it re-runs the import automatically in the background.
+#
+#  Sources included in auto-refresh (current-week snapshots that go stale):
+#    - kworb_us      (iTunes US current week)
+#    - ccm           (Billboard Christian Songs current week)
+#    - uk_official   (UK Official Charts current week)
+#
+#  Historical bulk sources (utdata, chart2000, tsort) are NOT auto-refreshed —
+#  they are large downloads and only need to be re-run manually when new data
+#  has been published (roughly monthly/quarterly).
+# ══════════════════════════════════════════════════════════════════════════════
+
+_AUTO_REFRESH_SOURCES = ["kworb_us", "ccm", "uk_official"]
+_REFRESH_INTERVAL_DAYS = 7
+
+
+async def _scheduler_loop():
+    """
+    Background loop: checks auto-refresh sources every 6 hours.
+    If a source is missing or older than _REFRESH_INTERVAL_DAYS, re-imports it.
+    Skips if another import is already running.
+    """
+    global _vet_import_job
+    await asyncio.sleep(30)  # brief startup delay so the app is fully ready
+
+    while True:
+        try:
+            for source_id in _AUTO_REFRESH_SOURCES:
+                src = next((s for s in _STATIC_SOURCES if s["id"] == source_id), None)
+                if not src:
+                    continue
+
+                count = await _count_extras(src["data_tag"])
+                last_at = await _latest_import_at(src["data_tag"]) if count > 0 else None
+                needs_refresh = (count == 0) or _is_stale(last_at, days=_REFRESH_INTERVAL_DAYS)
+
+                if not needs_refresh:
+                    continue
+
+                # Don't pile on top of a running manual import
+                if _vet_import_job.get("status") == "running":
+                    log.info(f"Scheduler: skipping auto-refresh of '{source_id}' — import already running")
+                    continue
+
+                log.info(f"Scheduler: auto-refreshing '{source_id}' (last import: {last_at or 'never'})")
+                _vet_import_job = {
+                    "status":      "running",
+                    "source_id":   source_id,
+                    "inserted":    0,
+                    "skipped":     0,
+                    "message":     f"Auto-refresh: {src['label']}",
+                    "started_at":  datetime.utcnow().isoformat(),
+                    "finished_at": None,
+                }
+                await _run_import(source_id)
+
+                # Small gap between sources so we don't hammer scrapers back-to-back
+                await asyncio.sleep(10)
+
+        except Exception as e:
+            log.warning(f"Scheduler loop error: {e}")
+
+        # Check again in 6 hours
+        await asyncio.sleep(6 * 60 * 60)
+
+
+async def groomer_startup():
+    """Called from main.py lifespan to start the weekly refresh scheduler."""
+    asyncio.create_task(_scheduler_loop())
+    log.info("Groomer scheduler started (auto-refresh every 7 days for current-week sources).")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 #  END STATIC DB SOURCES
 # ══════════════════════════════════════════════════════════════════════════════
 

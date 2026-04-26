@@ -58,6 +58,11 @@ async def lifespan(app: FastAPI):
     # Start Tracker background loop if it was enabled
     await tracker.tracker_startup()
 
+    # Start Groomer weekly auto-refresh scheduler
+    await groomer.groomer_startup()
+
+    # Start Groomer weekly auto-refresh scheduler
+
     count = await get_user_count()
     status = lockdown_status(count)
     if status["lockdown_active"]:

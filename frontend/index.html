@@ -5104,7 +5104,7 @@ function snfLog(msg, type='') {
 
 function snfGetSelectedCharts() {
   const map = {
-    'snf-hot100':'hot100','snf-adultpop':'adultpop','snf-ac':'ac','snf-uk':'uk',
+    'snf-hot100':'hot100','snf-adultpop':'adultpop','snf-ac':'ac','snf-uk':'uk_official',
     'snf-country':'country','snf-rnb':'rnb','snf-rock':'rock','snf-dance':'dance',
   };
   return Object.entries(map).filter(([id])=>document.getElementById(id)?.checked).map(([,v])=>v);

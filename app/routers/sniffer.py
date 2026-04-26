@@ -153,6 +153,18 @@ async def gap_analysis(req: GapAnalysisRequest, _=Depends(require_auth)):
     try:
         conn = sqlite3.connect(_STATIC_DB, check_same_thread=False)
         conn.row_factory = sqlite3.Row
+
+        # Attach dynamic DB so we can UNION chart_reference_extras (user-imported data)
+        has_extras = False
+        try:
+            conn.execute(f"ATTACH DATABASE '{_DYNAMIC_DB}' AS dyn")
+            probe = conn.execute(
+                "SELECT name FROM dyn.sqlite_master WHERE type='table' AND name='chart_reference_extras'"
+            ).fetchone()
+            has_extras = bool(probe)
+        except Exception:
+            has_extras = False
+
         conds, params = [], []
         if req.charts:
             conds.append(f"chart_name IN ({','.join('?' * len(req.charts))})")
@@ -164,18 +176,42 @@ async def gap_analysis(req: GapAnalysisRequest, _=Depends(require_auth)):
         if req.max_year is not None:
             conds.append("chart_year <= ?"); params.append(req.max_year)
         where = "WHERE " + " AND ".join(conds)
-        total = conn.execute(f"SELECT COUNT(*) FROM chart_reference {where}", params).fetchone()[0]
-        rows = conn.execute(f"""
-            SELECT ref_id, chart_name, artist, title, artist_norm, title_norm,
-                   peak_position, weeks_on_chart, chart_year, data_source
-            FROM chart_reference {where}
-            ORDER BY peak_position ASC, chart_year DESC
-            LIMIT ? OFFSET ?
-        """, params + [req.limit, req.offset]).fetchall()
+
+        if has_extras:
+            # UNION static chart_reference with dynamic chart_reference_extras,
+            # deduplicate by (artist_norm, title_norm, chart_name) keeping best peak.
+            union_params = params + params
+            combined = conn.execute(f"""
+                SELECT chart_name, artist, title, artist_norm, title_norm,
+                       MIN(peak_position) as peak_position,
+                       MAX(weeks_on_chart) as weeks_on_chart,
+                       chart_year, data_source
+                FROM (
+                    SELECT chart_name, artist, title, artist_norm, title_norm,
+                           peak_position, weeks_on_chart, chart_year, data_source
+                    FROM chart_reference {where}
+                    UNION ALL
+                    SELECT chart_name, artist, title, artist_norm, title_norm,
+                           peak_position, weeks_on_chart, chart_year, data_source
+                    FROM dyn.chart_reference_extras {where}
+                )
+                GROUP BY artist_norm, title_norm, chart_name
+                ORDER BY peak_position ASC, chart_year DESC
+            """, union_params).fetchall()
+        else:
+            combined = conn.execute(f"""
+                SELECT chart_name, artist, title, artist_norm, title_norm,
+                       peak_position, weeks_on_chart, chart_year, data_source
+                FROM chart_reference {where}
+                ORDER BY peak_position ASC, chart_year DESC
+            """, params).fetchall()
+
+        total = len(combined)
+        rows = combined[req.offset: req.offset + req.limit]
         entries = [dict(r) for r in rows]
         conn.close()
     except Exception as e:
-        raise HTTPException(500, f"Static DB error: {e}")
+        raise HTTPException(500, f"DB error: {e}")
 
     if not entries:
         return {"results": [], "total": 0, "offset": req.offset, "limit": req.limit}
@@ -185,7 +221,7 @@ async def gap_analysis(req: GapAnalysisRequest, _=Depends(require_auth)):
     for e in entries:
         owned, tid = _check_library(e["artist"], e["title"], lib)
         results.append({
-            "ref_id": e["ref_id"], "artist": e["artist"], "title": e["title"],
+            "artist": e["artist"], "title": e["title"],
             "chart_name": e["chart_name"],
             "chart_display": CHART_DISPLAY.get(e["chart_name"], e["chart_name"]),
             "peak_position": e["peak_position"], "weeks_on_chart": e["weeks_on_chart"],
