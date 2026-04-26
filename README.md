@@ -105,7 +105,6 @@ ChartHound connects to your existing media stack. You don't need all of these �
 
 **Optional but recommended:**
 - Discogs personal access token (excellent genre and style metadata, especially for classic rock, jazz, soul, and any artist where MusicBrainz tags are sparse)
-- YouTube API key (for The Scout — music video curation)
 
 ---
 
@@ -193,32 +192,6 @@ If you ever want a guided refresher on setup, **The Veterinarian** has a **Setup
 
 Most of ChartHound's features rely on free third-party APIs. None of them require credit cards. Here's how to get the ones that matter most.
 
-### YouTube Data API v3 (for The Scout)
-
-The Scout uses the YouTube Data API v3 to search for music videos and build playlists. The free tier gives you 10,000 quota units per day — enough for around 90 fresh searches, with cached searches costing nothing.
-
-**Step 1 — Create a project**
-
-Go to the [Google Cloud Console](https://console.cloud.google.com/). If you don't have a project yet, click the project drop-down at the top of the page and select **New Project**. Name it something like `ChartHound` and click **Create**.
-
-**Step 2 — Enable the API**
-
-In the left navigation menu, go to **APIs & Services → Library**. Search for `YouTube Data API v3` and click on the result. Click **Enable**. (If it's already enabled, the button will read **Manage** — that's fine.)
-
-**Step 3 — Generate the key**
-
-Go to **APIs & Services → Credentials**. Click **+ Create Credentials → API Key**. A pop-up will show your new key. Copy it now — you'll paste it into ChartHound's Kennel.
-
-**Step 4 — Restrict the key (recommended)**
-
-Click the name of the key you just created. Under **Application restrictions**, you can leave it as **None** if you trust your server, or restrict it to specific IPs if you want extra safety. Under **API restrictions**, choose **Restrict key** and select **YouTube Data API v3** from the list. Click **Save**.
-
-**Step 5 — Paste it into The Kennel**
-
-In ChartHound, open **The Kennel**, find the YouTube card, paste your key into the **API Key** field, click **Save**, then click **Test**. If the test passes, you're done.
-
-> If the test fails with "key rejected," go back to the Google Cloud Console and check that the key isn't restricted to the wrong IP or HTTP referrer.
-
 ### Last.fm API Key (strongly recommended)
 
 Last.fm is **crucial for popularity lookups on tracks that aren't in the static chart database.** ChartHound ships with over 108,000 real Billboard chart entries pre-loaded, but for any track outside that set — independent releases, deep cuts, international hits, anything not on a major US chart — Last.fm provides the popularity signal that lets the Sniffer, Groomer, and Retriever do their best work. **The waterfall metadata system works without it, but you'll see significantly weaker chart estimation for non-static-DB tracks.**
@@ -288,7 +261,7 @@ ChartHound has no Spotify integration — and that's deliberate. Spotify changed
 
 This is where you connect ChartHound to your media stack. Each service gets a card with fields for the server URL and API key/token. When you click Save, the credentials are encrypted with your SECRET_KEY and stored in the database. When you click Test, ChartHound decrypts the key server-side, makes a test API call, and reports back whether the connection succeeded.
 
-**Supported services:** Plex, Emby, Jellyfin, Last.fm, Prowlarr, Radarr, Sonarr, qBittorrent, Deluge, Transmission, YouTube, Discogs
+**Supported services:** Plex, Emby, Jellyfin, Last.fm, Prowlarr, Radarr, Sonarr, qBittorrent, Deluge, Transmission, Discogs
 
 **Path Translator:** At the bottom of The Kennel, the Path Translator helps ChartHound convert between your media server's file paths and Docker's `/music` mount point. Enter your server's music library prefix (the path you see in Plex/Emby/JF file info) and ChartHound handles the rest.
 
@@ -353,12 +326,6 @@ The Veterinarian is where you check on ChartHound's internal database — track 
 
 The Veterinarian also hosts the **Clear Full Database** button — and it's in the danger zone for a reason. ChartHound's database accumulates valuable scan knowledge over time (see [The Little Things](#the-little-things) for why). Clearing it sends you back to first-scan speeds and discards weeks of learned data. Only use it if the database is corrupted or you want a genuinely fresh start. For routine maintenance, use VACUUM and integrity check instead — they tidy up without wiping anything.
 
-### Tab in Progress
-
-- **The Scout** (Milestone 9) — YouTube music video curator. Search YouTube by chart, genre, or artist; filter by HD, channel name (VEVO/Official/Topic), view count, and minimum duration; build playlists and hand them off to your YouTube account via deeplink (no OAuth needed, you save the playlist on YouTube's side with one click). Backend complete; frontend tab in active development.
-
-> Earlier plans for a local music video manager (The Lookout) have been cut from the project — if there's community demand, it may return.
-
 ---
 
 ## The Little Things
@@ -397,7 +364,7 @@ When the Groomer scans your library, it groups tracks by album folder and makes 
 
 ### Aggressive caching everywhere
 
-Static chart data ships in a read-only SQLite database with the project. Lookups against your library check local SQLite first, external APIs second. The Scout's YouTube search results are cached for 30 days — a repeated search costs zero API quota. The whole architecture is designed around the assumption that your time and your API quotas matter.
+Static chart data ships in a read-only SQLite database with the project. Lookups against your library check local SQLite first, external APIs second. The whole architecture is designed around the assumption that your time and your API quotas matter.
 
 ### Auto-lockdown registration
 
@@ -547,7 +514,7 @@ If money isn't on the table, there's plenty else that helps:
 
 This software is licensed for **personal, non-commercial use only**. You may view the source code and run the software for personal use. Modification, redistribution, forking (beyond local personal use), and commercial use are strictly prohibited without prior written consent. See [LICENSE.md](LICENSE.md) for full terms.
 
-**ChartHound** and all tab names (The Kennel, The Retriever, The Sniffer, The Groomer, The Bloodhound, The Tracker, The Veterinarian, The Scout) are protected identifiers of this project.
+**ChartHound** and all tab names (The Kennel, The Retriever, The Sniffer, The Groomer, The Bloodhound, The Tracker, The Veterinarian) are protected identifiers of this project.
 
 ---
 
