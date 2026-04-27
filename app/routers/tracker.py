@@ -21,7 +21,7 @@ Endpoints:
   GET  /api/tracker/items          — Paginated item list
   GET  /api/tracker/log            — Activity log
   POST /api/tracker/clear-log      — Clear activity log
-  POST /api/tracker/settings       — Update settings (interval, cooldown, etc.)
+  POST /api/tracker/settings       — Update settings (cooldown, logging)
 """
 
 # © 2026 Colby R. Curtis | ChartHound: The New World — All Rights Reserved.
@@ -53,20 +53,18 @@ _DYNAMIC_DB = getattr(settings, "database_url", "/data/charthound.db")
 # Background loop handle — so we can cancel on toggle-off
 _hunt_task: Optional[asyncio.Task] = None
 _hunt_running = False
+_next_tick_utc: Optional[str] = None   # ISO timestamp of next scheduled search
 
-# ── Defaults & Mode Presets ──
+# ── Defaults ──
 _LOG_CAP = 5000
 
-# Two modes. Base interval in seconds; jitter is ±50% of base.
-# Gentle ≈ 30–90 min between searches, Moderate ≈ 10–30 min between searches.
-_MODES = {
-    "gentle":   {"base_interval": 3600, "max_daily": 20},
-    "moderate": {"base_interval": 1200, "max_daily": 60},
-}
-_DEFAULT_MODE     = "gentle"
+# Fixed interval: 40 minutes base, ±25% jitter → 30–50 min range.
+# No more gentle/moderate presets.
+_BASE_INTERVAL    = 2400   # 40 minutes in seconds
 _DEFAULT_COOLDOWN = 7
-_JITTER_PCT       = 0.5    # ±50% randomization on every sleep
+_JITTER_PCT       = 0.25   # ±25% randomization on every sleep
 _FLOOR_INTERVAL   = 300    # absolute minimum sleep (5 min) — safety net
+_MAX_DAILY_SAFETY = 999    # effectively unlimited — safety net only
 
 
 async def _get_cooldown_days(source: str) -> int:
@@ -249,13 +247,12 @@ def _now_iso() -> str:
 
 
 async def _get_mode_config() -> dict:
-    """Read current mode from settings and return its config dict."""
-    mode = await _get_setting("tracker_mode", _DEFAULT_MODE)
-    if mode not in _MODES:
-        mode = _DEFAULT_MODE
-    cfg = dict(_MODES[mode])
-    cfg["mode"] = mode
-    return cfg
+    """Return fixed interval config. No more mode presets."""
+    return {
+        "mode": "continuous",
+        "base_interval": _BASE_INTERVAL,
+        "max_daily": _MAX_DAILY_SAFETY,
+    }
 
 
 def _jittered_sleep(base_seconds: int) -> int:
@@ -277,11 +274,9 @@ class SkipSeasonRequest(BaseModel):
     season_number: int
 
 class SettingsRequest(BaseModel):
-    mode:                   Optional[str]  = None   # 'gentle' or 'moderate'
     cooldown_days:          Optional[int]  = None   # back-compat — writes BOTH per-source keys
     cooldown_days_radarr:   Optional[int]  = None
     cooldown_days_sonarr:   Optional[int]  = None
-    max_daily:              Optional[int]  = None
     logging_enabled:        Optional[bool] = None
 
 
@@ -509,12 +504,13 @@ async def sync_missing(user: dict = Depends(require_auth)):
 
 @router.post("/toggle")
 async def toggle_tracker(user: dict = Depends(require_auth)):
-    global _hunt_task, _hunt_running
+    global _hunt_task, _hunt_running, _next_tick_utc
     current = await _get_setting("tracker_enabled", "false")
     if current == "true":
         # Turn off
         await _set_setting("tracker_enabled", "false")
         _hunt_running = False
+        _next_tick_utc = None
         if _hunt_task and not _hunt_task.done():
             _hunt_task.cancel()
             _hunt_task = None
@@ -544,16 +540,23 @@ def _start_hunt_loop():
 
 async def _hunt_loop():
     """
-    Background loop. Alternates Radarr ↔ Sonarr each tick. Uses jittered sleep
-    based on the current mode (gentle / moderate). Skips unreleased items.
+    Background loop. Alternates Radarr ↔ Sonarr each tick with fair toggle.
+    Fixed 40-min ±25% jitter interval. No daily cap (999 safety net).
+
+    Toggle logic:
+      - If preferred source has an item → search it, flip toggle.
+      - If preferred source is dry → search fallback, do NOT flip toggle.
+        Next tick still tries the preferred source first.
+      - If both sources are dry → sleep and retry.
     """
-    global _hunt_running
-    log.info("Hunt loop started.")
+    global _hunt_running, _next_tick_utc
+    log.info("Hunt loop started (continuous mode, 40min ±25% jitter).")
 
     # Small initial delay so startup settles
+    _next_tick_utc = None
     await asyncio.sleep(5)
 
-    # Alternator: 0 = try radarr first this tick, 1 = try sonarr first
+    # Alternator: 0 = radarr preferred, 1 = sonarr preferred
     alt_toggle = 0
 
     while _hunt_running:
@@ -565,39 +568,39 @@ async def _hunt_loop():
                 break
 
             cfg = await _get_mode_config()
-            # Allow user to override max_daily; otherwise use mode default
-            max_daily_override = await _get_setting("tracker_max_daily", "")
-            max_daily = int(max_daily_override) if max_daily_override.isdigit() else cfg["max_daily"]
 
-            # Check daily cap
+            # Safety-net daily cap (effectively unlimited at 999)
             today_count = await _count_searches_today()
-            if today_count >= max_daily:
-                log.info(f"Tracker: daily cap reached ({today_count}/{max_daily}), sleeping 1h")
+            if today_count >= cfg["max_daily"]:
+                log.info(f"Tracker: safety cap reached ({today_count}), sleeping 1h")
+                _next_tick_utc = (datetime.now(timezone.utc) + timedelta(seconds=3600)).strftime("%Y-%m-%d %H:%M:%S")
                 await asyncio.sleep(3600)
                 continue
 
-            # Alternate: try preferred source first, fall back to the other
+            # Determine preferred and fallback sources
             preferred = "radarr" if alt_toggle == 0 else "sonarr"
             fallback  = "sonarr" if alt_toggle == 0 else "radarr"
-            alt_toggle = 1 - alt_toggle
 
             item = await _pick_next_item(source=preferred)
-            if not item:
+            if item:
+                # Preferred source had something — search it and flip toggle
+                await _execute_search(item)
+                alt_toggle = 1 - alt_toggle
+                log.info(f"Tracker: searched {preferred}, next preference → {fallback}")
+            else:
+                # Preferred source dry — try fallback, do NOT flip toggle
                 item = await _pick_next_item(source=fallback)
-
-            if not item:
-                # Nothing searchable — sleep a jittered interval and try again
-                sleep_for = _jittered_sleep(cfg["base_interval"])
-                log.debug(f"Tracker: queue empty, sleeping {sleep_for}s")
-                await asyncio.sleep(sleep_for)
-                continue
-
-            # Fire the search
-            await _execute_search(item)
+                if item:
+                    await _execute_search(item)
+                    log.info(f"Tracker: {preferred} dry, searched {fallback} instead (toggle stays on {preferred})")
+                else:
+                    # Both dry — nothing to do
+                    log.debug("Tracker: both sources dry, sleeping")
 
             # Jittered sleep before next tick
             sleep_for = _jittered_sleep(cfg["base_interval"])
-            log.info(f"Tracker: next tick in {sleep_for}s (mode={cfg['mode']})")
+            _next_tick_utc = (datetime.now(timezone.utc) + timedelta(seconds=sleep_for)).strftime("%Y-%m-%d %H:%M:%S")
+            log.info(f"Tracker: next tick in {sleep_for}s ({sleep_for // 60}min)")
             await asyncio.sleep(sleep_for)
 
         except asyncio.CancelledError:
@@ -607,6 +610,7 @@ async def _hunt_loop():
             log.error(f"Hunt loop error: {e}")
             await asyncio.sleep(60)
 
+    _next_tick_utc = None
     log.info("Hunt loop stopped.")
 
 
@@ -770,8 +774,7 @@ async def tracker_status(user: dict = Depends(require_auth)):
     cfg = await _get_mode_config()
     cooldown_radarr = await _get_cooldown_days("radarr")
     cooldown_sonarr = await _get_cooldown_days("sonarr")
-    max_daily_override = await _get_setting("tracker_max_daily", "")
-    max_daily = int(max_daily_override) if max_daily_override.isdigit() else cfg["max_daily"]
+    max_daily = cfg["max_daily"]
     logging_on = await _get_setting("tracker_logging", "true") == "true"
     today_count = await _count_searches_today()
 
@@ -817,6 +820,7 @@ async def tracker_status(user: dict = Depends(require_auth)):
     return {
         "enabled": enabled,
         "hunt_loop_active": _hunt_running,
+        "next_tick_utc": _next_tick_utc,
         "mode": cfg["mode"],
         "base_interval": cfg["base_interval"],
         "cooldown_days":         cooldown_radarr,   # back-compat: old UI binds to this
@@ -988,11 +992,6 @@ async def clear_log(user: dict = Depends(require_auth)):
 
 @router.post("/settings")
 async def update_settings(req: SettingsRequest, user: dict = Depends(require_auth)):
-    if req.mode is not None:
-        m = req.mode.strip().lower()
-        if m not in _MODES:
-            raise HTTPException(400, f"Invalid mode '{m}'. Must be 'gentle' or 'moderate'.")
-        await _set_setting("tracker_mode", m)
     # Per-source cooldowns (preferred)
     if req.cooldown_days_radarr is not None:
         v = max(1, min(30, req.cooldown_days_radarr))
@@ -1006,9 +1005,6 @@ async def update_settings(req: SettingsRequest, user: dict = Depends(require_aut
         await _set_setting("tracker_cooldown_radarr", str(v))
         await _set_setting("tracker_cooldown_sonarr", str(v))
         await _set_setting("tracker_cooldown", str(v))  # keep legacy key synced
-    if req.max_daily is not None:
-        v = max(5, min(200, req.max_daily))  # Clamp 5–200
-        await _set_setting("tracker_max_daily", str(v))
     if req.logging_enabled is not None:
         await _set_setting("tracker_logging", "true" if req.logging_enabled else "false")
     return {"ok": True, "message": "Settings updated."}

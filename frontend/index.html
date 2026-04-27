@@ -537,7 +537,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
           <div style="font-family:var(--display);font-size:2rem;letter-spacing:3px;color:var(--gold);margin-bottom:.5rem">YOU'RE READY!</div>
           <div style="font-family:var(--mono);font-size:.62rem;color:var(--muted);line-height:1.9;max-width:380px;margin:0 auto 1.5rem">
             ChartHound is ready to go.<br><br>
-            Head to <strong style="color:var(--purple)">The Kennel</strong> to connect Plex, Emby, Jellyfin, Last.fm, Prowlarr, Radarr, Sonarr, your download client.<br><br>
+            Head to <strong style="color:var(--purple)">The Kennel</strong> to connect Plex, Emby, Jellyfin, Last.fm, Prowlarr, Radarr, Sonarr, your download client and YouTube.<br><br>
             Then run <strong style="color:var(--teal)">The Retriever</strong> to start tagging your music library with chart data.
           </div>
           <button class="btn btn-gold" onclick="closeWizard()" style="max-width:240px;margin:0 auto;display:block">ENTER CHARTHOUND 🐕</button>
@@ -632,6 +632,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
               <div class="vault-row"><div class="vault-row-label"><div class="dot" id="vDotRadarr"></div>Radarr</div><div class="vault-row-status warn" id="vStatusRadarr">NOT VERIFIED</div></div>
               <div class="vault-row"><div class="vault-row-label"><div class="dot" id="vDotSonarr"></div>Sonarr</div><div class="vault-row-status warn" id="vStatusSonarr">NOT VERIFIED</div></div>
               <div class="vault-row"><div class="vault-row-label"><div class="dot" id="vDotQbittorrent"></div>Download Client</div><div class="vault-row-status warn" id="vStatusQbittorrent">NOT VERIFIED</div></div>
+              <div class="vault-row"><div class="vault-row-label"><div class="dot" id="vDotYoutube"></div>YouTube</div><div class="vault-row-status warn" id="vStatusYoutube">NOT VERIFIED</div></div>
               <div class="vault-row"><div class="vault-row-label"><div class="dot" id="vDotDiscogs"></div>Discogs</div><div class="vault-row-status warn" id="vStatusDiscogs">NOT VERIFIED</div></div>
             </div>
           </div>
@@ -1805,7 +1806,8 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
             <button id="trk-toggle-btn" onclick="trkToggle()" style="width:100%;padding:.75rem;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:8px;font-family:var(--display);font-size:1.1rem;letter-spacing:2px;cursor:pointer;transition:all .3s">
               ⏸ TRACKER OFF
             </button>
-            <div id="trk-toggle-hint" style="font-family:var(--mono);font-size:.52rem;color:var(--muted2);text-align:center;margin-top:.35rem">Click to enable automatic hunting</div>
+            <div id="trk-toggle-hint" style="font-family:var(--mono);font-size:.62rem;color:var(--crimson);text-align:center;margin-top:.35rem;letter-spacing:.5px">Click to enable automatic hunting</div>
+            <div id="trk-countdown" style="font-family:var(--display);font-size:1rem;color:var(--crimson);text-align:center;margin-top:.3rem;letter-spacing:1px;display:none">Next search: --:--</div>
           </div>
 
           <!-- CONNECTIONS -->
@@ -1835,21 +1837,6 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
           <!-- SETTINGS -->
           <div>
             <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--crimson);margin-bottom:.5rem;display:flex;align-items:center;gap:.5rem">SETTINGS<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
-
-            <!-- MODE TOGGLE: Gentle / Moderate -->
-            <label style="font-family:var(--mono);font-size:.52rem;color:var(--muted);letter-spacing:1px;display:block;margin-bottom:.35rem">HUNT PACE</label>
-            <div style="display:flex;gap:0;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:2px;margin-bottom:.5rem">
-              <button id="trk-mode-gentle" onclick="trkSetMode('gentle')" style="flex:1;padding:.45rem;background:var(--crimson);color:#000;border:none;border-radius:4px;font-family:var(--mono);font-size:.58rem;letter-spacing:1px;cursor:pointer">🐢 GENTLE</button>
-              <button id="trk-mode-moderate" onclick="trkSetMode('moderate')" style="flex:1;padding:.45rem;background:transparent;color:var(--muted);border:none;border-radius:4px;font-family:var(--mono);font-size:.58rem;letter-spacing:1px;cursor:pointer">🐇 MODERATE</button>
-            </div>
-
-            <!-- INFO BANNER — why only two modes -->
-            <div style="background:rgba(251,113,133,.08);border:1px solid rgba(251,113,133,.3);border-radius:6px;padding:.55rem .7rem;margin-bottom:.7rem">
-              <div style="font-family:var(--mono);font-size:.52rem;color:var(--crimson);letter-spacing:.5px;margin-bottom:.2rem">⚠ WHY ONLY TWO SPEEDS?</div>
-              <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted);line-height:1.55">
-                Indexers (especially private trackers) ban IPs that search on tight, predictable loops. The Tracker adds <strong style="color:var(--crimson)">random jitter</strong> to every sleep and alternates Radarr/Sonarr so it looks human. Gentle (~1/hour) is safest; Moderate (~1/20min) hits harder on big backlogs but is still safe. There is no aggressive mode on purpose — your indexers will thank you.
-              </div>
-            </div>
 
             <label style="font-family:var(--mono);font-size:.52rem;color:var(--muted);letter-spacing:1px;display:block;margin-bottom:.25rem">COOLDOWN (days before re-search)</label>
             <div style="display:flex;gap:.5rem;margin-bottom:.6rem">
@@ -6344,6 +6331,30 @@ var _trkTotal = 0;
 var _trkPollTimer = null;
 var _trkInitDone = false;
 var _trkSortDir = 'newest-first'; // 'never-first' | 'oldest-first' | 'newest-first'
+var _trkNextTickUTC = null;
+var _trkCountdownTimer = null;
+
+function _trkStartCountdown() {
+  if (_trkCountdownTimer) clearInterval(_trkCountdownTimer);
+  _trkCountdownTimer = setInterval(function() {
+    var el = document.getElementById('trk-countdown');
+    if (!el || !_trkNextTickUTC) { el && (el.style.display = 'none'); clearInterval(_trkCountdownTimer); return; }
+    var diff = Math.max(0, Math.floor((_trkNextTickUTC - Date.now()) / 1000));
+    if (diff <= 0) {
+      el.textContent = 'Searching now...';
+      el.style.color = 'var(--green)';
+      clearInterval(_trkCountdownTimer);
+      // Refresh status + log after a few seconds to catch the new entry
+      setTimeout(function() { trkRefreshStatus(); trkLoadLog(); }, 5000);
+      return;
+    }
+    var min = Math.floor(diff / 60);
+    var sec = diff % 60;
+    el.textContent = 'Next search: ' + min + ':' + (sec < 10 ? '0' : '') + sec;
+    el.style.color = 'var(--crimson)';
+    el.style.display = 'block';
+  }, 1000);
+}
 
 function trkInit() {
   if (!_trkInitDone) {
@@ -6397,20 +6408,36 @@ async function trkRefreshStatus() {
     // Toggle button
     var btn = document.getElementById('trk-toggle-btn');
     var hint = document.getElementById('trk-toggle-hint');
+    var cdEl = document.getElementById('trk-countdown');
     if (d.enabled) {
       btn.style.background = 'var(--crimson)';
       btn.style.color = '#000';
       btn.style.border = 'none';
       btn.innerHTML = '▶ TRACKER ON';
+      hint.style.color = 'var(--crimson)';
+      hint.style.fontSize = '.62rem';
       hint.textContent = d.hunt_loop_active
-        ? ('Hunting · ' + (d.mode || 'gentle') + ' mode · ~' + Math.round((d.base_interval||3600)/60) + 'min ± jitter')
+        ? ('Hunting · ' + (d.mode || 'continuous') + ' mode · ~' + Math.round((d.base_interval||2400)/60) + 'min ± jitter')
         : 'Enabled but hunt loop idle';
+      // Countdown timer
+      if (d.next_tick_utc && d.hunt_loop_active) {
+        cdEl.style.display = 'block';
+        _trkNextTickUTC = new Date(d.next_tick_utc + 'Z').getTime();
+        _trkStartCountdown();
+      } else {
+        cdEl.style.display = 'none';
+        _trkNextTickUTC = null;
+      }
     } else {
       btn.style.background = 'var(--surface2)';
       btn.style.color = 'var(--muted)';
       btn.style.border = '1px solid var(--border)';
       btn.innerHTML = '⏻ TRACKER OFF';
+      hint.style.color = 'var(--muted2)';
+      hint.style.fontSize = '.52rem';
       hint.textContent = 'Click to enable automatic hunting';
+      cdEl.style.display = 'none';
+      _trkNextTickUTC = null;
     }
 
     // Connection dots
@@ -6432,7 +6459,6 @@ async function trkRefreshStatus() {
     document.getElementById('trk-s-skipped').textContent = d.skipped || 0;
 
     // Settings
-    trkPaintModeButtons(d.mode || 'gentle');
     var cdR = document.getElementById('trk-cooldown-radarr');
     var cdS = document.getElementById('trk-cooldown-sonarr');
     if (cdR) cdR.value = d.cooldown_days_radarr || d.cooldown_days || 7;
@@ -6444,32 +6470,6 @@ async function trkRefreshStatus() {
       ? ((d.searches_today || 0) + ' searched today · ' + (d.total || 0) + ' tracked')
       : 'Sync to load missing items';
   } catch(e) { /* silent */ }
-}
-
-function trkPaintModeButtons(active) {
-  var g = document.getElementById('trk-mode-gentle');
-  var m = document.getElementById('trk-mode-moderate');
-  if (!g || !m) return;
-  if (active === 'moderate') {
-    m.style.background = 'var(--crimson)'; m.style.color = '#000';
-    g.style.background = 'transparent';    g.style.color = 'var(--muted)';
-  } else {
-    g.style.background = 'var(--crimson)'; g.style.color = '#000';
-    m.style.background = 'transparent';    m.style.color = 'var(--muted)';
-  }
-}
-
-async function trkSetMode(mode) {
-  try {
-    var r = await fetch(API + '/api/tracker/settings', {
-      method:'POST', headers:authHdrs(),
-      body: JSON.stringify({ mode: mode })
-    });
-    if (!r.ok) { var d = await r.json(); toast(d.detail || 'Failed', 'error'); return; }
-    trkPaintModeButtons(mode);
-    toast('Hunt pace: ' + mode.toUpperCase(), 'ok');
-    trkRefreshStatus();
-  } catch(e) { toast('Error: ' + e.message, 'error'); }
 }
 
 async function trkToggle() {
