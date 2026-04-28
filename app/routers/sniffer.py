@@ -9,7 +9,8 @@ Download: Add to qBit → background task retries file priority checkmark
           for up to 60 seconds to ensure download starts.
 
 Endpoints:
-  POST /api/sniffer/gap-analysis     — Cross-ref static DB vs user library
+  POST /api/sniffer/gap-analysis     — Cross-ref static DB vs user library (legacy chart-first)
+  POST /api/sniffer/gap-by-genre     — Library-first master list, genre+decade filters
   POST /api/sniffer/trending         — Last.fm trending tracks (paginated)
   POST /api/sniffer/search           — Search Prowlarr (album-first)
   POST /api/sniffer/grab             — Push to qBit + background checkmark
@@ -20,12 +21,15 @@ Endpoints:
 # © 2026 Colby R. Curtis | ChartHound: The New World — All Rights Reserved.
 
 import asyncio
+import hashlib
 import json
 import logging
 import os
 import re
 import sqlite3
 import xml.etree.ElementTree as ET
+
+from datetime import datetime, timezone, timedelta
 
 import aiosqlite
 import httpx
@@ -65,6 +69,15 @@ class GapAnalysisRequest(BaseModel):
     max_peak:  int = 40
     limit:     int = 500
     offset:    int = 0
+
+class GapByGenreRequest(BaseModel):
+    genres:    List[str] = []                # e.g. ["country","rock"] — empty = no genre filter
+    decades:   List[str] = []                # e.g. ["1980s","1990s"] — empty = all decades
+    tier:      str       = "notable"         # "essential" | "notable" | "deep"
+    limit:     int       = 500
+    offset:    int       = 0
+    include_owned: bool  = True              # if False, skip tracks user already owns
+    bypass_cache:  bool  = False             # set True to force a rebuild
 
 class TrendingRequest(BaseModel):
     tag:       str = "pop"
@@ -230,6 +243,442 @@ async def gap_analysis(req: GapAnalysisRequest, _=Depends(require_auth)):
     owned_ct = sum(1 for r in results if r["in_library"])
     return {"results": results, "total": total, "owned": owned_ct,
             "missing": len(results) - owned_ct, "offset": req.offset, "limit": req.limit}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  GAP BY GENRE — Library-first master list (Phase 1: chart sources only)
+# ══════════════════════════════════════════════════════════════════════════════
+#
+#  This is the new replacement for chart-filter-driven Gap Fill. Instead of
+#  asking the user "which chart?" we ask "which genres + decades?" and build
+#  a deduped, scored master list across every chart source we have.
+#
+#  Phase 1 uses chart sources only. Phase 2 will add Last.fm tag pulls to
+#  fill genres where chart coverage is thin (CCM, indie, jazz, etc.).
+#
+#  Source weights (Phase 1):
+#    - Billboard Hot 100 (chart_reference)         1.00
+#    - Billboard genre charts (country/rnb/rock/   0.90
+#      dance/adultpop in chart_reference)
+#    - utdata Hot 100 post-2018 (extras)           1.00
+#    - Chart2000 global (extras)                   0.85
+#    - tsort.info historical (extras)              0.80
+#    - Billboard Christian / CCM (extras)          0.90
+#    - UK Official (extras)                        0.85
+#    - Kworb iTunes US (extras)                    0.70
+#
+#  Score per row = weight × ((101 - peak_position) / 100). Rows for the same
+#  (artist_norm, title_norm) are merged across sources by summing scores.
+#
+#  Decade filter: NULL chart_year rows pass through ONLY when no decade is
+#  selected. This is honest — we don't fake years.
+# ══════════════════════════════════════════════════════════════════════════════
+
+# Genre → list of chart_name keys that imply membership in that genre.
+# Genre-agnostic charts (hot100, tsort, chart2000, kworb_us, uk_official, adultpop)
+# are NOT listed here — they only contribute to a genre when the same track also
+# appears in a genre-tagged source (Phase 2 will let Last.fm tags expand this).
+_GENRE_TO_CHART_KEYS = {
+    "country": {"country"},
+    "rock":    {"rock"},
+    "rnb":     {"rnb"},
+    "dance":   {"dance"},
+    "ccm":     {"ccm", "ccm-ac", "ccm-rock", "worship", "gospel",
+                "sgospel", "ugospel", "tgospel"},
+    "pop":     {"adultpop"},   # Adult Pop is the closest chart-based proxy for "pop"
+}
+
+# Per-source weights for scoring. Anything not listed defaults to 0.5.
+_SOURCE_WEIGHTS = {
+    # data_source values written by the importers — extend as new sources arrive
+    "billboard_hot100":    1.00,
+    "billboard_country":   0.90,
+    "billboard_rnb":       0.90,
+    "billboard_rock":      0.90,
+    "billboard_dance":     0.90,
+    "billboard_adultpop":  0.90,
+    "billboard_christian": 0.90,
+    "billboard_pop":       0.90,
+    "utdata":              1.00,
+    "chart2000":           0.85,
+    "tsort":               0.80,
+    "uk_official":         0.85,
+    "kworb_us":            0.70,
+}
+
+# Fallback when data_source isn't in the weights table — derive from chart_name.
+_CHART_NAME_FALLBACK_WEIGHTS = {
+    "hot100":    1.00,
+    "country":   0.90,
+    "rnb":       0.90,
+    "rock":      0.90,
+    "dance":     0.90,
+    "adultpop":  0.90,
+    "ccm":       0.90,
+    "uk":        0.85,
+    "uk_official": 0.85,
+    "chart2000": 0.85,
+    "tsort":     0.80,
+    "kworb_us":  0.70,
+}
+
+_TIER_LIMITS = {
+    "essential": 250,
+    "notable":   1000,
+    "deep":      5000,
+}
+
+_CACHE_TTL_HOURS = 24
+
+
+def _decades_to_year_ranges(decades: list) -> list:
+    """
+    Translate ['1980s','1990s'] → [(1980,1989),(1990,1999)].
+    Accepts '50s', '1950s', '2000s', '00s', '10s', '20s'. Unknown values skipped.
+    """
+    ranges = []
+    for d in decades or []:
+        s = str(d).strip().lower().rstrip("s")
+        # Normalize "80" → "1980", "00" → "2000", etc.
+        if len(s) == 2:
+            n = int(s) if s.isdigit() else None
+            if n is None: continue
+            year = 2000 + n if n < 30 else 1900 + n
+        elif len(s) == 4 and s.isdigit():
+            year = int(s)
+        else:
+            continue
+        ranges.append((year, year + 9))
+    return ranges
+
+
+def _row_weight(data_source: str, chart_name: str) -> float:
+    """Pick the weight for a row based on its data_source, falling back to chart_name."""
+    if data_source and data_source in _SOURCE_WEIGHTS:
+        return _SOURCE_WEIGHTS[data_source]
+    if chart_name and chart_name in _CHART_NAME_FALLBACK_WEIGHTS:
+        return _CHART_NAME_FALLBACK_WEIGHTS[chart_name]
+    return 0.5
+
+
+def _row_score(weight: float, peak_position) -> float:
+    """Score = weight × ((101 - peak) / 100). Missing peak → 0.5 mid-tier."""
+    try:
+        peak = int(peak_position) if peak_position else 50
+    except (TypeError, ValueError):
+        peak = 50
+    peak = max(1, min(100, peak))
+    return weight * ((101 - peak) / 100.0)
+
+
+def _cache_key(payload: dict) -> str:
+    """SHA1 of canonicalized JSON of cache-relevant params."""
+    keep = {
+        "genres":  sorted([g.lower() for g in (payload.get("genres") or [])]),
+        "decades": sorted([str(d).lower() for d in (payload.get("decades") or [])]),
+        "tier":    (payload.get("tier") or "notable").lower(),
+    }
+    blob = json.dumps(keep, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha1(blob.encode("utf-8")).hexdigest()
+
+
+async def _ensure_phase1_schema():
+    """
+    Idempotent schema setup for gap-by-genre.
+      1. master_list_cache table (dynamic DB)
+      2. genre_tags column on chart_reference_extras (dynamic DB) — Phase 2 will use it
+    Both are safe to re-run on every endpoint call.
+    """
+    async with aiosqlite.connect(_DYNAMIC_DB) as db:
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS master_list_cache (
+                cache_key   TEXT PRIMARY KEY,
+                payload_json TEXT NOT NULL,
+                built_at    TEXT NOT NULL,
+                expires_at  TEXT NOT NULL
+            )
+        """)
+        # Add genre_tags column to chart_reference_extras if missing.
+        # SQLite has no IF NOT EXISTS for columns, so we probe first.
+        try:
+            async with db.execute("PRAGMA table_info(chart_reference_extras)") as cur:
+                cols = {r[1] for r in await cur.fetchall()}
+            if cols and "genre_tags" not in cols:
+                await db.execute("ALTER TABLE chart_reference_extras ADD COLUMN genre_tags TEXT")
+                log.info("Added genre_tags column to chart_reference_extras")
+        except Exception as e:
+            # Table may not exist yet on a brand-new install — not fatal
+            log.debug(f"genre_tags column probe skipped: {e}")
+        await db.commit()
+
+
+async def _cache_get(key: str) -> Optional[dict]:
+    try:
+        async with aiosqlite.connect(_DYNAMIC_DB) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT payload_json, expires_at FROM master_list_cache WHERE cache_key=?",
+                (key,)
+            ) as cur:
+                row = await cur.fetchone()
+        if not row:
+            return None
+        # Compare ISO strings safely
+        expires = datetime.fromisoformat(row["expires_at"])
+        if expires.tzinfo is None:
+            expires = expires.replace(tzinfo=timezone.utc)
+        if expires <= datetime.now(timezone.utc):
+            return None
+        return json.loads(row["payload_json"])
+    except Exception as e:
+        log.debug(f"cache_get miss: {e}")
+        return None
+
+
+async def _cache_put(key: str, payload: dict):
+    try:
+        now    = datetime.now(timezone.utc)
+        expires = now + timedelta(hours=_CACHE_TTL_HOURS)
+        async with aiosqlite.connect(_DYNAMIC_DB) as db:
+            await db.execute(
+                """INSERT INTO master_list_cache
+                   (cache_key, payload_json, built_at, expires_at)
+                   VALUES (?, ?, ?, ?)
+                   ON CONFLICT(cache_key) DO UPDATE SET
+                       payload_json=excluded.payload_json,
+                       built_at=excluded.built_at,
+                       expires_at=excluded.expires_at""",
+                (key, json.dumps(payload), now.isoformat(), expires.isoformat())
+            )
+            await db.commit()
+    except Exception as e:
+        log.warning(f"cache_put failed (non-fatal): {e}")
+
+
+def _build_master_list(req: GapByGenreRequest) -> list:
+    """
+    Synchronous DB work: query chart_reference + chart_reference_extras,
+    apply genre + decade filters, dedupe, score. Returns sorted list.
+
+    Phase 1: chart sources only. No Last.fm.
+    """
+    if not os.path.exists(_STATIC_DB):
+        raise HTTPException(404, "Static database not found.")
+
+    conn = sqlite3.connect(_STATIC_DB, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+
+    # Attach dynamic DB read-only-ish for chart_reference_extras
+    has_extras = False
+    try:
+        conn.execute(f"ATTACH DATABASE '{_DYNAMIC_DB}' AS dyn")
+        probe = conn.execute(
+            "SELECT name FROM dyn.sqlite_master WHERE type='table' AND name='chart_reference_extras'"
+        ).fetchone()
+        has_extras = bool(probe)
+    except Exception:
+        has_extras = False
+
+    # ── Build the genre-driven chart_name filter ────────────────────────────
+    # If the user picked genres, we restrict to chart_names that imply those
+    # genres. If they picked NO genres, we accept all chart_names (master list
+    # across the entire universe).
+    genre_chart_keys: set = set()
+    for g in (req.genres or []):
+        keys = _GENRE_TO_CHART_KEYS.get(g.lower())
+        if keys:
+            genre_chart_keys |= keys
+
+    where_clauses, params = [], []
+    if req.genres and genre_chart_keys:
+        placeholders = ",".join("?" * len(genre_chart_keys))
+        where_clauses.append(f"chart_name IN ({placeholders})")
+        params.extend(sorted(genre_chart_keys))
+    elif req.genres and not genre_chart_keys:
+        # User picked genres but none map to any chart-source key (e.g. "indie",
+        # "jazz", "folk" — Phase 2 will handle those via Last.fm).
+        # Phase 1: return empty rather than dump the whole DB.
+        conn.close()
+        return []
+
+    # ── Decade filter ───────────────────────────────────────────────────────
+    decade_ranges = _decades_to_year_ranges(req.decades or [])
+    if decade_ranges:
+        ors = []
+        for (lo, hi) in decade_ranges:
+            ors.append("(chart_year BETWEEN ? AND ?)")
+            params.extend([lo, hi])
+        where_clauses.append("(" + " OR ".join(ors) + ")")
+    # If no decade picked, NULL years pass through. That's intentional —
+    # the 36k NULL-year genre-chart rows still contribute to the master list.
+
+    where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
+
+    select_cols = ("chart_name, artist, title, artist_norm, title_norm, "
+                   "peak_position, weeks_on_chart, chart_year, data_source")
+
+    if has_extras:
+        union_params = list(params) + list(params)
+        sql = f"""
+            SELECT {select_cols}
+            FROM chart_reference {where_sql}
+            UNION ALL
+            SELECT {select_cols}
+            FROM dyn.chart_reference_extras {where_sql}
+        """
+        rows = conn.execute(sql, union_params).fetchall()
+    else:
+        sql = f"SELECT {select_cols} FROM chart_reference {where_sql}"
+        rows = conn.execute(sql, params).fetchall()
+
+    conn.close()
+
+    # ── Dedupe + score ──────────────────────────────────────────────────────
+    # Key = (artist_norm, title_norm). Aggregate sources, sum scores,
+    # keep best peak across all sources, keep earliest known year.
+    merged: dict = {}
+    for r in rows:
+        a_n = (r["artist_norm"] or "").strip()
+        t_n = (r["title_norm"]  or "").strip()
+        if not a_n or not t_n:
+            continue
+        key = (a_n, t_n)
+        weight = _row_weight(r["data_source"] or "", r["chart_name"] or "")
+        score  = _row_score(weight, r["peak_position"])
+        m = merged.get(key)
+        if m is None:
+            m = {
+                "artist":      r["artist"]   or "",
+                "title":       r["title"]    or "",
+                "artist_norm": a_n,
+                "title_norm":  t_n,
+                "best_peak":   r["peak_position"],
+                "best_chart":  r["chart_name"] or "",
+                "best_year":   r["chart_year"],
+                "score":       0.0,
+                "sources":     set(),
+                "primary_chart_label": "",
+            }
+            merged[key] = m
+
+        # Aggregate
+        m["score"] += score
+        if r["data_source"]:
+            m["sources"].add(r["data_source"])
+        elif r["chart_name"]:
+            m["sources"].add(r["chart_name"])
+
+        # Best peak (lowest number wins)
+        try:
+            cur_peak = int(m["best_peak"]) if m["best_peak"] is not None else 999
+        except (TypeError, ValueError):
+            cur_peak = 999
+        try:
+            new_peak = int(r["peak_position"]) if r["peak_position"] is not None else 999
+        except (TypeError, ValueError):
+            new_peak = 999
+        if new_peak < cur_peak:
+            m["best_peak"]  = r["peak_position"]
+            m["best_chart"] = r["chart_name"] or m["best_chart"]
+            m["best_year"]  = r["chart_year"] if r["chart_year"] is not None else m["best_year"]
+        elif m["best_year"] is None and r["chart_year"] is not None:
+            m["best_year"] = r["chart_year"]
+
+    # Sort by score descending, slice to tier limit
+    items = list(merged.values())
+    items.sort(key=lambda x: x["score"], reverse=True)
+    cap = _TIER_LIMITS.get((req.tier or "notable").lower(), _TIER_LIMITS["notable"])
+    items = items[:cap]
+
+    # Build display label (e.g. "Hot 100 #4 (1985)" or "Country #1")
+    for m in items:
+        chart_disp = CHART_DISPLAY.get(m["best_chart"], m["best_chart"] or "Chart")
+        peak       = m["best_peak"]
+        year       = m["best_year"]
+        if peak and year:
+            m["primary_chart_label"] = f"{chart_disp} #{peak} ({year})"
+        elif peak:
+            m["primary_chart_label"] = f"{chart_disp} #{peak}"
+        else:
+            m["primary_chart_label"] = chart_disp
+        # Convert sources set → sorted list for JSON
+        m["sources"] = sorted(m["sources"])
+
+    return items
+
+
+@router.post("/gap-by-genre")
+async def gap_by_genre(req: GapByGenreRequest, _=Depends(require_auth)):
+    """
+    Library-first Gap Fill. Pick genres + decades + tier, get a deduped,
+    scored master list with owned/missing flags. Phase 1 = chart sources only.
+    """
+    # Make sure cache table + genre_tags column exist
+    await _ensure_phase1_schema()
+
+    cache_payload = req.model_dump() if hasattr(req, "model_dump") else req.dict()
+    key = _cache_key(cache_payload)
+
+    cached = None
+    if not req.bypass_cache:
+        cached = await _cache_get(key)
+
+    if cached is None:
+        # Build (sync DB work) — wrap in try/except so a build error returns 500 cleanly
+        try:
+            items = await asyncio.to_thread(_build_master_list, req)
+        except HTTPException:
+            raise
+        except Exception as e:
+            log.exception("gap_by_genre build failed")
+            raise HTTPException(500, f"Master list build failed: {e}")
+
+        cached = {"items": items, "built_at": datetime.now(timezone.utc).isoformat()}
+        await _cache_put(key, cached)
+
+    items = cached.get("items") or []
+    total_master = len(items)
+
+    # Library cross-reference (always live — library state changes more often than master list)
+    lib = await _build_library_index()
+
+    # Apply include_owned filter, then paginate
+    enriched = []
+    for m in items:
+        owned, tid = _check_library(m["artist"], m["title"], lib)
+        if (not req.include_owned) and owned:
+            continue
+        enriched.append({
+            "artist":         m["artist"],
+            "title":          m["title"],
+            "chart_name":     m.get("best_chart") or "",
+            "chart_display":  CHART_DISPLAY.get(m.get("best_chart") or "", m.get("best_chart") or ""),
+            "peak_position":  m.get("best_peak"),
+            "weeks_on_chart": None,             # Phase 2 may surface this
+            "chart_year":     m.get("best_year"),
+            "score":          round(float(m.get("score") or 0.0), 4),
+            "sources":        m.get("sources") or [],
+            "primary_chart_label": m.get("primary_chart_label") or "",
+            "in_library":     owned,
+            "track_id":       tid,
+        })
+
+    total_filtered = len(enriched)
+    page = enriched[req.offset: req.offset + req.limit]
+    owned_ct = sum(1 for r in enriched if r["in_library"])
+    return {
+        "results":     page,
+        "total":       total_filtered,        # filtered total (after include_owned)
+        "total_master": total_master,         # raw master list size before owned filter
+        "owned":       owned_ct,
+        "missing":     total_filtered - owned_ct,
+        "offset":      req.offset,
+        "limit":       req.limit,
+        "tier":        req.tier,
+        "genres":      req.genres,
+        "decades":     req.decades,
+        "cache_built": cached.get("built_at"),
+    }
 
 
 # ══════════════════════════════════════════════════════════════════════════════
