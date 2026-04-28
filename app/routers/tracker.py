@@ -300,9 +300,14 @@ async def tracker_startup():
 #  SYNC — Pull missing items from Radarr/Sonarr
 # ══════════════════════════════════════════════════════════════════════════════
 
-@router.post("/sync")
-async def sync_missing(user: dict = Depends(require_auth)):
-    """Pull current missing lists from Radarr and Sonarr, update local table."""
+_AUTO_SYNC_INTERVAL = 6 * 3600   # 6 hours in seconds
+_last_sync_utc: Optional[float] = None   # epoch timestamp of last sync
+
+
+async def _do_sync() -> dict:
+    """Internal sync logic — pull missing lists from Radarr/Sonarr, update local table.
+    Returns result dict. Can be called from endpoint or hunt loop."""
+    global _last_sync_utc
     radarr_count = 0
     sonarr_count = 0
     errors = []
@@ -494,8 +499,16 @@ async def sync_missing(user: dict = Depends(require_auth)):
     await _add_log("system", "Sync", "sync", detail)
     log.info(f"Tracker sync: {detail}")
 
+    _last_sync_utc = time.time()
+
     return {"ok": True, "radarr_new": radarr_count, "sonarr_new": sonarr_count,
             "errors": errors, "detail": detail}
+
+
+@router.post("/sync")
+async def sync_missing(user: dict = Depends(require_auth)):
+    """Endpoint wrapper — pull current missing lists from Radarr and Sonarr."""
+    return await _do_sync()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -540,23 +553,23 @@ def _start_hunt_loop():
 
 async def _hunt_loop():
     """
-    Background loop. Alternates Radarr ↔ Sonarr each tick with fair toggle.
+    Background loop. Strict alternation: Radarr → Sonarr → Radarr → Sonarr.
     Fixed 40-min ±25% jitter interval. No daily cap (999 safety net).
 
-    Toggle logic:
-      - If preferred source has an item → search it, flip toggle.
-      - If preferred source is dry → search fallback, do NOT flip toggle.
-        Next tick still tries the preferred source first.
-      - If both sources are dry → sleep and retry.
+    Every tick:
+      1. Pick the preferred source's item with lowest search_count, oldest last_searched.
+      2. If preferred source has zero missing items, fall back to the other source.
+      3. Always flip the toggle regardless.
+    No cooldown filtering — search_count ordering ensures natural round-robin.
     """
     global _hunt_running, _next_tick_utc
-    log.info("Hunt loop started (continuous mode, 40min ±25% jitter).")
+    log.info("Hunt loop started (continuous mode, strict alternation, 40min ±25% jitter).")
 
     # Small initial delay so startup settles
     _next_tick_utc = None
     await asyncio.sleep(5)
 
-    # Alternator: 0 = radarr preferred, 1 = sonarr preferred
+    # Alternator: 0 = radarr, 1 = sonarr
     alt_toggle = 0
 
     while _hunt_running:
@@ -566,6 +579,14 @@ async def _hunt_loop():
             if enabled != "true":
                 _hunt_running = False
                 break
+
+            # Auto-sync every 6 hours — pull fresh missing lists
+            if _last_sync_utc is None or (time.time() - _last_sync_utc) >= _AUTO_SYNC_INTERVAL:
+                log.info("Tracker: auto-sync triggered (every 6h)")
+                try:
+                    await _do_sync()
+                except Exception as e:
+                    log.warning(f"Tracker: auto-sync failed: {e}")
 
             cfg = await _get_mode_config()
 
@@ -577,25 +598,23 @@ async def _hunt_loop():
                 await asyncio.sleep(3600)
                 continue
 
-            # Determine preferred and fallback sources
+            # Strict alternation — always flip after this tick
             preferred = "radarr" if alt_toggle == 0 else "sonarr"
             fallback  = "sonarr" if alt_toggle == 0 else "radarr"
+            alt_toggle = 1 - alt_toggle   # flip BEFORE searching — guarantees alternation
 
             item = await _pick_next_item(source=preferred)
             if item:
-                # Preferred source had something — search it and flip toggle
                 await _execute_search(item)
-                alt_toggle = 1 - alt_toggle
-                log.info(f"Tracker: searched {preferred}, next preference → {fallback}")
+                log.info(f"Tracker: searched {preferred}, next turn → {fallback}")
             else:
-                # Preferred source dry — try fallback, do NOT flip toggle
+                # Preferred source has zero missing items — try fallback
                 item = await _pick_next_item(source=fallback)
                 if item:
                     await _execute_search(item)
-                    log.info(f"Tracker: {preferred} dry, searched {fallback} instead (toggle stays on {preferred})")
+                    log.info(f"Tracker: {preferred} empty, searched {fallback}")
                 else:
-                    # Both dry — nothing to do
-                    log.debug("Tracker: both sources dry, sleeping")
+                    log.debug("Tracker: both sources empty, sleeping")
 
             # Jittered sleep before next tick
             sleep_for = _jittered_sleep(cfg["base_interval"])
@@ -619,18 +638,18 @@ async def _pick_next_item(source: str) -> Optional[dict]:
     Pick next eligible item for the given source ('radarr' or 'sonarr').
 
     Ordering:
-      1. Never-searched first (search_count ASC — 0 before 1+)
-      2. Newest release first (release_date DESC, NULLs last)
-      3. Oldest last_searched first (longest-ago gets next shot)
+      1. Lowest search_count first (0 before 1 before 2…)
+      2. Oldest last_searched breaks ties (longest-waiting gets next shot)
+      3. Never-searched (NULL last_searched) always before searched items at same count
 
     Filters:
       - status = 'missing'
-      - cooldown_until past OR NULL
-      - release_date NULL OR <= today  (skip unreleased)
-      - For sonarr: earlier-season-blocks-later-season logic preserved
+      - release_date not in the future
+      - last_searched NULL (never searched) OR older than cooldown_days for this source
+    For sonarr: earlier-season-blocks-later-season logic preserved.
     """
-    now_iso   = _now_iso()
     today_ymd = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    cooldown_days = await _get_cooldown_days(source)
 
     async with aiosqlite.connect(_DYNAMIC_DB) as db:
         db.row_factory = aiosqlite.Row
@@ -639,15 +658,13 @@ async def _pick_next_item(source: str) -> Optional[dict]:
             async with db.execute("""
                 SELECT * FROM tracker_items
                 WHERE source='radarr' AND status='missing'
-                  AND (cooldown_until IS NULL OR cooldown_until <= ?)
                   AND (release_date IS NULL OR release_date <= ?)
+                  AND (last_searched IS NULL OR last_searched <= datetime('now', ? || ' days'))
                 ORDER BY
                     search_count ASC,
-                    CASE WHEN release_date IS NULL THEN 1 ELSE 0 END,
-                    release_date DESC,
                     COALESCE(last_searched, '0000') ASC
                 LIMIT 1
-            """, (now_iso, today_ymd)) as cur:
+            """, (today_ymd, f"-{cooldown_days}")) as cur:
                 row = await cur.fetchone()
                 return dict(row) if row else None
 
@@ -655,14 +672,12 @@ async def _pick_next_item(source: str) -> Optional[dict]:
         async with db.execute("""
             SELECT * FROM tracker_items
             WHERE source='sonarr' AND status='missing'
-              AND (cooldown_until IS NULL OR cooldown_until <= ?)
               AND (release_date IS NULL OR release_date <= ?)
+              AND (last_searched IS NULL OR last_searched <= datetime('now', ? || ' days'))
             ORDER BY
                 search_count ASC,
-                CASE WHEN release_date IS NULL THEN 1 ELSE 0 END,
-                release_date DESC,
                 COALESCE(last_searched, '0000') ASC
-        """, (now_iso, today_ymd)) as cur:
+        """, (today_ymd, f"-{cooldown_days}")) as cur:
             all_eps = [dict(r) async for r in cur]
 
         if not all_eps:
@@ -817,10 +832,19 @@ async def tracker_status(user: dict = Depends(require_auth)):
     except Exception:
         pass
 
+    # Next auto-sync
+    next_sync_in = None
+    if _last_sync_utc is not None:
+        elapsed = time.time() - _last_sync_utc
+        remaining = max(0, _AUTO_SYNC_INTERVAL - elapsed)
+        next_sync_in = int(remaining)
+
     return {
         "enabled": enabled,
         "hunt_loop_active": _hunt_running,
         "next_tick_utc": _next_tick_utc,
+        "last_sync_utc": datetime.fromtimestamp(_last_sync_utc, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S") if _last_sync_utc else None,
+        "next_sync_in_seconds": next_sync_in,
         "mode": cfg["mode"],
         "base_interval": cfg["base_interval"],
         "cooldown_days":         cooldown_radarr,   # back-compat: old UI binds to this

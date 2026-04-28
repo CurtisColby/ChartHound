@@ -537,7 +537,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
           <div style="font-family:var(--display);font-size:2rem;letter-spacing:3px;color:var(--gold);margin-bottom:.5rem">YOU'RE READY!</div>
           <div style="font-family:var(--mono);font-size:.62rem;color:var(--muted);line-height:1.9;max-width:380px;margin:0 auto 1.5rem">
             ChartHound is ready to go.<br><br>
-            Head to <strong style="color:var(--purple)">The Kennel</strong> to connect Plex, Emby, Jellyfin, Last.fm, Prowlarr, Radarr, Sonarr, your download client and YouTube.<br><br>
+            Head to <strong style="color:var(--purple)">The Kennel</strong> to connect Plex, Emby, Jellyfin, Last.fm, Prowlarr, Radarr, Sonarr and your download client.<br><br>
             Then run <strong style="color:var(--teal)">The Retriever</strong> to start tagging your music library with chart data.
           </div>
           <button class="btn btn-gold" onclick="closeWizard()" style="max-width:240px;margin:0 auto;display:block">ENTER CHARTHOUND 🐕</button>
@@ -632,7 +632,6 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
               <div class="vault-row"><div class="vault-row-label"><div class="dot" id="vDotRadarr"></div>Radarr</div><div class="vault-row-status warn" id="vStatusRadarr">NOT VERIFIED</div></div>
               <div class="vault-row"><div class="vault-row-label"><div class="dot" id="vDotSonarr"></div>Sonarr</div><div class="vault-row-status warn" id="vStatusSonarr">NOT VERIFIED</div></div>
               <div class="vault-row"><div class="vault-row-label"><div class="dot" id="vDotQbittorrent"></div>Download Client</div><div class="vault-row-status warn" id="vStatusQbittorrent">NOT VERIFIED</div></div>
-              <div class="vault-row"><div class="vault-row-label"><div class="dot" id="vDotYoutube"></div>YouTube</div><div class="vault-row-status warn" id="vStatusYoutube">NOT VERIFIED</div></div>
               <div class="vault-row"><div class="vault-row-label"><div class="dot" id="vDotDiscogs"></div>Discogs</div><div class="vault-row-status warn" id="vStatusDiscogs">NOT VERIFIED</div></div>
             </div>
           </div>
@@ -897,11 +896,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
           </div>
           <div>
             <div class="section-label sl-teal">SCAN SCOPE</div>
-            <div class="scope-tabs">
-              <div class="scope-tab active" id="scopeLibraryBtn" onclick="setScope('library',this)">FULL LIBRARY</div>
-              <div class="scope-tab" onclick="setScope('subfolder',this)">SUBFOLDER</div>
-            </div>
-            <div id="subfolderInput" style="display:none">
+            <div id="subfolderInput" style="display:block">
               <div class="label-row"><label>Subfolder</label>
                 <div class="help-wrap"><button class="help-btn" tabindex="0">?</button>
                   <div class="tooltip">Browse your /music mount to pick a subfolder. Great for testing on one artist or genre before scanning the full 33k library.</div>
@@ -1119,10 +1114,54 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
                 <span style="font-family:var(--mono);font-size:.5rem;color:var(--muted)" id="atPageBadge"></span>
               </div>
               <!-- Bulk action buttons -->
-              <div style="display:flex;gap:.35rem;margin-bottom:.75rem;flex-wrap:wrap">
+              <div style="display:flex;gap:.35rem;margin-bottom:.75rem;flex-wrap:wrap;align-items:center">
+                <label style="display:flex;align-items:center;gap:.3rem;font-family:var(--mono);font-size:.52rem;color:var(--muted);cursor:pointer;margin-right:.5rem">
+                  <input type="checkbox" id="atSelectAllCb" onchange="atToggleSelectAll(this.checked)" style="accent-color:var(--crimson)">
+                  Select All
+                </label>
                 <button class="btn btn-outline btn-sm" onclick="atWriteAllOverrides()" title="Write all albums where you clicked Override and set tags manually">⬇ WRITE ALL OVERRIDES</button>
                 <button class="btn btn-outline btn-sm" onclick="atWriteAllAccepted()" title="Write genres found by 🔍 Lookup — only works after running Lookup on albums">🔍 WRITE ALL LOOKUPS</button>
                 <button class="btn btn-outline btn-sm" onclick="atKeepAll()">✓ KEEP ALL</button>
+              </div>
+
+              <!-- Bulk Genre/Mood Override Panel — appears when cards are selected -->
+              <div id="atBulkOverrideBar" style="display:none;background:rgba(251,113,133,.06);border:1px solid rgba(251,113,133,.3);border-radius:8px;padding:.65rem .8rem;margin-bottom:.75rem">
+                <div style="font-family:var(--mono);font-size:.56rem;color:var(--crimson);letter-spacing:1px;margin-bottom:.4rem">BULK OVERRIDE — <span id="atBulkCount">0</span> cards selected</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin-bottom:.45rem">
+                  <div>
+                    <div style="font-family:var(--mono);font-size:.46rem;color:var(--muted2);letter-spacing:.5px;margin-bottom:.2rem">GENRES (max 3)</div>
+                    <div style="display:flex;gap:.25rem">
+                      <select id="atBulk-g1" style="flex:1;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:.25rem;font-family:var(--mono);font-size:.5rem">
+                        <option value="">— genre 1 —</option>
+                      </select>
+                      <select id="atBulk-g2" style="flex:1;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:.25rem;font-family:var(--mono);font-size:.5rem">
+                        <option value="">— genre 2 —</option>
+                      </select>
+                      <select id="atBulk-g3" style="flex:1;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:.25rem;font-family:var(--mono);font-size:.5rem">
+                        <option value="">— genre 3 —</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <div style="font-family:var(--mono);font-size:.46rem;color:var(--muted2);letter-spacing:.5px;margin-bottom:.2rem">MOODS (max 3)</div>
+                    <div style="display:flex;gap:.25rem">
+                      <select id="atBulk-m1" style="flex:1;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:.25rem;font-family:var(--mono);font-size:.5rem">
+                        <option value="">— mood 1 —</option>
+                      </select>
+                      <select id="atBulk-m2" style="flex:1;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:.25rem;font-family:var(--mono);font-size:.5rem">
+                        <option value="">— mood 2 —</option>
+                      </select>
+                      <select id="atBulk-m3" style="flex:1;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:.25rem;font-family:var(--mono);font-size:.5rem">
+                        <option value="">— mood 3 —</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+                <div style="display:flex;gap:.4rem;align-items:center">
+                  <button class="btn btn-pink btn-sm" onclick="atBulkApplyAndWrite()" style="letter-spacing:1px">⬇ APPLY &amp; WRITE SELECTED</button>
+                  <button class="btn btn-outline btn-sm" onclick="atBulkApplyOnly()">✏️ APPLY ONLY</button>
+                  <span style="font-family:var(--mono);font-size:.46rem;color:var(--muted2);margin-left:auto">Only genre &amp; mood are changed — artist, album, year stay per-card</span>
+                </div>
               </div>
 
               <!-- Cards container -->
@@ -1832,6 +1871,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
             <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--crimson);margin-bottom:.5rem;display:flex;align-items:center;gap:.5rem">SYNC<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
             <button onclick="trkSync()" style="width:100%;padding:.55rem;background:var(--crimson);color:#000;border:none;border-radius:6px;font-family:var(--mono);font-size:.65rem;letter-spacing:1px;cursor:pointer;transition:all .2s" id="trk-sync-btn">⟳ SYNC MISSING LISTS</button>
             <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted2);margin-top:.3rem;text-align:center">Pull current missing items from Radarr &amp; Sonarr</div>
+            <div id="trk-auto-sync-hint" style="font-family:var(--mono);font-size:.46rem;color:var(--teal);margin-top:.15rem;text-align:center;display:none">Auto-sync: every 6 hours</div>
           </div>
 
           <!-- SETTINGS -->
@@ -2088,7 +2128,7 @@ let wizardStep = 1;
 let scanJobId = null;
 let scanPollTimer = null;
 let currentMode = 'preview';
-let currentScope = 'library';
+let currentScope = 'subfolder';
 let selectedTrackIds = new Set();
 let scanPaused = false;
 let browseCurrentPath = '';
@@ -2469,10 +2509,7 @@ function previewPath() {
 
 // RETRIEVER
 function setScope(scope, el) {
-  currentScope = scope;
-  document.querySelectorAll('.scope-tab').forEach(t => t.classList.remove('active'));
-  el.classList.add('active');
-  document.getElementById('subfolderInput').style.display = scope === 'subfolder' ? 'block' : 'none';
+  currentScope = 'subfolder';
 }
 
 function setMode(mode, el) {
@@ -2483,42 +2520,31 @@ function setMode(mode, el) {
     preview:
       '🌐 GOES ONLINE — fetches proposed tags from MusicBrainz, Last.fm, Deezer & more in chunks. ' +
       'Results appear live as they come in. You review and approve before anything writes to your files. ' +
-      'You can Override any individual track before writing.',
+      'You can Override any individual track before writing.\n\n' +
+      '⚠️ WARNING: If you select a root folder with many subfolders, Preview will process ALL of them at once. ' +
+      'This can take hours on large libraries. Select one or two specific folders at a time for best results.',
     album_tagger:
-      '📂 LOCAL FIRST — Select a subfolder, then click READ FROM FILE to load album cards. ' +
+      '⭐ RECOMMENDED — This is the preferred method for tagging your library. ' +
+      'Select a subfolder, then click READ FROM FILE to load album cards. ' +
       'One card per folder. Choose 🔍 LOOKUP (fetches genre from internet for that album), ' +
       '✏️ OVERRIDE (set all tags yourself), or ✓ KEEP (tags are fine — card disappears). ' +
-      'After Lookup, click 🔍 WRITE ALL LOOKUPS to write all found genres at once.',
+      'After Lookup, click 🔍 WRITE ALL LOOKUPS to write all found genres at once. ' +
+      'Use the checkboxes for bulk override — select multiple cards and set genres/moods for all at once.',
     autopilot:
       '⚡ AUTO-PILOT — goes online and writes metadata automatically in the background. ' +
       'Skips tracks you have already manually verified. Low-confidence results go to a Review Queue instead of writing. ' +
-      'Test on a small subfolder first — Full Library is disabled in this mode.',
+      'Test on a small subfolder first.\n\n' +
+      '⚠️ WARNING: Auto-Pilot can take hours on large libraries and you accept whatever Last.fm tags it assigns. ' +
+      'Review results carefully. Album Tagger gives you more control.',
   };
-  document.getElementById('modeDesc').textContent = desc[mode] || desc.preview;
+  var descText = desc[mode] || desc.preview;
+  var descEl = document.getElementById('modeDesc');
+  // Render warnings in crimson
+  descText = descText.replace(/⚠️ WARNING:/g, '<br><br><span style="color:var(--crimson);font-weight:bold">⚠️ WARNING:</span>');
+  descText = descText.replace(/⭐ RECOMMENDED/g, '<span style="color:var(--green);font-weight:bold">⭐ RECOMMENDED</span>');
+  descEl.innerHTML = descText;
   document.getElementById('albumTaggerSection').style.display = mode === 'album_tagger' ? 'block' : 'none';
   document.getElementById('previewSection').style.display = mode === 'preview' ? 'block' : 'none';
-
-  // Disable Full Library for Album Tagger and Auto-Pilot — subfolder only
-  const libBtn = document.getElementById('scopeLibraryBtn');
-  const isLibraryRestricted = (mode === 'album_tagger' || mode === 'autopilot');
-  if (libBtn) {
-    libBtn.style.opacity   = isLibraryRestricted ? '0.35' : '1';
-    libBtn.style.cursor    = isLibraryRestricted ? 'not-allowed' : 'pointer';
-    libBtn.title           = isLibraryRestricted
-      ? 'Full Library is disabled in this mode — use Subfolder to keep things manageable'
-      : '';
-    libBtn.onclick = isLibraryRestricted
-      ? function() { toast('Use Subfolder mode for Album Tagger and Auto-Pilot.', 'warn'); }
-      : function() { setScope('library', libBtn); };
-  }
-
-  // If Library was selected and mode needs subfolder, auto-switch scope
-  if (isLibraryRestricted && currentScope === 'library') {
-    currentScope = 'subfolder';
-    document.querySelectorAll('.scope-tab').forEach(t => t.classList.remove('active'));
-    document.getElementById('subfolderInput').style.display = 'block';
-    addLog('ℹ️ Switched to Subfolder mode — Full Library is not available in this mode.', 'info');
-  }
 
   // Hide START SCAN in Album Tagger — READ TAGS button is the entry point
   const startBtn = document.getElementById('btnStartScan');
@@ -2534,23 +2560,11 @@ async function startScan() {
       const sel = document.getElementById('subfolderPath');
       const subfolder = sel ? sel.value.trim() : '';
       if (!subfolder || subfolder === '__up__' || subfolder === '') {
-        toast('Select a subfolder first using the ⟳ button, or switch to Full Library mode.', 'warn');
+        toast('Select a subfolder first using the ⟳ button.', 'warn');
         return;
       }
       body.subfolder = subfolder;
     }
-  }
-  // Full Library warning
-  if (currentScope === 'library') {
-    const confirmed = confirm(
-      '⚠️ FULL LIBRARY SCAN\n\n' +
-      'This will scan your entire music collection.\n' +
-      'On large libraries this may take many hours.\n\n' +
-      'Recommendation: Test on a subfolder first to verify\n' +
-      'genres and moods look correct before running full library.\n\n' +
-      'Continue with Full Library scan?'
-    );
-    if (!confirmed) return;
   }
   addLog('Starting scan…', 'info');
   addLog('⟳ Fetching metadata from MusicBrainz · Last.fm · Discogs · Deezer · ListenBrainz — please wait…', 'info');
@@ -2776,6 +2790,7 @@ function selectAllByAlbum() {
 
 // ── Multi-folder queue ────────────────────────────────────────────────────────
 let _subfolderQueue = [];
+let _processedFolders = new Set();
 
 function addSubfolderToQueue() {
   const sel = document.getElementById('subfolderPath');
@@ -2788,7 +2803,20 @@ function addSubfolderToQueue() {
 }
 
 function removeFromQueue(idx) {
-  _subfolderQueue.splice(idx, 1);
+  var removed = _subfolderQueue.splice(idx, 1);
+  if (removed.length) _processedFolders.delete(removed[0]);
+  renderSubfolderQueue();
+}
+
+function clearProcessedFromQueue() {
+  _subfolderQueue = _subfolderQueue.filter(p => !_processedFolders.has(p));
+  _processedFolders.clear();
+  renderSubfolderQueue();
+  toast('Processed folders cleared.', 'ok');
+}
+
+function markFoldersProcessed(paths) {
+  paths.forEach(p => _processedFolders.add(p));
   renderSubfolderQueue();
 }
 
@@ -2797,11 +2825,23 @@ function renderSubfolderQueue() {
   const list = document.getElementById('subfolderQueueList');
   if (!_subfolderQueue.length) { wrap.style.display = 'none'; return; }
   wrap.style.display = 'block';
-  list.innerHTML = _subfolderQueue.map((p,i) => `
-    <div style="display:flex;align-items:center;gap:.4rem;font-family:var(--mono);font-size:.55rem;color:var(--text);background:var(--surface);padding:.3rem .5rem;border-radius:4px">
-      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(p)}">${esc(p.split('/').pop())}</span>
+  var hasProcessed = _subfolderQueue.some(p => _processedFolders.has(p));
+  list.innerHTML = _subfolderQueue.map((p,i) => {
+    var done = _processedFolders.has(p);
+    var bg = done ? 'rgba(45,212,191,.15)' : 'var(--surface)';
+    var border = done ? '1px solid var(--teal)' : 'none';
+    var color = done ? 'var(--teal)' : 'var(--text)';
+    var icon = done ? '✓ ' : '';
+    return `
+    <div style="display:flex;align-items:center;gap:.4rem;font-family:var(--mono);font-size:.55rem;color:${color};background:${bg};border:${border};padding:.3rem .5rem;border-radius:4px">
+      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(p)}">${icon}${esc(p.split('/').pop())}</span>
       <button onclick="removeFromQueue(${i})" style="background:none;border:none;color:var(--muted2);cursor:pointer;font-size:.7rem;padding:0">✕</button>
-    </div>`).join('');
+    </div>`;
+  }).join('');
+  // Add CLEAR PROCESSED button if any are processed
+  if (hasProcessed) {
+    list.innerHTML += '<button onclick="clearProcessedFromQueue()" style="margin-top:.3rem;background:none;border:1px solid var(--teal);color:var(--teal);border-radius:4px;padding:.25rem .5rem;font-family:var(--mono);font-size:.48rem;cursor:pointer;letter-spacing:.5px;width:100%">✓ CLEAR PROCESSED</button>';
+  }
 }
 
 // ── Override panel ────────────────────────────────────────────────────────────
@@ -3078,6 +3118,9 @@ async function atReadTags() {
   cards.innerHTML = '';
   document.getElementById('atStep1Results').style.display = 'none';
 
+  // Ensure path prefix is loaded so folder paths show host paths, not docker paths
+  await _grmLoadPathSettings();
+
   await _atFetchPage(true);
 }
 
@@ -3156,6 +3199,9 @@ async function _atFetchPage(isFirst) {
     document.getElementById('atStep1Results').style.display = 'block';
     atUpdateStatusBadge();
 
+    // Mark scanned folders as processed in the queue
+    markFoldersProcessed(_atPaths);
+
     addLog(`✓ Loaded ${d.albums?.length || 0} folders (${d.total_files || 0} files total).${d.has_more?' More available.':' All loaded.'}`, 'ok');
 
     if (isFirst && btn) { btn.textContent = '🔄 RE-READ TAGS'; btn.disabled = false; }
@@ -3206,10 +3252,14 @@ function atBuildCard(key, alb) {
   card.innerHTML = `
     <!-- Card header -->
     <div style="display:flex;align-items:flex-start;gap:.75rem;flex-wrap:wrap">
+      <div style="flex-shrink:0;padding-top:.15rem">
+        <input type="checkbox" class="at-bulk-cb" data-key="${esc(key)}" onchange="atUpdateBulkBar()" style="accent-color:var(--crimson);width:16px;height:16px;cursor:pointer">
+      </div>
       <div style="flex:1;min-width:180px">
         <div style="font-family:var(--mono);font-size:.65rem;color:var(--text);font-weight:bold">
           📁 ${esc(alb.folderName)}${compilationBadge}${trackCountBadge}
         </div>
+        <div class="at-folder-path" style="font-family:var(--mono);font-size:.50rem;color:var(--text);margin-top:.15rem;word-break:break-all;user-select:all;cursor:text;opacity:.85" title="Click to select path for copying">${esc(atTranslatePath(alb.folderPath || key))}</div>
         ${alb.isCompilation && alb.artists.length
           ? `<div style="font-family:var(--mono);font-size:.48rem;color:var(--muted);margin-top:.15rem">Artists: ${esc(alb.artists.slice(0,4).join(', '))}${alb.artists.length>4?'…':''}</div>`
           : ''}
@@ -3223,13 +3273,13 @@ function atBuildCard(key, alb) {
       </div>
       <div style="display:flex;flex-direction:column;gap:.3rem;align-items:flex-end">
         <div style="display:flex;gap:.35rem;flex-wrap:wrap;justify-content:flex-end">
-          <button class="btn btn-outline btn-sm" onclick="atLookup('${esc(key)}')"
+          <button class="btn btn-outline btn-sm" onclick="atLookup('${escJs(key)}')"
             id="at-lookup-btn-${safeKey}"
             title="${alb.isCompilation ? 'Various Artists — Lookup may not work well. Consider Override instead.' : 'Get genre recommendation from MusicBrainz'}">
             ${alb.isCompilation ? '⚠️ LOOKUP' : '🔍 LOOKUP'}
           </button>
-          <button class="btn btn-pink btn-sm" onclick="atToggleOverride('${esc(key)}')" title="Manually set all tags for this folder">✏️ OVERRIDE</button>
-          <button class="btn btn-outline btn-sm" onclick="atKeep('${esc(key)}')" title="Tags are fine — leave them alone">✓ KEEP</button>
+          <button class="btn btn-pink btn-sm" onclick="atToggleOverride('${escJs(key)}')" title="Manually set all tags for this folder">✏️ OVERRIDE</button>
+          <button class="btn btn-outline btn-sm" onclick="atKeep('${escJs(key)}')" title="Tags are fine — leave them alone">✓ KEEP</button>
         </div>
         <div id="at-state-${safeKey}" style="font-family:var(--mono);font-size:.48rem;color:var(--muted2)">idle</div>
       </div>
@@ -3296,8 +3346,8 @@ function atBuildCard(key, alb) {
       <!-- Per-track selection -->
       <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted);letter-spacing:1px;margin-bottom:.3rem">
         TRACKS — uncheck any to exclude from write
-        <button onclick="atSelectAllTracks('${esc(key)}',true)" style="background:none;border:none;color:var(--teal);font-family:var(--mono);font-size:.46rem;cursor:pointer;padding:0 .3rem">all</button>
-        <button onclick="atSelectAllTracks('${esc(key)}',false)" style="background:none;border:none;color:var(--muted);font-family:var(--mono);font-size:.46rem;cursor:pointer;padding:0 .3rem">none</button>
+        <button onclick="atSelectAllTracks('${escJs(key)}',true)" style="background:none;border:none;color:var(--teal);font-family:var(--mono);font-size:.46rem;cursor:pointer;padding:0 .3rem">all</button>
+        <button onclick="atSelectAllTracks('${escJs(key)}',false)" style="background:none;border:none;color:var(--muted);font-family:var(--mono);font-size:.46rem;cursor:pointer;padding:0 .3rem">none</button>
       </div>
       <div style="max-height:120px;overflow-y:auto;background:var(--surface2);border-radius:4px;border:1px solid var(--border);padding:.25rem .4rem;margin-bottom:.5rem">
         ${trackRows}
@@ -3305,9 +3355,9 @@ function atBuildCard(key, alb) {
 
       <!-- Action buttons -->
       <div style="display:flex;gap:.35rem;flex-wrap:wrap">
-        <button class="btn btn-pink btn-sm" onclick="atApplyOverride('${esc(key)}')">✓ APPLY OVERRIDE</button>
-        <button class="btn btn-teal btn-sm" onclick="atWriteAlbum('${esc(key)}')">⬇ WRITE NOW</button>
-        <button class="btn btn-outline btn-sm" onclick="atToggleOverride('${esc(key)}')">✕ CLOSE</button>
+        <button class="btn btn-pink btn-sm" onclick="atApplyOverride('${escJs(key)}')">✓ APPLY OVERRIDE</button>
+        <button class="btn btn-teal btn-sm" onclick="atWriteAlbum('${escJs(key)}')">⬇ WRITE NOW</button>
+        <button class="btn btn-outline btn-sm" onclick="atToggleOverride('${escJs(key)}')">✕ CLOSE</button>
       </div>
     </div>`;
 
@@ -3619,6 +3669,137 @@ function atKeepAll() {
   });
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+//  BULK OVERRIDE — Select multiple cards, apply genre/mood to all at once
+// ══════════════════════════════════════════════════════════════════════════════
+
+var _atBulkDropdownsPopulated = false;
+
+function atTranslatePath(path) {
+  // Translate docker path (/music/...) to host path using Groomer's prefix settings
+  if (!path) return path;
+  if (_grmServerPrefix && _grmDockerPrefix && path.startsWith(_grmDockerPrefix)) {
+    return _grmServerPrefix + path.slice(_grmDockerPrefix.length);
+  }
+  return path;
+}
+
+function atPopulateBulkDropdowns() {
+  if (_atBulkDropdownsPopulated) return;
+  _atBulkDropdownsPopulated = true;
+  [1,2,3].forEach(n => {
+    const gs = document.getElementById('atBulk-g' + n);
+    if (gs) {
+      gs.innerHTML = '<option value="">— genre ' + n + (n>1?' (opt)':'') + ' —</option>'
+        + GENRE_LIST.map(g => '<option value="' + esc(g) + '">' + esc(g) + '</option>').join('');
+    }
+    const ms = document.getElementById('atBulk-m' + n);
+    if (ms) {
+      ms.innerHTML = '<option value="">— mood ' + n + (n>1?' (opt)':'') + ' —</option>'
+        + MOOD_LIST.map(m => '<option value="' + esc(m) + '">' + esc(m) + '</option>').join('');
+    }
+  });
+}
+
+function atToggleSelectAll(checked) {
+  document.querySelectorAll('.at-bulk-cb').forEach(cb => { cb.checked = checked; });
+  atUpdateBulkBar();
+}
+
+function atGetSelectedKeys() {
+  var keys = [];
+  document.querySelectorAll('.at-bulk-cb:checked').forEach(cb => {
+    keys.push(cb.getAttribute('data-key'));
+  });
+  return keys;
+}
+
+function atUpdateBulkBar() {
+  var keys = atGetSelectedKeys();
+  var bar = document.getElementById('atBulkOverrideBar');
+  var count = document.getElementById('atBulkCount');
+  var allCbs = document.querySelectorAll('.at-bulk-cb');
+  if (keys.length > 0 && allCbs.length > 0) {
+    bar.style.display = 'block';
+    count.textContent = keys.length;
+    atPopulateBulkDropdowns();
+  } else {
+    bar.style.display = 'none';
+  }
+  // Sync the select-all checkbox
+  var allChecked = allCbs.length > 0 && keys.length === allCbs.length;
+  var selectAll = document.getElementById('atSelectAllCb');
+  if (selectAll) selectAll.checked = allChecked;
+}
+
+function atBulkApplyOnly() {
+  var keys = atGetSelectedKeys();
+  if (!keys.length) { toast('No cards selected.', 'warn'); return; }
+  var genres = [1,2,3].map(n => document.getElementById('atBulk-g' + n)?.value || '').filter(Boolean);
+  var moods  = [1,2,3].map(n => document.getElementById('atBulk-m' + n)?.value || '').filter(Boolean);
+  if (!genres.length && !moods.length) { toast('Select at least one genre or mood.', 'warn'); return; }
+
+  var applied = 0;
+  keys.forEach(function(key) {
+    var alb = _atAlbums[key];
+    if (!alb) return;
+    if (genres.length) alb.overrideGenres = genres.slice();
+    if (moods.length)  alb.overrideMoods  = moods.slice();
+
+    // Show summary on card face
+    var safeKey = key.replace(/[^a-z0-9]/gi, '_');
+    var propEl = document.getElementById('at-proposed-' + safeKey);
+    if (propEl) {
+      var parts = [];
+      if (alb.overrideGenres.length) parts.push('Genres: ' + esc(alb.overrideGenres.join(' · ')));
+      if (alb.overrideMoods.length)  parts.push('Moods: ' + esc(alb.overrideMoods.join(' · ')));
+      propEl.style.display = 'block';
+      propEl.innerHTML = '<span style="font-family:var(--mono);font-size:.5rem;color:var(--pink)">' + parts.join('  ·  ') + '</span>';
+    }
+    atSetState(key, 'override');
+    applied++;
+  });
+  toast(applied + ' card' + (applied !== 1 ? 's' : '') + ' set to override — click WRITE ALL OVERRIDES to save.', 'ok');
+}
+
+async function atBulkApplyAndWrite() {
+  var keys = atGetSelectedKeys();
+  if (!keys.length) { toast('No cards selected.', 'warn'); return; }
+  var genres = [1,2,3].map(n => document.getElementById('atBulk-g' + n)?.value || '').filter(Boolean);
+  var moods  = [1,2,3].map(n => document.getElementById('atBulk-m' + n)?.value || '').filter(Boolean);
+  if (!genres.length && !moods.length) { toast('Select at least one genre or mood.', 'warn'); return; }
+
+  addLog('⬇ Bulk writing ' + keys.length + ' album' + (keys.length !== 1 ? 's' : '') + '…', 'info');
+  var written = 0;
+  for (var i = 0; i < keys.length; i++) {
+    var key = keys[i];
+    var alb = _atAlbums[key];
+    if (!alb) continue;
+    var filePaths = alb.tracks.map(function(t) { return t.file_path; });
+    try {
+      var r = await fetch(API + '/api/retriever/album-override', {
+        method: 'POST', headers: authHdrs(),
+        body: JSON.stringify({
+          file_paths:     filePaths,
+          album_name:     null,
+          album_artist:   null,
+          year:           null,
+          is_compilation: false,
+          clear_mbids:    true,
+          genres:         genres,
+          moods:          moods,
+        })
+      });
+      var d = await r.json();
+      if (d.console_msgs) d.console_msgs.forEach(function(m) { addLog(m, 'info'); });
+      if (r.ok && d.success > 0) { written += d.success; atRemoveCard(key); }
+    } catch(e) { addLog('❌ ' + alb.folderName + ': ' + e.message, 'err'); }
+  }
+  toast('✓ ' + written + ' tracks written (bulk override)', 'ok');
+  // Delay bar update to let card removal animations finish
+  setTimeout(function() { atUpdateBulkBar(); }, 500);
+}
+
 // Legacy stubs
 function loadAlbumTagger() {}
 function albumTaggerAcceptAll() { atKeepAll(); }
@@ -3862,6 +4043,7 @@ document.addEventListener('keydown', function(e) {
   }
 });
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function escJs(s) { return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'\\"'); }
 
 // SUBFOLDER BROWSER
 async function browseSubfolder(subPath) {
@@ -6428,6 +6610,18 @@ async function trkRefreshStatus() {
         cdEl.style.display = 'none';
         _trkNextTickUTC = null;
       }
+      // Auto-sync hint
+      var syncHint = document.getElementById('trk-auto-sync-hint');
+      if (syncHint) {
+        syncHint.style.display = 'block';
+        if (d.next_sync_in_seconds != null) {
+          var sh = Math.floor(d.next_sync_in_seconds / 3600);
+          var sm = Math.floor((d.next_sync_in_seconds % 3600) / 60);
+          syncHint.textContent = 'Auto-sync: next in ' + sh + 'h ' + sm + 'm';
+        } else {
+          syncHint.textContent = 'Auto-sync: every 6 hours';
+        }
+      }
     } else {
       btn.style.background = 'var(--surface2)';
       btn.style.color = 'var(--muted)';
@@ -6438,6 +6632,8 @@ async function trkRefreshStatus() {
       hint.textContent = 'Click to enable automatic hunting';
       cdEl.style.display = 'none';
       _trkNextTickUTC = null;
+      var syncHint2 = document.getElementById('trk-auto-sync-hint');
+      if (syncHint2) syncHint2.style.display = 'none';
     }
 
     // Connection dots
