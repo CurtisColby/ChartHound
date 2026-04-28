@@ -455,12 +455,14 @@ async def _cache_put(key: str, payload: dict):
         log.warning(f"cache_put failed (non-fatal): {e}")
 
 
-def _build_master_list(req: GapByGenreRequest) -> list:
+def _build_master_list_chart_only(req: GapByGenreRequest) -> dict:
     """
     Synchronous DB work: query chart_reference + chart_reference_extras,
-    apply genre + decade filters, dedupe, score. Returns sorted list.
+    apply genre + decade filters, dedupe, score. Returns the merged dict
+    keyed by (artist_norm, title_norm) so Last.fm enrichment can merge
+    into it without a second pass.
 
-    Phase 1: chart sources only. No Last.fm.
+    Phase 1 building block. Used by the async _build_master_list wrapper.
     """
     if not os.path.exists(_STATIC_DB):
         raise HTTPException(404, "Static database not found.")
@@ -495,11 +497,11 @@ def _build_master_list(req: GapByGenreRequest) -> list:
         where_clauses.append(f"chart_name IN ({placeholders})")
         params.extend(sorted(genre_chart_keys))
     elif req.genres and not genre_chart_keys:
-        # User picked genres but none map to any chart-source key (e.g. "indie",
-        # "jazz", "folk" — Phase 2 will handle those via Last.fm).
-        # Phase 1: return empty rather than dump the whole DB.
+        # User picked genres but none map to any chart-source key (e.g. "jazz",
+        # "indie", "folk", "metal"). Return an empty dict — Last.fm enrichment
+        # will populate from tag pulls. Phase 2 contract: always return a dict.
         conn.close()
-        return []
+        return {}
 
     # ── Decade filter ───────────────────────────────────────────────────────
     decade_ranges = _decades_to_year_ranges(req.decades or [])
@@ -584,59 +586,315 @@ def _build_master_list(req: GapByGenreRequest) -> list:
         elif m["best_year"] is None and r["chart_year"] is not None:
             m["best_year"] = r["chart_year"]
 
-    # Sort by score descending, slice to tier limit
+    # Return the raw merged dict (sources still as sets). The async wrapper
+    # will merge Last.fm signals, then sort/cap/label.
+    return merged
+
+
+# ── Last.fm enrichment ──────────────────────────────────────────────────────
+
+# Genre → Last.fm tags to query. Selecting one genre fans out to all listed tags.
+_GENRE_TO_LASTFM_TAGS = {
+    "country":     ["country", "alt-country", "outlaw country"],
+    "rock":        ["rock", "classic rock", "hard rock"],
+    "rnb":         ["rnb", "soul", "neo-soul"],
+    "dance":       ["dance", "electronic", "edm"],
+    "pop":         ["pop"],
+    "ccm":         ["christian", "christian rock", "worship"],
+    "hiphop":      ["hip hop", "rap", "hip-hop"],
+    "metal":       ["metal", "heavy metal", "thrash metal"],
+    "folk":        ["folk", "indie folk", "folk rock"],
+    "jazz":        ["jazz"],
+    "indie":       ["indie", "indie rock", "indie pop"],
+    "blues":       ["blues"],
+    "electronic":  ["electronic", "house", "techno"],
+    "alternative": ["alternative", "alternative rock"],
+}
+
+_LASTFM_WEIGHT  = 0.6     # per spec — Last.fm signal weight
+_LASTFM_TTL_HRS = 24      # cache pulls for 24h
+_LASTFM_PAGE_LIMIT = 250  # tracks per tag pull (max 1000, but 250 is plenty)
+
+
+async def _get_lastfm_key() -> str:
+    """Fetch the user's Last.fm API key from connections, decrypted. '' if missing."""
+    try:
+        async with aiosqlite.connect(_DYNAMIC_DB) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT token_enc FROM connections WHERE service='lastfm'"
+            ) as cur:
+                row = await cur.fetchone()
+                if row and row["token_enc"]:
+                    return decrypt_token(row["token_enc"]) or ""
+    except Exception:
+        pass
+    return ""
+
+
+async def _lastfm_tag_top_tracks(tag: str, lfm_key: str, limit: int = _LASTFM_PAGE_LIMIT) -> list:
+    """
+    Pull tag.getTopTracks for a single tag. Cached in master_list_cache under
+    'lfm:tag:{tag}' for 24h. Returns a list of dicts:
+        {artist, title, listeners, rank, tag}
+    """
+    if not lfm_key or not tag:
+        return []
+
+    # v2: tag.getTopTracks doesn't return listeners; we now key by rank.
+    # Bumping prefix invalidates any cached pulls from the buggy v1 parser.
+    cache_k = f"lfm:tag:v2:{tag.lower().strip()}:{limit}"
+    cached  = await _cache_get(cache_k)
+    if cached is not None:
+        return cached.get("tracks") or []
+
+    tracks = []
+    try:
+        async with httpx.AsyncClient(timeout=12.0) as client:
+            r = await client.get("https://ws.audioscrobbler.com/2.0/", params={
+                "method":  "tag.getTopTracks",
+                "tag":     tag,
+                "api_key": lfm_key,
+                "format":  "json",
+                "limit":   str(limit),
+                "page":    "1",
+            })
+            if r.is_success:
+                data = r.json()
+                # Last.fm response is polymorphic: when no tracks match, "tracks"
+                # may be an empty list []; when one track matches, "tracks.track"
+                # may be a single dict. Normalize both to a list of dicts.
+                tracks_field = data.get("tracks") if isinstance(data, dict) else None
+                if isinstance(tracks_field, dict):
+                    track_list = tracks_field.get("track", []) or []
+                else:
+                    track_list = []
+                if isinstance(track_list, dict):  # single-track edge case
+                    track_list = [track_list]
+                if not isinstance(track_list, list):
+                    track_list = []
+
+                for idx, t in enumerate(track_list):
+                    if not isinstance(t, dict):
+                        continue
+                    artist = ""
+                    if isinstance(t.get("artist"), dict):
+                        artist = t["artist"].get("name") or ""
+                    title = t.get("name") or ""
+                    if not artist or not title:
+                        continue
+                    # Prefer Last.fm's authoritative rank from @attr.rank;
+                    # fall back to retrieval order. tag.getTopTracks does NOT
+                    # return a listeners field — rank is our popularity signal.
+                    rank_val = idx + 1
+                    attrs = t.get("@attr")
+                    if isinstance(attrs, dict):
+                        try:
+                            rank_val = int(attrs.get("rank") or rank_val)
+                        except (TypeError, ValueError):
+                            pass
+                    tracks.append({
+                        "artist": artist,
+                        "title":  title,
+                        "rank":   rank_val,
+                        "tag":    tag,
+                    })
+    except Exception as e:
+        log.warning(f"Last.fm tag pull failed for '{tag}': {e}")
+        return []
+
+    # Cache (using same master_list_cache table — different key namespace)
+    await _cache_put(cache_k, {"tracks": tracks})
+    return tracks
+
+
+def _lastfm_score_by_rank(rank: int, total: int = _LASTFM_PAGE_LIMIT) -> float:
+    """
+    Convert Last.fm tag rank → score in [0, _LASTFM_WEIGHT].
+    Rank #1 = max, rank N = min. Mirrors how chart peak position is scored.
+
+    Note: tag.getTopTracks does NOT return listener counts. The track's @attr.rank
+    is Last.fm's authoritative popularity ordering for a tag, so we use that
+    directly. No extra API calls needed.
+        rank 1   → 0.6 × 1.000 = 0.60
+        rank 50  → 0.6 × 0.804 = 0.48
+        rank 250 → 0.6 × 0.004 ≈ 0.00
+    """
+    try:
+        r = int(rank)
+    except (TypeError, ValueError):
+        return 0.0
+    if r < 1: r = 1
+    if total < 1: total = _LASTFM_PAGE_LIMIT
+    if r > total: r = total
+    raw = (total - r + 1) / total
+    return round(_LASTFM_WEIGHT * raw, 4)
+
+
+async def _enrich_with_lastfm(merged: dict, req: GapByGenreRequest) -> bool:
+    """
+    Pull Last.fm tag tracks for each requested genre, merge into the master dict.
+    Returns True if Last.fm was used (key configured AND at least one tag mapped).
+
+    For each Last.fm track:
+      - If already in merged dict → add to sources, sum score
+      - If new → create entry with chart-y fields blank, score = lastfm score
+    """
+    lfm_key = await _get_lastfm_key()
+    if not lfm_key:
+        return False
+
+    # Collect all unique tags to fetch based on requested genres.
+    # Empty genres list = no Last.fm enrichment (would be too noisy / firehose).
+    genres = [g.lower() for g in (req.genres or [])]
+    tags_to_fetch = []
+    seen_tags = set()
+    for g in genres:
+        for t in _GENRE_TO_LASTFM_TAGS.get(g, []):
+            if t not in seen_tags:
+                seen_tags.add(t)
+                tags_to_fetch.append(t)
+
+    if not tags_to_fetch:
+        return False
+
+    # Decade filter is hard to apply to Last.fm tag pulls (tags don't carry years).
+    # Strategy: pull all tracks, but DROP any that *don't* match a requested decade
+    # IFF chart-source data already gives that track a year. Otherwise keep — same
+    # honest behavior as Phase 1 NULL-year passthrough.
+    decade_ranges = _decades_to_year_ranges(req.decades or [])
+
+    # Fan out (sequential to be polite to Last.fm rate limits). Could parallelize
+    # with asyncio.gather if needed, but typical cases need 1-3 tags so it's fast.
+    for tag in tags_to_fetch:
+        tracks = await _lastfm_tag_top_tracks(tag, lfm_key, limit=_LASTFM_PAGE_LIMIT)
+        for t in tracks:
+            a_n = _norm(t["artist"])
+            t_n = _norm(t["title"])
+            if not a_n or not t_n:
+                continue
+            key   = (a_n, t_n)
+            rank  = t.get("rank") or 999
+            score = _lastfm_score_by_rank(rank, _LASTFM_PAGE_LIMIT)
+            src   = f"lastfm:{tag}"
+
+            existing = merged.get(key)
+            if existing is None:
+                # New track from Last.fm only — no chart info known.
+                # Decade filter: if user picked decades, drop rows we can't
+                # verify (Last.fm-only tracks have unknown year).
+                if decade_ranges:
+                    continue
+                merged[key] = {
+                    "artist":      t["artist"],
+                    "title":       t["title"],
+                    "artist_norm": a_n,
+                    "title_norm":  t_n,
+                    "best_peak":   None,
+                    "best_chart":  "",
+                    "best_year":   None,
+                    "score":       score,
+                    "sources":     {src},
+                    "primary_chart_label": "",
+                    "best_lastfm_rank":    rank,
+                    "best_lastfm_tag":     tag,
+                }
+            else:
+                # Existing track — boost its score, tag the source.
+                # Track best (lowest) Last.fm rank seen across multiple tag hits.
+                existing["score"] += score
+                existing["sources"].add(src)
+                cur_rank = existing.get("best_lastfm_rank") or 9999
+                if rank < cur_rank:
+                    existing["best_lastfm_rank"] = rank
+                    existing["best_lastfm_tag"]  = tag
+    return True
+
+
+async def _build_master_list(req: GapByGenreRequest) -> dict:
+    """
+    Phase 2 async master list builder.
+
+    Pipeline:
+      1. Query chart sources (sync, in thread)
+      2. Pull Last.fm tag tracks for requested genres (async, cached)
+      3. Merge — same dedup key as Phase 1
+      4. Sort by score, slice to tier cap, build display labels
+
+    Returns dict: {"items": [...], "lastfm_used": bool}
+    """
+    # Step 1: chart sources
+    merged = await asyncio.to_thread(_build_master_list_chart_only, req)
+
+    # Step 2 + 3: Last.fm enrichment (merges into the same dict)
+    lastfm_used = await _enrich_with_lastfm(merged, req)
+
+    # Step 4: sort, cap, label
     items = list(merged.values())
-    items.sort(key=lambda x: x["score"], reverse=True)
+    items.sort(key=lambda x: x.get("score", 0.0), reverse=True)
     cap = _TIER_LIMITS.get((req.tier or "notable").lower(), _TIER_LIMITS["notable"])
     items = items[:cap]
 
-    # Build display label (e.g. "Hot 100 #4 (1985)" or "Country #1")
     for m in items:
-        chart_disp = CHART_DISPLAY.get(m["best_chart"], m["best_chart"] or "Chart")
-        peak       = m["best_peak"]
-        year       = m["best_year"]
-        if peak and year:
+        chart_disp = CHART_DISPLAY.get(m.get("best_chart") or "", m.get("best_chart") or "")
+        peak       = m.get("best_peak")
+        year       = m.get("best_year")
+        lfm_rank   = m.get("best_lastfm_rank")
+        lfm_tag    = m.get("best_lastfm_tag") or ""
+        if peak and year and chart_disp:
             m["primary_chart_label"] = f"{chart_disp} #{peak} ({year})"
-        elif peak:
+        elif peak and chart_disp:
             m["primary_chart_label"] = f"{chart_disp} #{peak}"
-        else:
+        elif chart_disp:
             m["primary_chart_label"] = chart_disp
+        elif lfm_rank and lfm_tag:
+            # Last.fm-only track — show its rank in the tag's top tracks
+            m["primary_chart_label"] = f"🔥 Last.fm {lfm_tag} #{lfm_rank}"
+        else:
+            m["primary_chart_label"] = ""
         # Convert sources set → sorted list for JSON
         m["sources"] = sorted(m["sources"])
 
-    return items
+    return {"items": items, "lastfm_used": lastfm_used}
 
 
 @router.post("/gap-by-genre")
 async def gap_by_genre(req: GapByGenreRequest, _=Depends(require_auth)):
     """
     Library-first Gap Fill. Pick genres + decades + tier, get a deduped,
-    scored master list with owned/missing flags. Phase 1 = chart sources only.
+    scored master list with owned/missing flags.
+
+    Phase 2: chart sources + Last.fm tag enrichment. Last.fm degrades gracefully
+    if no API key is configured (chart-only fallback).
     """
     # Make sure cache table + genre_tags column exist
     await _ensure_phase1_schema()
 
     cache_payload = req.model_dump() if hasattr(req, "model_dump") else req.dict()
-    key = _cache_key(cache_payload)
+    key = "master:" + _cache_key(cache_payload)
 
     cached = None
     if not req.bypass_cache:
         cached = await _cache_get(key)
 
     if cached is None:
-        # Build (sync DB work) — wrap in try/except so a build error returns 500 cleanly
         try:
-            items = await asyncio.to_thread(_build_master_list, req)
+            built = await _build_master_list(req)
         except HTTPException:
             raise
         except Exception as e:
             log.exception("gap_by_genre build failed")
             raise HTTPException(500, f"Master list build failed: {e}")
 
-        cached = {"items": items, "built_at": datetime.now(timezone.utc).isoformat()}
+        cached = {
+            "items":       built["items"],
+            "lastfm_used": built["lastfm_used"],
+            "built_at":    datetime.now(timezone.utc).isoformat(),
+        }
         await _cache_put(key, cached)
 
-    items = cached.get("items") or []
+    items        = cached.get("items") or []
+    lastfm_used  = bool(cached.get("lastfm_used"))
     total_master = len(items)
 
     # Library cross-reference (always live — library state changes more often than master list)
@@ -654,11 +912,13 @@ async def gap_by_genre(req: GapByGenreRequest, _=Depends(require_auth)):
             "chart_name":     m.get("best_chart") or "",
             "chart_display":  CHART_DISPLAY.get(m.get("best_chart") or "", m.get("best_chart") or ""),
             "peak_position":  m.get("best_peak"),
-            "weeks_on_chart": None,             # Phase 2 may surface this
+            "weeks_on_chart": None,
             "chart_year":     m.get("best_year"),
             "score":          round(float(m.get("score") or 0.0), 4),
             "sources":        m.get("sources") or [],
             "primary_chart_label": m.get("primary_chart_label") or "",
+            "lastfm_rank":    m.get("best_lastfm_rank"),
+            "lastfm_tag":     m.get("best_lastfm_tag"),
             "in_library":     owned,
             "track_id":       tid,
         })
@@ -667,17 +927,18 @@ async def gap_by_genre(req: GapByGenreRequest, _=Depends(require_auth)):
     page = enriched[req.offset: req.offset + req.limit]
     owned_ct = sum(1 for r in enriched if r["in_library"])
     return {
-        "results":     page,
-        "total":       total_filtered,        # filtered total (after include_owned)
-        "total_master": total_master,         # raw master list size before owned filter
-        "owned":       owned_ct,
-        "missing":     total_filtered - owned_ct,
-        "offset":      req.offset,
-        "limit":       req.limit,
-        "tier":        req.tier,
-        "genres":      req.genres,
-        "decades":     req.decades,
-        "cache_built": cached.get("built_at"),
+        "results":      page,
+        "total":        total_filtered,
+        "total_master": total_master,
+        "owned":        owned_ct,
+        "missing":      total_filtered - owned_ct,
+        "offset":       req.offset,
+        "limit":        req.limit,
+        "tier":         req.tier,
+        "genres":       req.genres,
+        "decades":      req.decades,
+        "lastfm_used":  lastfm_used,
+        "cache_built":  cached.get("built_at"),
     }
 
 
@@ -687,18 +948,7 @@ async def gap_by_genre(req: GapByGenreRequest, _=Depends(require_auth)):
 
 @router.post("/trending")
 async def trending(req: TrendingRequest, _=Depends(require_auth)):
-    lfm_key = ""
-    try:
-        async with aiosqlite.connect(_DYNAMIC_DB) as db:
-            db.row_factory = aiosqlite.Row
-            async with db.execute(
-                "SELECT token_enc FROM connections WHERE service='lastfm'"
-            ) as cur:
-                row = await cur.fetchone()
-                if row and row["token_enc"]:
-                    lfm_key = decrypt_token(row["token_enc"]) or ""
-    except Exception:
-        pass
+    lfm_key = await _get_lastfm_key()
     if not lfm_key:
         raise HTTPException(400, "No Last.fm API key configured.")
 
@@ -711,12 +961,27 @@ async def trending(req: TrendingRequest, _=Depends(require_auth)):
                 "limit": str(min(req.limit, 200)), "page": str(req.page),
             })
             if r.is_success:
-                for t in r.json().get("tracks", {}).get("track", []):
-                    tracks.append({
-                        "artist": t.get("artist", {}).get("name", ""),
-                        "title":  t.get("name", ""),
-                        "listeners": int(t.get("listeners", 0)),
-                    })
+                data = r.json()
+                tracks_field = data.get("tracks") if isinstance(data, dict) else None
+                if isinstance(tracks_field, dict):
+                    track_list = tracks_field.get("track", []) or []
+                else:
+                    track_list = []
+                if isinstance(track_list, dict):
+                    track_list = [track_list]
+                if not isinstance(track_list, list):
+                    track_list = []
+                for t in track_list:
+                    if not isinstance(t, dict):
+                        continue
+                    artist = (t.get("artist") or {}).get("name", "") if isinstance(t.get("artist"), dict) else ""
+                    title  = t.get("name", "") or ""
+                    try:
+                        listeners = int(t.get("listeners", 0) or 0)
+                    except (TypeError, ValueError):
+                        listeners = 0
+                    if artist and title:
+                        tracks.append({"artist": artist, "title": title, "listeners": listeners})
     except Exception as e:
         raise HTTPException(502, f"Last.fm error: {e}")
 
