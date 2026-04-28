@@ -1199,53 +1199,61 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
 
           <!-- GAP FILL OPTIONS -->
           <div id="snf-gap-section">
-            <!-- CHART CHECKBOXES -->
+            <!-- GENRES -->
             <div>
-              <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--gold);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">CHART FILTERS<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
+              <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--gold);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">GENRES<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
               <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem;display:flex;flex-direction:column;gap:.4rem">
-                <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.75rem"><input type="checkbox" id="snf-hot100" checked style="accent-color:var(--gold)"><span>Billboard Hot 100</span></label>
-                <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.75rem"><input type="checkbox" id="snf-adultpop" checked style="accent-color:var(--gold)"><span>Adult Pop / Top 40</span></label>
-                <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.75rem"><input type="checkbox" id="snf-ac" style="accent-color:var(--gold)"><span>Adult Contemporary</span></label>
-                <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.75rem"><input type="checkbox" id="snf-uk" style="accent-color:var(--gold)"><span>UK Singles Chart</span></label>
-                <div style="height:1px;background:var(--border);margin:.15rem 0"></div>
-                <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.75rem"><input type="checkbox" id="snf-country" style="accent-color:var(--gold)"><span>Hot Country Songs</span></label>
-                <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.75rem"><input type="checkbox" id="snf-rnb" style="accent-color:var(--gold)"><span>R&amp;B / Hip-Hop</span></label>
-                <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.75rem"><input type="checkbox" id="snf-rock" style="accent-color:var(--gold)"><span>Mainstream Rock</span></label>
-                <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.75rem"><input type="checkbox" id="snf-dance" style="accent-color:var(--gold)"><span>Dance / Electronic</span></label>
+                <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.75rem"><input type="checkbox" class="snf-genre" value="country" style="accent-color:var(--gold)"><span>Country</span></label>
+                <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.75rem"><input type="checkbox" class="snf-genre" value="rock" style="accent-color:var(--gold)"><span>Rock</span></label>
+                <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.75rem"><input type="checkbox" class="snf-genre" value="rnb" style="accent-color:var(--gold)"><span>R&amp;B / Hip-Hop</span></label>
+                <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.75rem"><input type="checkbox" class="snf-genre" value="dance" style="accent-color:var(--gold)"><span>Dance / Electronic</span></label>
+                <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.75rem"><input type="checkbox" class="snf-genre" value="pop" style="accent-color:var(--gold)"><span>Pop / Adult Pop</span></label>
+                <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.75rem"><input type="checkbox" class="snf-genre" value="ccm" style="accent-color:var(--gold)"><span>CCM / Christian</span></label>
+                <div style="font-size:.52rem;color:var(--muted2);font-family:var(--mono);margin-top:.3rem;letter-spacing:.5px">Leave all unchecked = all genres</div>
               </div>
             </div>
 
-            <!-- YEAR RANGE -->
+            <!-- DECADES -->
             <div>
-              <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--gold);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">YEAR RANGE<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
-              <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem;display:flex;flex-direction:column;gap:.75rem">
-                <div>
-                  <div style="display:flex;justify-content:space-between;margin-bottom:.3rem">
-                    <label style="font-size:.7rem;color:var(--muted)">From Year</label>
-                    <span style="font-family:var(--display);font-size:1.05rem;color:var(--amber)" id="snf-year-min-display">1958</span>
-                  </div>
-                  <input type="range" id="snf-year-min" min="1890" max="2025" value="1958" oninput="snfUpdateYearMin(this.value)" style="width:100%">
-                </div>
-                <div>
-                  <div style="display:flex;justify-content:space-between;margin-bottom:.3rem">
-                    <label style="font-size:.7rem;color:var(--muted)">To Year</label>
-                    <span style="font-family:var(--display);font-size:1.05rem;color:var(--amber)" id="snf-year-max-display">2025</span>
-                  </div>
-                  <input type="range" id="snf-year-max" min="1890" max="2025" value="2025" oninput="snfUpdateYearMax(this.value)" style="width:100%">
+              <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--gold);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">DECADES<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
+              <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem;display:flex;flex-direction:column;gap:.4rem">
+                <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.7rem;color:var(--muted);border-bottom:1px solid var(--border);padding-bottom:.4rem"><input type="checkbox" id="snf-decade-all" checked onchange="snfToggleAllDecades(this.checked)" style="accent-color:var(--gold)"><span style="letter-spacing:1px">ALL DECADES</span></label>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:.35rem">
+                  <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:.72rem"><input type="checkbox" class="snf-decade" value="1950s" onchange="snfDecadeChanged()" style="accent-color:var(--gold)"><span>50s</span></label>
+                  <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:.72rem"><input type="checkbox" class="snf-decade" value="1960s" onchange="snfDecadeChanged()" style="accent-color:var(--gold)"><span>60s</span></label>
+                  <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:.72rem"><input type="checkbox" class="snf-decade" value="1970s" onchange="snfDecadeChanged()" style="accent-color:var(--gold)"><span>70s</span></label>
+                  <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:.72rem"><input type="checkbox" class="snf-decade" value="1980s" onchange="snfDecadeChanged()" style="accent-color:var(--gold)"><span>80s</span></label>
+                  <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:.72rem"><input type="checkbox" class="snf-decade" value="1990s" onchange="snfDecadeChanged()" style="accent-color:var(--gold)"><span>90s</span></label>
+                  <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:.72rem"><input type="checkbox" class="snf-decade" value="2000s" onchange="snfDecadeChanged()" style="accent-color:var(--gold)"><span>00s</span></label>
+                  <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:.72rem"><input type="checkbox" class="snf-decade" value="2010s" onchange="snfDecadeChanged()" style="accent-color:var(--gold)"><span>10s</span></label>
+                  <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:.72rem"><input type="checkbox" class="snf-decade" value="2020s" onchange="snfDecadeChanged()" style="accent-color:var(--gold)"><span>20s</span></label>
                 </div>
               </div>
             </div>
 
-            <!-- PEAK POSITION -->
+            <!-- NOTABILITY TIER -->
             <div>
-              <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--gold);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">PEAK POSITION<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
-              <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem">
+              <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--gold);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">NOTABILITY<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
+              <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem;display:flex;flex-direction:column;gap:.45rem">
+                <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.75rem"><input type="radio" name="snf-tier" value="essential" style="accent-color:var(--gold)"><span>Essential <span style="color:var(--muted2);font-size:.62rem">(top 250)</span></span></label>
+                <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.75rem"><input type="radio" name="snf-tier" value="notable" checked style="accent-color:var(--gold)"><span>Notable <span style="color:var(--muted2);font-size:.62rem">(top 1,000)</span></span></label>
+                <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.75rem"><input type="radio" name="snf-tier" value="deep" style="accent-color:var(--gold)"><span>Deep cuts <span style="color:var(--muted2);font-size:.62rem">(top 5,000)</span></span></label>
+              </div>
+            </div>
+
+            <!-- ADVANCED (collapsible, hidden by default) -->
+            <div>
+              <button type="button" onclick="snfToggleAdvanced()" id="snf-adv-toggle" style="width:100%;background:none;border:none;color:var(--muted2);font-family:var(--mono);font-size:.56rem;letter-spacing:3px;padding:.4rem 0;cursor:pointer;text-align:left;display:flex;align-items:center;gap:.5rem">
+                <span id="snf-adv-arrow">▸</span><span>ADVANCED</span><span style="flex:1;height:1px;background:var(--border);display:block"></span>
+              </button>
+              <div id="snf-adv-section" style="display:none;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem;margin-top:.35rem">
                 <div style="display:flex;justify-content:space-between;margin-bottom:.3rem">
-                  <label style="font-size:.7rem;color:var(--muted)">Top</label>
-                  <span style="font-family:var(--display);font-size:1.05rem;color:var(--amber)" id="snf-peak-display">Top 40</span>
+                  <label style="font-size:.7rem;color:var(--muted)">Max peak position</label>
+                  <span style="font-family:var(--display);font-size:1.05rem;color:var(--amber)" id="snf-peak-display">All peaks</span>
                 </div>
-                <input type="range" id="snf-peak" min="1" max="100" value="40" oninput="snfUpdatePeak(this.value)" style="width:100%">
-                <div style="display:flex;justify-content:space-between;margin-top:.2rem"><span style="font-size:.52rem;color:var(--muted);font-family:var(--mono)">#1</span><span style="font-size:.52rem;color:var(--muted);font-family:var(--mono)">#100</span></div>
+                <input type="range" id="snf-peak" min="1" max="100" value="100" oninput="snfUpdatePeak(this.value)" style="width:100%">
+                <div style="display:flex;justify-content:space-between;margin-top:.2rem"><span style="font-size:.52rem;color:var(--muted);font-family:var(--mono)">#1</span><span style="font-size:.52rem;color:var(--muted);font-family:var(--mono)">All</span></div>
+                <div style="font-size:.52rem;color:var(--muted2);font-family:var(--mono);margin-top:.5rem;line-height:1.6;letter-spacing:.5px">Filter the master list to only tracks that hit at least this peak. Slide right to disable.</div>
               </div>
             </div>
           </div>
@@ -1307,7 +1315,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
           <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1rem 1.5rem">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem">
               <div style="font-family:var(--display);font-size:1.1rem;letter-spacing:1.5px" id="snf-status-title">READY TO SNIFF</div>
-              <div style="font-family:var(--mono);font-size:.58rem;color:var(--muted)" id="snf-status-sub">Select charts and year range, then click Find Missing Tracks</div>
+              <div style="font-family:var(--mono);font-size:.58rem;color:var(--muted)" id="snf-status-sub">Pick genres and decades, then click Find Missing Tracks</div>
             </div>
             <div style="display:flex;gap:1.5rem;flex-wrap:wrap">
               <div style="text-align:center;min-width:70px">
@@ -5270,18 +5278,50 @@ function snfLog(msg, type='') {
   el.scrollTop = el.scrollHeight;
 }
 
-function snfGetSelectedCharts() {
-  const map = {
-    'snf-hot100':'hot100','snf-adultpop':'adultpop','snf-ac':'ac','snf-uk':'uk_official',
-    'snf-country':'country','snf-rnb':'rnb','snf-rock':'rock','snf-dance':'dance',
-  };
-  return Object.entries(map).filter(([id])=>document.getElementById(id)?.checked).map(([,v])=>v);
+function snfGetSelectedGenres() {
+  return Array.from(document.querySelectorAll('.snf-genre:checked')).map(function(el){return el.value});
 }
 
-function snfUpdateYearMin(v) { document.getElementById('snf-year-min-display').textContent = v; }
-function snfUpdateYearMax(v) { document.getElementById('snf-year-max-display').textContent = v; }
+function snfGetSelectedDecades() {
+  // If "All decades" master is checked OR no individual decade is checked, return [] (= no filter)
+  const allEl = document.getElementById('snf-decade-all');
+  if (allEl && allEl.checked) return [];
+  const picks = Array.from(document.querySelectorAll('.snf-decade:checked')).map(function(el){return el.value});
+  return picks;
+}
+
+function snfGetSelectedTier() {
+  const el = document.querySelector('input[name="snf-tier"]:checked');
+  return el ? el.value : 'notable';
+}
+
+function snfToggleAllDecades(checked) {
+  // When user (re)checks the master "All", clear individual picks. They become available
+  // to pick again, which auto-unchecks the master via snfDecadeChanged.
+  if (checked) {
+    document.querySelectorAll('.snf-decade').forEach(function(el){el.checked = false});
+  }
+}
+
+function snfDecadeChanged() {
+  // Any individual decade pick implicitly disables the "All decades" master.
+  const anyPicked = document.querySelectorAll('.snf-decade:checked').length > 0;
+  const allEl = document.getElementById('snf-decade-all');
+  if (allEl) allEl.checked = !anyPicked;
+}
+
+function snfToggleAdvanced() {
+  const sec = document.getElementById('snf-adv-section');
+  const arr = document.getElementById('snf-adv-arrow');
+  const open = sec.style.display !== 'none';
+  sec.style.display = open ? 'none' : 'block';
+  if (arr) arr.textContent = open ? '\u25b8' : '\u25be';
+}
+
 function snfUpdatePeak(v) {
-  document.getElementById('snf-peak-display').textContent = v == 1 ? '#1 Only' : 'Top ' + v;
+  const n = parseInt(v);
+  document.getElementById('snf-peak-display').textContent =
+    n === 1 ? '#1 Only' : n >= 100 ? 'All peaks' : 'Top ' + n;
 }
 
 async function snfRunAnalysis() {
@@ -5290,30 +5330,46 @@ async function snfRunAnalysis() {
 }
 
 async function snfGapAnalysis(append) {
-  const charts = snfGetSelectedCharts();
-  if (!charts.length) { toast('Select at least one chart.', 'warn'); return; }
-  if (!append) { snfOffset = 0; snfResults = []; }
-  const yearMin = parseInt(document.getElementById('snf-year-min').value);
-  const yearMax = parseInt(document.getElementById('snf-year-max').value);
+  const genres  = snfGetSelectedGenres();
+  const decades = snfGetSelectedDecades();
+  const tier    = snfGetSelectedTier();
   const peakMax = parseInt(document.getElementById('snf-peak').value);
-  snfLog('Searching ' + charts.length + ' chart(s) \u00b7 ' + yearMin + '\u2013' + yearMax + ' \u00b7 peak \u2264 #' + peakMax + '\u2026', 'info');
+  if (!append) { snfOffset = 0; snfResults = []; }
+  const tierLabel  = tier === 'essential' ? 'Essential (250)' : tier === 'deep' ? 'Deep cuts (5,000)' : 'Notable (1,000)';
+  const genreLabel = genres.length ? genres.join(', ') : 'all genres';
+  const decadeLabel = decades.length ? decades.join(', ') : 'all decades';
+  const peakLabel  = peakMax >= 100 ? '' : ' \u00b7 peak \u2264 #' + peakMax;
+  snfLog('Searching ' + genreLabel + ' \u00b7 ' + decadeLabel + ' \u00b7 ' + tierLabel + peakLabel + '\u2026', 'info');
   document.getElementById('snf-status-title').textContent = 'SEARCHING\u2026';
   document.getElementById('snf-btn-search').disabled = true;
   try {
-    const r = await fetch(API + '/api/sniffer/gap-analysis', {
+    const r = await fetch(API + '/api/sniffer/gap-by-genre', {
       method:'POST', headers:authHdrs(),
-      body: JSON.stringify({ charts, min_year: yearMin, max_year: yearMax, min_peak: 1, max_peak: peakMax, limit: SNF_PAGE, offset: snfOffset }),
+      body: JSON.stringify({ genres, decades, tier, limit: SNF_PAGE, offset: snfOffset }),
     });
     const d = await r.json();
     if (!r.ok) throw new Error(d.detail || 'HTTP ' + r.status);
+
+    // Server already filters by genre/decade/tier and paginates. Apply client-side
+    // peak filter only when the user dialed it in (peakMax < 100).
+    let incoming = d.results || [];
+    if (peakMax < 100) {
+      incoming = incoming.filter(function(r){
+        const p = parseInt(r.peak_position);
+        return isFinite(p) && p > 0 && p <= peakMax;
+      });
+    }
+
     snfTotal = d.total || 0;
-    snfResults = append ? snfResults.concat(d.results || []) : (d.results || []);
+    snfResults = append ? snfResults.concat(incoming) : incoming;
     snfOffset += (d.results || []).length;
     document.getElementById('snf-s-total').textContent = snfTotal.toLocaleString();
     document.getElementById('snf-s-owned').textContent = (d.owned || 0).toLocaleString();
     document.getElementById('snf-s-missing').textContent = (d.missing || 0).toLocaleString();
     document.getElementById('snf-status-title').textContent = 'ANALYSIS COMPLETE';
-    document.getElementById('snf-status-sub').textContent = snfTotal.toLocaleString() + ' chart entries \u00b7 ' + (d.owned||0).toLocaleString() + ' owned \u00b7 ' + (d.missing||0).toLocaleString() + ' missing';
+    const peakNote = peakMax < 100 ? ' \u00b7 peak filter \u2264 #' + peakMax : '';
+    document.getElementById('snf-status-sub').textContent =
+      snfTotal.toLocaleString() + ' master entries \u00b7 ' + (d.owned||0).toLocaleString() + ' owned \u00b7 ' + (d.missing||0).toLocaleString() + ' missing' + peakNote;
     snfRenderResults();
     snfUpdateLoadMore();
     snfLog('\u2713 Found ' + snfTotal.toLocaleString() + ' entries \u2014 ' + (d.missing||0).toLocaleString() + ' missing', 'ok');
@@ -5394,7 +5450,12 @@ function snfRenderResults() {
     if (snfCurrentFilter === 'owned' && !r.in_library) tr.style.display = 'none';
     const statusHTML = r.in_library ? '<span style="color:var(--green)">\u2705 Owned</span>' : '<span style="color:var(--red)">\u274c Missing</span>';
     const peakHTML = r.peak_position ? '<span style="font-family:var(--display);font-size:1rem;color:var(--amber)">#'+r.peak_position+'</span>' : '<span style="color:var(--muted2)">\u2014</span>';
-    const chartBadge = r.chart_display ? '<span style="font-size:.5rem;padding:.1rem .35rem;border-radius:8px;background:rgba(245,166,35,.1);border:1px solid rgba(245,166,35,.25);color:var(--gold);white-space:nowrap">'+esc(r.chart_display)+'</span>' : '\u2014';
+    // Prefer primary_chart_label (e.g. "Country #1 (1985)") when the new endpoint provides it
+    const badgeText = r.primary_chart_label || r.chart_display || '';
+    const srcList   = Array.isArray(r.sources) ? r.sources : [];
+    const srcSuffix = srcList.length > 1 ? ' \u00b7 ' + srcList.length + ' sources' : '';
+    const srcTitle  = srcList.length ? ' title="Sources: ' + esc(srcList.join(', ')) + '"' : '';
+    const chartBadge = badgeText ? '<span'+srcTitle+' style="font-size:.5rem;padding:.1rem .35rem;border-radius:8px;background:rgba(245,166,35,.1);border:1px solid rgba(245,166,35,.25);color:var(--gold);white-space:nowrap;cursor:'+(srcList.length?'help':'default')+'">'+esc(badgeText)+srcSuffix+'</span>' : '\u2014';
     const listenersHTML = r.listeners ? '<span style="font-size:.55rem;color:var(--muted2);margin-left:.35rem">('+(r.listeners/1000).toFixed(0)+'k)</span>' : '';
     const actionHTML = r.in_library ? '' : '<button onclick="snfSearchTrack('+idx+')" style="padding:.25rem .6rem;background:var(--surface2);color:var(--gold);border:1px solid var(--gold);border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer;letter-spacing:.5px;white-space:nowrap">\ud83d\udd0d SEARCH</button>';
     tr.innerHTML = '<td style="padding:.45rem .75rem;color:var(--muted)">'+esc(r.artist||'')+'</td><td style="padding:.45rem .75rem;color:var(--text)">'+esc(r.title||'')+listenersHTML+'</td><td style="padding:.45rem .75rem;color:var(--muted)">'+(r.chart_year||'\u2014')+'</td><td style="padding:.45rem .75rem">'+peakHTML+'</td><td style="padding:.45rem .75rem">'+chartBadge+'</td><td style="padding:.45rem .75rem">'+statusHTML+'</td><td style="padding:.45rem .75rem">'+actionHTML+'</td>';
@@ -5607,16 +5668,10 @@ function snfCopyMagnet(cardId, resultIdx) {
 }
 
 function snfInit() {
-  // Dynamic year range from static DB
-  fetch(API + '/api/sniffer/year-range', {headers:authHdrs()})
-    .then(function(r){return r.json()}).then(function(d) {
-      const minEl = document.getElementById('snf-year-min');
-      const maxEl = document.getElementById('snf-year-max');
-      const curYear = new Date().getFullYear();
-      if (minEl && d.min_year) minEl.min = d.min_year;
-      if (maxEl) { maxEl.max = curYear; maxEl.value = curYear; }
-      snfUpdateYearMax(curYear);
-    }).catch(function(){});
+  // Phase 3: no year-range fetch needed. Decades multi-select replaces sliders.
+  // Initialize peak slider display (default = "All peaks")
+  const peakEl = document.getElementById('snf-peak');
+  if (peakEl) snfUpdatePeak(peakEl.value);
   snfInjectScrollNav();
 }
 
