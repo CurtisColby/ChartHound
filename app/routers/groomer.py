@@ -1954,18 +1954,21 @@ _LBZ_BATCH_SIZE     = 50    # LBZ batch size (keep URLs short)
 _LBZ_TOP_N          = 150   # top N to store per genre/decade
 
 _LBZ_GENRE_TAGS = {
-    "rock":    "rock",
-    "rnb":     "r&b",
-    "country": "country",
-    "dance":   "electronic",
+    # Billboard-covered genres — pre-1990 only (post-1990 handled by year-end importers)
+    "rock":        ("rock",        [(1950,1959),(1960,1969),(1970,1979),(1980,1989)]),
+    "rnb":         ("r&b",         [(1950,1959),(1960,1969),(1970,1979),(1980,1989)]),
+    "country":     ("country",     [(1950,1959),(1960,1969),(1970,1979),(1980,1989)]),
+    "dance":       ("electronic",  [(1950,1959),(1960,1969),(1970,1979),(1980,1989)]),
+    # Last.fm-only genres — all applicable decades (no Billboard coverage)
+    "hiphop":      ("hip hop",     [(1970,1979),(1980,1989),(1990,1999),(2000,2009),(2010,2019),(2020,2026)]),
+    "metal":       ("heavy metal", [(1970,1979),(1980,1989),(1990,1999),(2000,2009),(2010,2019),(2020,2026)]),
+    "alternative": ("alternative", [(1980,1989),(1990,1999),(2000,2009),(2010,2019),(2020,2026)]),
+    "indie":       ("indie",       [(1990,1999),(2000,2009),(2010,2019),(2020,2026)]),
+    "folk":        ("folk",        [(1950,1959),(1960,1969),(1970,1979),(1980,1989),(1990,1999),(2000,2009),(2010,2019),(2020,2026)]),
+    "jazz":        ("jazz",        [(1920,1929),(1930,1939),(1940,1949),(1950,1959),(1960,1969),(1970,1979),(1980,1989),(1990,1999),(2000,2009),(2010,2019)]),
+    "blues":       ("blues",       [(1920,1929),(1930,1939),(1940,1949),(1950,1959),(1960,1969),(1970,1979),(1980,1989),(1990,1999),(2000,2009)]),
+    "electronic":  ("electronic",  [(1980,1989),(1990,1999),(2000,2009),(2010,2019),(2020,2026)]),
 }
-
-_LBZ_DECADES = [
-    (1950, 1959),
-    (1960, 1969),
-    (1970, 1979),
-    (1980, 1989),
-]
 
 
 async def _mbz_search_decade(client: httpx.AsyncClient, tag: str, year_from: int, year_to: int) -> list:
@@ -2052,8 +2055,8 @@ async def _import_listenbrainz_historical():
     entries_by_genre: dict = {g: [] for g in _LBZ_GENRE_TAGS}
 
     async with httpx.AsyncClient(headers=_MBZ_HEADERS, follow_redirects=True) as client:
-        for genre, tag in _LBZ_GENRE_TAGS.items():
-            for year_from, year_to in _LBZ_DECADES:
+        for genre, (tag, decades) in _LBZ_GENRE_TAGS.items():
+            for year_from, year_to in decades:
                 label = f"{genre} {year_from}s"
                 _vet_import_job["message"] = f"Fetching {label} from MusicBrainz..."
                 log.info(f"listenbrainz_historical: querying {label}")
@@ -2115,7 +2118,7 @@ async def _import_listenbrainz_historical():
     _vet_import_job["skipped"]  = skipped_total
     _vet_import_job["message"]  = (
         f"ListenBrainz historical complete: {inserted_total:,} entries across "
-        f"{len(_LBZ_GENRE_TAGS)} genres x {len(_LBZ_DECADES)} decades. "
+        f"{len(_LBZ_GENRE_TAGS)} genres. "
         f"{skipped_total:,} skipped."
     )
     log.info(f"listenbrainz_historical complete: {inserted_total} inserted, {skipped_total} skipped")
