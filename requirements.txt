@@ -19,6 +19,9 @@ httpx==0.27.0
 # Background task scheduler (The Bloodhound + The Tracker)
 apscheduler==3.10.4
 
+# Billboard chart data (year-end + current week scraper)
+billboard.py==7.1.0
+
 # Pydantic for data validation
 pydantic==2.7.1
 pydantic-settings==2.2.1

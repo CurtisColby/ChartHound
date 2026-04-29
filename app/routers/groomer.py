@@ -944,9 +944,39 @@ _STATIC_SOURCES = [
     },
     {
         "id":       "ccm",
-        "label":    "Billboard Christian Songs (current week)",
+        "label":    "Billboard Christian Songs (year-end 1990–present + current week)",
         "data_tag": "ccm_weekly",
         "importer": "_import_ccm",
+    },
+    {
+        "id":       "country",
+        "label":    "Billboard Hot Country Songs (year-end 1990–present + current week)",
+        "data_tag": "country_yearend",
+        "importer": "_import_country",
+    },
+    {
+        "id":       "rnb",
+        "label":    "Billboard R&B/Hip-Hop Songs (year-end 1990–present + current week)",
+        "data_tag": "rnb_yearend",
+        "importer": "_import_rnb",
+    },
+    {
+        "id":       "rock",
+        "label":    "Billboard Hot Rock Songs (year-end 1990–present + current week)",
+        "data_tag": "rock_yearend",
+        "importer": "_import_rock",
+    },
+    {
+        "id":       "dance",
+        "label":    "Billboard Dance/Electronic Songs (year-end 1990–present + current week)",
+        "data_tag": "dance_yearend",
+        "importer": "_import_dance",
+    },
+    {
+        "id":       "adultpop",
+        "label":    "Billboard Pop Songs / Adult Pop (year-end 1990–present + current week)",
+        "data_tag": "adultpop_yearend",
+        "importer": "_import_adultpop",
     },
     {
         "id":       "uk_official",
@@ -1611,81 +1641,180 @@ async def _import_kworb_us():
     log.info(f"kworb_us import complete: +{inserted} inserted, {total_skipped} skipped")
 
 
-# ── Billboard Christian Songs scraper (CCM) ──────────────────────────────────
+# ── Billboard year-end importers (CCM, Country, R&B, Rock, Dance, Adult Pop) ──
 
-_BILLBOARD_CCM_URL = "https://www.billboard.com/charts/christian-songs/"
+async def _import_billboard_yearend(
+    billboard_slug: str,
+    data_tag: str,
+    chart_name: str,
+    label: str,
+    start_year: int = 1990,
+) -> None:
+    """
+    Shared helper: fetch Billboard year-end charts (start_year → current) + current
+    week via billboard.py, collapse to one row per (artist, title) keeping best peak
+    and max weeks, then upsert into chart_reference_extras.
+
+    billboard.py is sync I/O — every call is wrapped in asyncio.to_thread().
+    Rate-limited to 1 req/sec to be polite. Skips years that 404 silently.
+    """
+    import billboard as bb  # type: ignore
+
+    global _vet_import_job
+
+    current_year = datetime.utcnow().year
+    songs: dict = {}
+
+    def _fetch_yearend(year: int):
+        try:
+            return bb.ChartData(f"year-end/{year}/{billboard_slug}", timeout=25)
+        except Exception:
+            return None
+
+    def _fetch_current():
+        try:
+            return bb.ChartData(billboard_slug, timeout=25)
+        except Exception:
+            return None
+
+    # ── Year-end loop ─────────────────────────────────────────────────────────
+    for year in range(start_year, current_year + 1):
+        chart = await asyncio.to_thread(_fetch_yearend, year)
+        if not chart:
+            await asyncio.sleep(0.5)
+            continue
+        count = 0
+        for entry in chart:
+            artist = (entry.artist or "").strip()
+            title  = (entry.title  or "").strip()
+            if not artist or not title:
+                continue
+            a_n = _norm(artist)
+            t_n = _norm(title)
+            if not a_n or not t_n:
+                continue
+            peak  = entry.peakPos or entry.rank or 100
+            weeks = entry.weeks   or 1
+            key   = (a_n, t_n, year)  # per-year key: one row per song per year
+            if key not in songs:
+                songs[key] = {
+                    "artist": artist, "title": title,
+                    "artist_norm": a_n, "title_norm": t_n,
+                    "peak_position": peak, "weeks_on_chart": weeks,
+                    "chart_year": year,
+                }
+            else:
+                if peak  < songs[key]["peak_position"]:  songs[key]["peak_position"]  = peak
+                if weeks > songs[key]["weeks_on_chart"]: songs[key]["weeks_on_chart"] = weeks
+            count += 1
+        log.info(f"billboard yearend {label} {year}: {count} entries")
+        await asyncio.sleep(1.0)
+
+    # ── Current week ──────────────────────────────────────────────────────────
+    chart = await asyncio.to_thread(_fetch_current)
+    if chart:
+        for entry in chart:
+            artist = (entry.artist or "").strip()
+            title  = (entry.title  or "").strip()
+            if not artist or not title:
+                continue
+            a_n = _norm(artist)
+            t_n = _norm(title)
+            if not a_n or not t_n:
+                continue
+            peak  = entry.rank or 100
+            weeks = entry.weeks or 1
+            key   = (a_n, t_n, current_year)  # per-year key
+            if key not in songs:
+                songs[key] = {
+                    "artist": artist, "title": title,
+                    "artist_norm": a_n, "title_norm": t_n,
+                    "peak_position": peak, "weeks_on_chart": weeks,
+                    "chart_year": current_year,
+                }
+            else:
+                if peak < songs[key]["peak_position"]: songs[key]["peak_position"] = peak
+        log.info(f"billboard current {label}: {len(chart)} entries")
+
+    if not songs:
+        raise RuntimeError(f"billboard.py returned 0 entries for {label} ({billboard_slug}). Check slug or network.")
+
+    await _purge_source(data_tag)
+    entries = list(songs.values())
+    inserted, skipped = await _bulk_upsert_extras(entries, data_tag, chart_name)
+    total_rows = len(entries)
+
+    _vet_import_job["inserted"] = total_rows
+    _vet_import_job["skipped"]  = skipped
+    _vet_import_job["message"]  = (
+        f"Imported {total_rows:,} entries from {label} "
+        f"({start_year}–{current_year} year-end + current week). "
+        f"{skipped:,} rows skipped."
+    )
+    log.info(f"{data_tag} import complete: {total_rows} total rows, {skipped} skipped")
 
 
 async def _import_ccm():
-    """
-    Scrape Billboard Christian Songs chart (current week only). Billboard uses a
-    consistent HTML pattern where each chart entry has artist in one <span> and
-    title in an <h3>. One-shot snapshot: wipes prior CCM rows before insert.
-    """
-    global _vet_import_job
-
-    try:
-        async with httpx.AsyncClient(
-            timeout=60.0, follow_redirects=True,
-            headers={"User-Agent": "Mozilla/5.0 (ChartHound music metadata tool)"}
-        ) as client:
-            r = await client.get(_BILLBOARD_CCM_URL)
-            r.raise_for_status()
-            html = r.text
-    except Exception as e:
-        raise RuntimeError(f"Failed to fetch Billboard Christian chart: {e}")
-
-    # Billboard chart rows contain: <h3 id="title-of-a-story" ...>TITLE</h3>
-    # followed by <span class="...">ARTIST</span>. Pattern is consistent across charts.
-    # We grep for title/artist pairs in document order and pair them sequentially.
-    titles  = re.findall(
-        r'<h3[^>]*id="title-of-a-story"[^>]*>\s*([^<]+?)\s*</h3>',
-        html, flags=re.IGNORECASE
-    )
-    artists = re.findall(
-        r'<span[^>]*class="[^"]*c-label[^"]*a-no-trucate[^"]*"[^>]*>\s*([^<]+?)\s*</span>',
-        html, flags=re.IGNORECASE
+    await _import_billboard_yearend(
+        billboard_slug="christian-songs",
+        data_tag="ccm_weekly",
+        chart_name="ccm",
+        label="Billboard Christian Songs",
+        start_year=1990,
     )
 
-    entries = []
-    skipped = 0
-    rank = 0
-    for title, artist in zip(titles, artists):
-        title  = _strip_html_tags(title).strip()
-        artist = _strip_html_tags(artist).strip()
-        if not title or not artist:
-            skipped += 1
-            continue
-        a_norm = _norm(artist)
-        t_norm = _norm(title)
-        if not a_norm or not t_norm:
-            skipped += 1
-            continue
-        rank += 1
-        if rank > 50:
-            break
-        entries.append({
-            "artist": artist, "title": title,
-            "artist_norm": a_norm, "title_norm": t_norm,
-            "peak_position": rank, "weeks_on_chart": 1,
-            "chart_year": datetime.utcnow().year,
-        })
 
-    await _purge_source("ccm_weekly")
+async def _import_country():
+    await _import_billboard_yearend(
+        billboard_slug="country-songs",
+        data_tag="country_yearend",
+        chart_name="country",
+        label="Billboard Hot Country Songs",
+        start_year=1990,
+    )
 
-    if not entries:
-        raise RuntimeError(
-            "Billboard CCM HTML parsed but 0 chart entries extracted. "
-            "Page structure may have changed — please open an issue with the current HTML."
-        )
 
-    inserted, skipped_db = await _bulk_upsert_extras(entries, "ccm_weekly", "ccm")
-    total_skipped = skipped + skipped_db
+async def _import_rnb():
+    await _import_billboard_yearend(
+        billboard_slug="r-b-hip-hop-songs",
+        data_tag="rnb_yearend",
+        chart_name="rnb",
+        label="Billboard R&B/Hip-Hop Songs",
+        start_year=1990,
+    )
 
-    _vet_import_job["inserted"] = inserted
-    _vet_import_job["skipped"]  = total_skipped
-    _vet_import_job["message"]  = f"Imported {inserted:,} entries from Billboard Christian Songs ({total_skipped:,} rows skipped)."
-    log.info(f"ccm import complete: +{inserted} inserted, {total_skipped} skipped")
+
+async def _import_rock():
+    await _import_billboard_yearend(
+        billboard_slug="hot-rock-songs",
+        data_tag="rock_yearend",
+        chart_name="rock",
+        label="Billboard Hot Rock Songs",
+        start_year=1990,
+    )
+
+
+async def _import_dance():
+    await _import_billboard_yearend(
+        billboard_slug="dance-electronic-songs",
+        data_tag="dance_yearend",
+        chart_name="dance",
+        label="Billboard Dance/Electronic Songs",
+        start_year=1990,
+    )
+
+
+async def _import_adultpop():
+    await _import_billboard_yearend(
+        billboard_slug="pop-songs",
+        data_tag="adultpop_yearend",
+        chart_name="adultpop",
+        label="Billboard Pop Songs (Adult Pop)",
+        start_year=1990,
+    )
+
+
+
 
 
 # ── UK Official Charts scraper ───────────────────────────────────────────────
@@ -1809,6 +1938,11 @@ _IMPORTER_MAP = {
     "tsort":       _import_tsort,
     "kworb_us":    _import_kworb_us,
     "ccm":         _import_ccm,
+    "country":     _import_country,
+    "rnb":         _import_rnb,
+    "rock":        _import_rock,
+    "dance":       _import_dance,
+    "adultpop":    _import_adultpop,
     "uk_official": _import_uk_official,
 }
 
@@ -1963,6 +2097,7 @@ async def vet_static_sources_delete(
 #  Sources included in auto-refresh (current-week snapshots that go stale):
 #    - kworb_us      (iTunes US current week)
 #    - ccm           (Billboard Christian Songs current week)
+#    - country       (Billboard Hot Country Songs current week)
 #    - uk_official   (UK Official Charts current week)
 #
 #  Historical bulk sources (utdata, chart2000, tsort) are NOT auto-refreshed —
@@ -1970,7 +2105,7 @@ async def vet_static_sources_delete(
 #  has been published (roughly monthly/quarterly).
 # ══════════════════════════════════════════════════════════════════════════════
 
-_AUTO_REFRESH_SOURCES = ["kworb_us", "ccm", "uk_official"]
+_AUTO_REFRESH_SOURCES = ["kworb_us", "ccm", "country", "rnb", "rock", "dance", "adultpop", "uk_official"]
 _REFRESH_INTERVAL_DAYS = 7
 
 
