@@ -984,6 +984,12 @@ _STATIC_SOURCES = [
         "data_tag": "uk_official_singles",
         "importer": "_import_uk_official",
     },
+    {
+        "id":       "listenbrainz_historical",
+        "label":    "ListenBrainz Historical (Rock/R&B/Country/Dance pre-1990)",
+        "data_tag": "listenbrainz_historical",
+        "importer": "_import_listenbrainz_historical",
+    },
 ]
 
 # In-memory state for the import job. Only one import runs at a time.
@@ -1931,19 +1937,204 @@ async def _import_uk_official():
     log.info(f"uk_official import complete: +{inserted} inserted, {total_skipped} skipped")
 
 
+# ── ListenBrainz Historical importer ─────────────────────────────────────────
+# Pipeline per genre/decade:
+#   1. MusicBrainz search tag:{genre} AND date:[YYYY TO YYYY] → mbid, artist, title, year
+#   2. Batch MBIDs → ListenBrainz /1/popularity/recording → total_listen_count
+#   3. Sort desc by listen_count, keep top _LBZ_TOP_N per genre/decade
+#   4. Upsert into chart_reference_extras (chart_name=genre, chart_year=release year)
+# Covers pre-1990 only — post-1990 handled by billboard year-end importers.
+# No API key required. Rate-limited: 1 req/sec MBZ, 0.5s LBZ.
+
+_MBZ_BASE           = "https://musicbrainz.org/ws/2/recording"
+_LBZ_POP_BASE       = "https://api.listenbrainz.org/1/popularity/recording"
+_MBZ_HEADERS        = {"User-Agent": "ChartHound/2.0 (self-hosted music library; charthound@localhost)"}
+_MBZ_MAX_PER_DECADE = 500   # max recordings to fetch from MBZ per genre/decade
+_LBZ_BATCH_SIZE     = 50    # LBZ batch size (keep URLs short)
+_LBZ_TOP_N          = 150   # top N to store per genre/decade
+
+_LBZ_GENRE_TAGS = {
+    "rock":    "rock",
+    "rnb":     "r&b",
+    "country": "country",
+    "dance":   "electronic",
+}
+
+_LBZ_DECADES = [
+    (1950, 1959),
+    (1960, 1969),
+    (1970, 1979),
+    (1980, 1989),
+]
+
+
+async def _mbz_search_decade(client: httpx.AsyncClient, tag: str, year_from: int, year_to: int) -> list:
+    """Page MusicBrainz recording search for genre tag + decade. Returns list of dicts."""
+    results = []
+    offset  = 0
+    page_sz = 100
+    while len(results) < _MBZ_MAX_PER_DECADE:
+        try:
+            r = await client.get(
+                _MBZ_BASE,
+                params={
+                    "query":  f"tag:{tag} AND date:[{year_from} TO {year_to}]",
+                    "limit":  page_sz,
+                    "offset": offset,
+                    "fmt":    "json",
+                },
+                timeout=30,
+            )
+            if r.status_code == 503:
+                await asyncio.sleep(5)
+                continue
+            r.raise_for_status()
+            data       = r.json()
+            recordings = data.get("recordings", [])
+            if not recordings:
+                break
+            for rec in recordings:
+                mbid  = rec.get("id", "")
+                title = (rec.get("title") or "").strip()
+                date  = (rec.get("first-release-date") or "").strip()
+                credits = rec.get("artist-credit", [])
+                artist  = " ".join(
+                    a.get("name", "") for a in credits
+                    if isinstance(a, dict) and "name" in a
+                ).strip()
+                if not mbid or not title or not artist:
+                    continue
+                year = None
+                if date and len(date) >= 4 and date[:4].isdigit():
+                    year = int(date[:4])
+                results.append({"mbid": mbid, "artist": artist, "title": title, "year": year})
+            offset += len(recordings)
+            if offset >= data.get("count", 0):
+                break
+            await asyncio.sleep(1.0)
+        except Exception as e:
+            log.warning(f"MBZ search error (tag={tag} {year_from}-{year_to} offset={offset}): {e}")
+            break
+    return results
+
+
+async def _lbz_listen_counts(client: httpx.AsyncClient, mbids: list) -> dict:
+    """Batch-fetch ListenBrainz listen counts. Returns {mbid: total_listen_count}."""
+    counts = {}
+    for i in range(0, len(mbids), _LBZ_BATCH_SIZE):
+        batch = mbids[i : i + _LBZ_BATCH_SIZE]
+        try:
+            r = await client.post(
+                _LBZ_POP_BASE,
+                json={"recording_mbids": batch},
+                timeout=30,
+            )
+            r.raise_for_status()
+            for item in r.json():
+                mid = item.get("recording_mbid")
+                lc  = item.get("total_listen_count")
+                if mid and lc is not None:
+                    counts[mid] = lc
+        except Exception as e:
+            log.warning(f"LBZ batch error (batch {i}): {e}")
+        await asyncio.sleep(0.5)
+    return counts
+
+
+async def _import_listenbrainz_historical():
+    """
+    Fetch pre-1990 popularity data for rock/rnb/country/dance via MusicBrainz +
+    ListenBrainz. Stores top 150 tracks per genre/decade by listen count.
+    Fully automated — runs on weekly scheduler, no user config needed.
+    """
+    global _vet_import_job
+
+    entries_by_genre: dict = {g: [] for g in _LBZ_GENRE_TAGS}
+
+    async with httpx.AsyncClient(headers=_MBZ_HEADERS, follow_redirects=True) as client:
+        for genre, tag in _LBZ_GENRE_TAGS.items():
+            for year_from, year_to in _LBZ_DECADES:
+                label = f"{genre} {year_from}s"
+                _vet_import_job["message"] = f"Fetching {label} from MusicBrainz..."
+                log.info(f"listenbrainz_historical: querying {label}")
+
+                recordings = await _mbz_search_decade(client, tag, year_from, year_to)
+                if not recordings:
+                    log.warning(f"listenbrainz_historical: 0 MBZ results for {label}")
+                    continue
+                log.info(f"listenbrainz_historical: {len(recordings)} MBZ results for {label}")
+
+                _vet_import_job["message"] = f"Fetching listen counts for {label}..."
+                mbids  = [r["mbid"] for r in recordings]
+                counts = await _lbz_listen_counts(client, mbids)
+
+                ranked = [
+                    {**rec, "listen_count": counts.get(rec["mbid"], 0)}
+                    for rec in recordings
+                    if counts.get(rec["mbid"], 0) > 0
+                ]
+                ranked.sort(key=lambda x: x["listen_count"], reverse=True)
+                top = ranked[:_LBZ_TOP_N]
+                log.info(f"listenbrainz_historical: {len(top)} kept for {label} "
+                         f"(top={top[0]['listen_count'] if top else 0:,} listens)")
+
+                for rank, rec in enumerate(top, start=1):
+                    a_n = _norm(rec["artist"])
+                    t_n = _norm(rec["title"])
+                    if not a_n or not t_n:
+                        continue
+                    year = rec.get("year")
+                    if not year or not (year_from <= year <= year_to):
+                        year = (year_from + year_to) // 2
+                    entries_by_genre[genre].append({
+                        "artist":        rec["artist"],
+                        "title":         rec["title"],
+                        "artist_norm":   a_n,
+                        "title_norm":    t_n,
+                        "peak_position": rank,
+                        "weeks_on_chart": 1,
+                        "chart_year":    year,
+                    })
+
+    total_count = sum(len(v) for v in entries_by_genre.values())
+    if total_count == 0:
+        raise RuntimeError("ListenBrainz historical import: 0 entries — check MBZ/LBZ connectivity.")
+
+    await _purge_source("listenbrainz_historical")
+
+    inserted_total = 0
+    skipped_total  = 0
+    for genre_name, entries in entries_by_genre.items():
+        if not entries:
+            continue
+        ins, skp = await _bulk_upsert_extras(entries, "listenbrainz_historical", genre_name)
+        inserted_total += ins
+        skipped_total  += skp
+
+    _vet_import_job["inserted"] = inserted_total
+    _vet_import_job["skipped"]  = skipped_total
+    _vet_import_job["message"]  = (
+        f"ListenBrainz historical complete: {inserted_total:,} entries across "
+        f"{len(_LBZ_GENRE_TAGS)} genres x {len(_LBZ_DECADES)} decades. "
+        f"{skipped_total:,} skipped."
+    )
+    log.info(f"listenbrainz_historical complete: {inserted_total} inserted, {skipped_total} skipped")
+
+
 # Map id → importer function (populated AFTER functions are defined)
 _IMPORTER_MAP = {
-    "utdata":      _import_utdata_hot100,
-    "chart2000":   _import_chart2000,
-    "tsort":       _import_tsort,
-    "kworb_us":    _import_kworb_us,
-    "ccm":         _import_ccm,
-    "country":     _import_country,
-    "rnb":         _import_rnb,
-    "rock":        _import_rock,
-    "dance":       _import_dance,
-    "adultpop":    _import_adultpop,
-    "uk_official": _import_uk_official,
+    "utdata":                  _import_utdata_hot100,
+    "chart2000":               _import_chart2000,
+    "tsort":                   _import_tsort,
+    "kworb_us":                _import_kworb_us,
+    "ccm":                     _import_ccm,
+    "country":                 _import_country,
+    "rnb":                     _import_rnb,
+    "rock":                    _import_rock,
+    "dance":                   _import_dance,
+    "adultpop":                _import_adultpop,
+    "uk_official":             _import_uk_official,
+    "listenbrainz_historical": _import_listenbrainz_historical,
 }
 
 
@@ -2105,7 +2296,7 @@ async def vet_static_sources_delete(
 #  has been published (roughly monthly/quarterly).
 # ══════════════════════════════════════════════════════════════════════════════
 
-_AUTO_REFRESH_SOURCES = ["kworb_us", "ccm", "country", "rnb", "rock", "dance", "adultpop", "uk_official"]
+_AUTO_REFRESH_SOURCES = ["kworb_us", "ccm", "country", "rnb", "rock", "dance", "adultpop", "uk_official", "listenbrainz_historical"]
 _REFRESH_INTERVAL_DAYS = 7
 
 
