@@ -4,13 +4,25 @@
 ChartHound — The Groomer Router
 Real Chart Data Playlist Builder
 
+SCAN ARCHITECTURE (scan-everything, filter-at-playlist-time):
+  Scan runs against ALL charts simultaneously — no chart filter at scan time.
+  Playlist filters (genre/chart, peak, weeks, confidence) apply to stored results.
+  One scan → unlimited playlists without rescanning.
+
 Lookup waterfall per track:
-  1. charthound.db        → chart_data cache   (previously computed, skip re-scan)
-  2. tracks.chart_status  → skip cache          (miss age-gate, skip instantly)
-  3. charthound_static.db → chart_reference     (real Billboard data, confidence: high)
-     charthound_static.db → billboard_pop       (historical pop 1890-2015, confidence: high)
-  4. Physical file COMMENT tag → read-back      (re-parse previously written ChartHound tags)
-  5. Last.fm listener count                     (genre-gated estimate, confidence: low)
+  1. chart_data cache     → previously computed this scan, skip instantly
+  2. chart_status cache   → confirmed miss within age gate, skip instantly
+  3. Static DB UNION extras → chart_reference + billboard_pop + chart_reference_extras
+                              (Billboard CSVs, utdata, chart2000, tsort, billboard yearend,
+                               LBZ historical) — confidence: high/medium
+  4. Comment tag read-back → re-parse previously written ChartHound tags (zero API)
+  5. Last.fm listener count → genre-gated popularity estimate — confidence: low
+
+Genre routing:
+  - Retriever genre_1/2/3 pulled from DB onto track dict before waterfall
+  - Used to route LBZ lookup to correct chart_name when multiple genres present
+  - Used as quality gate for Last.fm estimate tier
+  - CCM/gospel family: strict gate (no genre tag = reject at Last.fm tier)
 
 Scan modes:
   A) Media Server Mode — Plex / Emby / Jellyfin library pull, playlist push back
@@ -66,14 +78,22 @@ _STATIC_DB  = getattr(settings, "static_db_url",    "/data/charthound_static.db"
 
 # ── Chart display names ───────────────────────────────────────────────────────
 CHART_DISPLAY = {
-    "hot100":   "Hot 100",       "adultpop": "Adult Pop",
-    "ac":       "Adult Contemp", "uk":       "UK Singles",
-    "country":  "Country",       "rnb":      "R&B/Hip-Hop",
-    "dance":    "Dance",         "rock":     "Mainstream Rock",
-    "ccm":      "CCM",           "ccm-ac":   "CCM-AC",
-    "ccm-rock": "CCM Rock",      "worship":  "Worship",
-    "gospel":   "Gospel",        "sgospel":  "Southern Gospel",
-    "ugospel":  "Urban Gospel",  "tgospel":  "Traditional Gospel",
+    "hot100":      "Hot 100",       "adultpop":   "Adult Pop",
+    "ac":          "Adult Contemp", "uk":         "UK Singles",
+    "country":     "Country",       "rnb":        "R&B/Hip-Hop",
+    "dance":       "Dance",         "rock":       "Mainstream Rock",
+    "classicrock": "Classic Rock",  "classical":  "Classical",
+    "ccm":         "CCM",           "ccm-ac":     "CCM-AC",
+    "ccm-rock":    "CCM Rock",      "worship":    "Worship",
+    "ccm-country": "Christian Country", "ccm-folk": "Christian Folk",
+    "ccm-blues":   "Christian Blues",
+    "gospel":      "Gospel",        "sgospel":    "Southern Gospel",
+    "ugospel":     "Urban Gospel",  "tgospel":    "Traditional Gospel",
+    # LBZ-imported genres
+    "hiphop":      "Hip-Hop",       "metal":      "Metal",
+    "alternative": "Alternative",   "indie":      "Indie",
+    "folk":        "Folk",          "jazz":       "Jazz",
+    "blues":       "Blues",         "electronic": "Electronic",
 }
 
 MATCH_THRESHOLD = 0.82
@@ -93,7 +113,23 @@ _CCM_KEYWORDS = {
     "inspirational","southern gospel","urban gospel",
     "contemporary christian","spiritual","jesus music",
 }
-_CCM_CHARTS = {"ccm","gospel","ccm-ac","ccm-rock","worship","sgospel","ugospel","tgospel"}
+_CCM_CHARTS = {"ccm","gospel","ccm-ac","ccm-rock","worship","sgospel","ugospel","tgospel","ccm-country","ccm-folk","ccm-blues"}
+
+# CCM sub-charts that have no dedicated importer — fan out to parent 'ccm' in DB lookup
+_CCM_SUBCHARTS_TO_PARENT = {
+    "ccm-ac":      "ccm",
+    "ccm-rock":    "ccm",
+    "worship":     "ccm",
+    "sgospel":     "gospel",
+    "ugospel":     "gospel",
+    "tgospel":     "gospel",
+    "ccm-country": "ccm",
+    "ccm-folk":    "ccm",
+    "ccm-blues":   "ccm",
+}
+
+# Charts that require genre tag confirmation — no tag = reject (not benefit of the doubt)
+_STRICT_GENRE_CHARTS = _CCM_CHARTS
 
 # ── Reverse lookup: display name → chart key (for comment tag parsing) ────
 _CHART_KEY_FROM_DISPLAY = {v.lower(): k for k, v in CHART_DISPLAY.items()}
@@ -106,6 +142,225 @@ _CHART_KEY_FROM_DISPLAY.update({
     "southern gospel": "sgospel", "urban gospel": "ugospel",
     "traditional gospel": "tgospel",
 })
+
+
+# ── Genre checkbox → file tag keywords (for get_results filtering) ────────────
+# Each checkbox value maps to keywords that match against genre_1/2/3 on the track.
+# Broad charts (hot100, ac, adultpop, uk) have no genre restriction — accept all.
+# CCM/gospel family checked against CCM keywords (strict).
+_GENRE_FILTER_KEYWORDS: dict = {
+    # ── Broad charts — no file-tag restriction ────────────────────────────────
+    "hot100":    None,
+    "adultpop":  None,
+    "ac":        None,
+    "uk":        None,
+
+    # ── Rock (parent) — matches any rock tag; sub-genres are more specific ────
+    # Rule: parent key contains ALL sub-genre terms so selecting parent = superset.
+    "rock":         {"rock","classic rock","hard rock","arena rock","alternative rock",
+                     "indie rock","garage rock","punk rock","post-punk","new wave",
+                     "power pop","piano rock","blues rock","southern rock","art rock",
+                     "soft rock","folk rock","roots rock","heartland rock","rockabilly",
+                     "psychedelic rock","progressive rock","prog rock","glam rock",
+                     "pub rock","rock and roll","rock & roll"},
+    # Sub-genres — discriminating terms ONLY, no bare "rock" to avoid bleed
+    "classicrock":  {"classic rock","classic-rock","arena rock","blues rock","roots rock",
+                     "heartland rock","southern rock","rockabilly","psychedelic rock",
+                     "progressive rock","prog rock","art rock","glam rock","pub rock",
+                     "rock and roll","rock & roll"},
+    "hardrock":     {"hard rock","heavy rock","hard-rock"},
+    "softrock":     {"soft rock","soft-rock","adult rock","mellow rock"},
+    "arenarock":    {"arena rock","stadium rock","arena-rock"},
+    "indierock":    {"indie rock","indie-rock"},
+    "folkrock":     {"folk rock","folk-rock"},
+    "southernrock": {"southern rock","southern-rock"},
+    "punkrock":     {"punk rock","punk-rock","new wave","post-punk","post punk"},
+    "alternative":  {"alternative rock","alternative","alt rock","alt-rock","grunge",
+                     "post-grunge","britpop","shoegaze","noise rock","post-rock",
+                     "math rock","emo","post-hardcore","dream pop","college rock",
+                     "jangle pop"},
+
+    # ── Pop (parent + subs) ───────────────────────────────────────────────────
+    "pop":          {"pop","pop rock","synth-pop","synthpop","dance-pop","electropop",
+                     "power pop","bubblegum pop","teen pop","art pop","chamber pop",
+                     "indie pop","dream pop","k-pop","j-pop","europop"},
+    "dancepop":     {"dance-pop","dance pop"},
+    "synthpop":     {"synth-pop","synthpop","electropop"},
+    "teenpop":      {"teen pop","bubblegum pop"},
+    "powerpop":     {"power pop","power-pop"},
+    "adultpop":     {"adult contemporary","adult pop","soft pop"},
+    "indipop":      {"indie pop","indie-pop","chamber pop"},
+
+    # ── Country (parent + subs) ───────────────────────────────────────────────
+    "country":      {"country","country pop","outlaw country","alt-country",
+                     "alternative country","americana","bluegrass","honky tonk",
+                     "honky-tonk","western","nashville","country folk","cowboy",
+                     "texas country","red dirt","cajun","zydeco","bro-country",
+                     "new country","traditional country","country rock","country blues",
+                     "country soul"},
+    "tradcountry":  {"traditional country","classic country","honky tonk","honky-tonk",
+                     "western","nashville sound"},
+    "countrypop":   {"country pop","country-pop","nashville pop"},
+    "outlawcountry":{"outlaw country","outlaw-country","red dirt","texas country"},
+    "americana":    {"americana","bluegrass","alt-country","alternative country",
+                     "country folk","cowboy"},
+    "brocountry":   {"bro-country","bro country","new country"},
+    "texascountry": {"texas country","red dirt","tex-mex"},
+
+    # ── R&B / Soul (parent + subs) ────────────────────────────────────────────
+    "rnb":          {"r&b","rnb","rhythm and blues","soul","neo-soul","motown","funk",
+                     "quiet storm","new jack swing","hip hop soul","contemporary r&b",
+                     "classic soul","southern soul","northern soul","smooth r&b"},
+    "soul":         {"soul","classic soul","southern soul","northern soul","deep soul"},
+    "neosoul":      {"neo-soul","neo soul"},
+    "funk":         {"funk","g-funk","p-funk"},
+    "motown":       {"motown","classic soul","northern soul"},
+    "quietstorm":   {"quiet storm"},
+    "newjack":      {"new jack swing"},
+
+    # ── Hip-Hop (parent + subs) ───────────────────────────────────────────────
+    "hiphop":       {"hip hop","hip-hop","rap","gangsta rap","trap","drill","grime",
+                     "boom bap","conscious rap","east coast","west coast","southern hip hop",
+                     "crunk","mumble rap","cloud rap","lo-fi hip hop","alternative hip hop",
+                     "jazz rap"},
+    "trap":         {"trap"},
+    "boombap":      {"boom bap","boom-bap","east coast","west coast","jazz rap"},
+    "gangstarap":   {"gangsta rap","gangster rap","g-rap"},
+    "conscrap":     {"conscious rap","alternative hip hop","political rap"},
+    "altrap":       {"alternative hip hop","lo-fi hip hop","cloud rap"},
+
+    # ── Metal (parent + subs) ─────────────────────────────────────────────────
+    "metal":        {"metal","heavy metal","death metal","thrash metal","black metal",
+                     "doom metal","power metal","speed metal","glam metal","hair metal",
+                     "nu-metal","nu metal","metalcore","deathcore","symphonic metal",
+                     "progressive metal","groove metal","industrial metal"},
+    "heavymetal":   {"heavy metal"},
+    "thrashmetal":  {"thrash metal","speed metal"},
+    "deathmetal":   {"death metal","deathcore"},
+    "doommetal":    {"doom metal","stoner metal","sludge metal"},
+    "glaemmetal":   {"glam metal","hair metal","sleaze rock"},
+
+    # ── Dance / Electronic (parent + subs) ───────────────────────────────────
+    "dance":        {"dance","edm","house","techno","trance","club","disco","dance-pop",
+                     "eurodance","hi-nrg","hi nrg","dancehall","garage","uk garage",
+                     "speed garage"},
+    "edm":          {"edm","electronic dance"},
+    "house":        {"house","deep house","tech house","progressive house"},
+    "techno":       {"techno"},
+    "trance":       {"trance","progressive trance"},
+    "disco":        {"disco","post-disco"},
+    "eurodance":    {"eurodance","euro dance","hi-nrg","hi nrg"},
+    "electronic":   {"electronic","electronica","synth","ambient","industrial",
+                     "downtempo","idm","glitch","breakbeat","drum and bass","dnb",
+                     "dubstep","jungle","trip hop","chillout","chill out",
+                     "synthwave","retrowave","vaporwave","darkwave","electro",
+                     "synth-pop","synthpop"},
+
+    # ── Folk (parent + subs) ─────────────────────────────────────────────────
+    "folk":         {"folk","folk pop","contemporary folk","traditional folk","acoustic",
+                     "singer-songwriter","celtic folk","folk blues","anti-folk","freak folk"},
+    "tradfolk":     {"traditional folk","celtic folk","acoustic folk"},
+    "indifolk":     {"indie folk","indie-folk"},
+    "singersong":   {"singer-songwriter","acoustic"},
+
+    # ── Jazz (parent + subs) ─────────────────────────────────────────────────
+    "jazz":         {"jazz","bebop","swing","big band","cool jazz","hard bop",
+                     "jazz fusion","fusion","soul jazz","smooth jazz","free jazz",
+                     "latin jazz","bossa nova","jazz blues","jazz funk","vocal jazz",
+                     "traditional jazz","dixieland"},
+    "smoothjazz":   {"smooth jazz"},
+    "vocaljazz":    {"vocal jazz"},
+    "bebop":        {"bebop","hard bop","cool jazz"},
+    "jazzfusion":   {"jazz fusion","fusion"},
+
+    # ── Blues (parent + subs) ────────────────────────────────────────────────
+    "blues":        {"blues","chicago blues","delta blues","electric blues","texas blues",
+                     "soul blues","jump blues","boogie woogie","boogie","acoustic blues",
+                     "swamp blues"},
+    "chicagoblues": {"chicago blues","electric blues"},
+    "deltablues":   {"delta blues","acoustic blues"},
+    "texasblues":   {"texas blues"},
+
+    # ── Classical (parent + subs) ─────────────────────────────────────────────
+    "classical":    {"classical","classical music","orchestral","symphony","opera",
+                     "chamber music","baroque","romantic","contemporary classical",
+                     "neo-classical","neoclassical","concerto","sonata","choral",
+                     "choir","score"},
+    "orchestral":   {"orchestral","symphony","concerto","symphonic"},
+    "opera":        {"opera","operatic"},
+    "baroque":      {"baroque"},
+
+    # ── Indie (standalone) ────────────────────────────────────────────────────
+    "indie":        {"indie","indie rock","indie pop","indie folk","indie electronic",
+                     "lo-fi","bedroom pop","twee pop","indiepop"},
+
+    # ════════════════════════════════════════════════════════════════════════
+    # CCM / Gospel family — STRICT: sub-genres use ONLY their specific terms.
+    # "christian" alone does NOT appear in sub-genre sets — it only lives in
+    # the parent "ccm" key. This is the Amy Grant fix: selecting "Christian Rock"
+    # sends key "ccm-rock" → only matches tags containing "christian rock".
+    # ════════════════════════════════════════════════════════════════════════
+    "ccm":          {"christian","ccm","contemporary christian","jesus music",
+                     "christian rock","christian pop","christian hip hop","christian metal",
+                     "christian country","christian r&b","christian soul","christian folk",
+                     "christian ac","christian adult contemporary","christian blues",
+                     "worship","praise","hymn","inspirational","spiritual","sacred",
+                     "gospel","southern gospel","urban gospel","traditional gospel",
+                     "black gospel","new gospel","religious"},
+    "gospel":       {"gospel","southern gospel","urban gospel","traditional gospel",
+                     "black gospel","new gospel"},
+    "ccm-ac":       {"christian ac","christian adult contemporary","contemporary christian",
+                     "christian inspirational"},
+    "ccm-rock":     {"christian rock","christian metal","christian hardcore",
+                     "christian punk","christian hard rock"},
+    "ccm-country":  {"christian country","gospel country","country gospel",
+                     "christian bluegrass","christian americana"},
+    "ccm-folk":     {"christian folk","gospel folk","folk gospel",
+                     "christian singer-songwriter","worship folk"},
+    "ccm-pop":      {"christian pop","christian pop music"},
+    "ccm-hiphop":   {"christian hip hop","christian rap","gospel rap","holy hip hop"},
+    "ccm-blues":    {"christian blues","gospel blues","blues gospel","sacred blues"},
+    "worship":      {"worship","praise","praise and worship","praise & worship"},
+    "sgospel":      {"southern gospel"},
+    "ugospel":      {"urban gospel"},
+    "tgospel":      {"traditional gospel","black gospel","gospel choir"},
+
+    # ── Untagged — tracks with no genre tags ─────────────────────────────────
+    "untagged":     None,  # handled specially in SQL
+}
+
+# ── Chart source → genre key fallback (for tracks with no file genre tags) ──
+# Only reliable/clean chart sources used — not tsort, chart2000, LBZ extras
+_CHART_SOURCE_TO_GENRE: dict = {
+    "country":   "country",
+    "rock":      "rock",
+    "rnb":       "rnb",
+    "hiphop":    "hiphop",
+    "dance":     "dance",
+    "adultpop":  "pop",
+    "ac":        "pop",
+    "hot100":    None,   # too broad — no genre fallback
+    "uk":        None,   # too broad
+    "metal":     "metal",
+    "alternative":"alternative",
+    "indie":     "indie",
+    "folk":      "folk",
+    "jazz":      "jazz",
+    "blues":     "blues",
+    "electronic":"electronic",
+    "classicrock":"classicrock",
+    "ccm":       "ccm",
+    "gospel":    "gospel",
+    "ccm-ac":    "ccm",
+    "ccm-rock":  "ccm",
+    "worship":   "ccm",
+    "sgospel":   "gospel",
+    "ugospel":   "gospel",
+    "tgospel":   "gospel",
+    "ccm-country":"ccm-country",
+    "ccm-folk":  "ccm-folk",
+    "ccm-blues": "ccm-blues",
+}
 
 # ── Comment tag regex — matches both exact and estimated formats ──────────
 # "Hot 100: #4 (22 wks)" or "CCM: ~#12 (1 wks)" or "Country: #1 (30 wks)"
@@ -204,23 +459,288 @@ def _read_comment_from_file(file_path: str) -> Optional[str]:
         return None
 
 
-# ── Genre-to-chart validation ─────────────────────────────────────────────
-# Maps chart filter keys to genre keywords that would match files tagged
-# with those genres. Used to reject ABBA from CCM scans, etc.
+# ── Genre → file tag keyword mapping ─────────────────────────────────────────
+# Keys = chart_name values stored in chart_data / chart_reference_extras.
+# Values = sets of substrings matched against the file's genre tag text (lowercased).
+# Design rules:
+#   - Prefer substrings so "Contemporary Christian Music" matches "christian"
+#   - Order broad→specific; first match wins in _genre_matches_chart
+#   - Add new keywords here as new Retriever genre categories are introduced
+#   - Charts NOT listed (hot100, adultpop, ac, uk) accept any genre (broad charts)
+#   - _STRICT_GENRE_CHARTS members reject files with NO genre tag at all
+
 _CHART_GENRE_KEYWORDS = {
-    "ccm":      _CCM_KEYWORDS,
-    "gospel":   {"gospel", "southern gospel", "urban gospel", "traditional gospel", "religious", "spiritual"},
-    "sgospel":  {"southern gospel", "gospel", "religious"},
-    "ugospel":  {"urban gospel", "gospel", "religious"},
-    "tgospel":  {"traditional gospel", "gospel", "religious"},
-    "ccm-ac":   _CCM_KEYWORDS | {"adult contemporary"},
-    "ccm-rock": _CCM_KEYWORDS | {"rock"},
-    "worship":  {"worship", "praise", "christian", "ccm", "gospel"},
-    "country":  {"country", "americana", "bluegrass", "honky tonk", "outlaw country"},
-    "rnb":      {"r&b", "rnb", "soul", "hip hop", "hip-hop", "rap", "urban", "funk"},
-    "dance":    {"dance", "electronic", "edm", "house", "techno", "trance", "club", "disco"},
-    "rock":     {"rock", "alternative", "punk", "metal", "grunge", "hard rock", "indie rock"},
+    # ── CCM / Gospel family (strict — no tag = reject) ───────────────────────
+    "ccm":      {
+        "christian", "ccm", "contemporary christian", "gospel", "worship", "praise",
+        "hymn", "religious", "inspirational", "southern gospel", "urban gospel",
+        "traditional gospel", "jesus music", "spiritual", "sacred", "christian rock",
+        "christian pop", "christian hip hop", "christian metal", "christian country",
+        "christian r&b", "christian soul", "new gospel", "black gospel",
+    },
+    "gospel":   {
+        "gospel", "southern gospel", "urban gospel", "traditional gospel",
+        "black gospel", "new gospel", "christian", "religious", "spiritual", "sacred",
+    },
+    "sgospel":  {"southern gospel", "gospel", "christian", "religious"},
+    "ugospel":  {"urban gospel", "gospel", "christian", "religious", "r&b"},
+    "tgospel":  {"traditional gospel", "gospel", "christian", "religious", "hymn"},
+    "ccm-ac":   {
+        "christian", "ccm", "contemporary christian", "worship", "inspirational",
+        "adult contemporary", "christian adult contemporary",
+    },
+    "ccm-rock": {
+        "christian rock", "christian metal", "christian hardcore", "christian punk",
+        "christian", "ccm", "worship", "praise",
+    },
+    "worship":  {"worship", "praise", "christian", "ccm", "gospel", "spiritual"},
+
+    # ── Country ───────────────────────────────────────────────────────────────
+    "country":  {
+        "country", "country pop", "country rock", "outlaw country", "alt-country",
+        "alternative country", "americana", "bluegrass", "honky tonk", "honky-tonk",
+        "western", "nashville", "country folk", "cowboy", "texas country",
+        "red dirt", "cajun", "zydeco", "country blues", "country soul",
+        "bro-country", "new country", "traditional country",
+    },
+
+    # ── Classic Rock ──────────────────────────────────────────────────────────
+    "classicrock": {
+        "classic rock", "classic-rock", "hard rock", "arena rock", "blues rock",
+        "roots rock", "heartland rock", "southern rock", "rockabilly",
+        "psychedelic rock", "progressive rock", "prog rock", "art rock",
+        "glam rock", "pub rock", "rock and roll", "rock & roll",
+    },
+
+    # ── Classical ─────────────────────────────────────────────────────────────
+    "classical": {
+        "classical", "classical music", "orchestral", "symphony", "opera",
+        "chamber music", "baroque", "romantic", "contemporary classical",
+        "neo-classical", "neoclassical", "piano", "concerto", "sonata",
+        "choral", "choir", "instrumental", "score", "soundtrack",
+    },
+
+    # ── Christian Country ─────────────────────────────────────────────────────
+    "ccm-country": {
+        "christian country", "gospel country", "country gospel",
+        "southern gospel country", "christian americana",
+        "christian bluegrass", "country christian",
+    },
+
+    # ── Christian Folk ────────────────────────────────────────────────────────
+    "ccm-folk": {
+        "christian folk", "gospel folk", "folk gospel", "christian acoustic",
+        "christian singer-songwriter", "worship folk", "christian indie folk",
+    },
+
+    # ── Christian Blues ───────────────────────────────────────────────────────
+    "ccm-blues": {
+        "christian blues", "gospel blues", "blues gospel", "sacred blues",
+        "spiritual blues", "christian rhythm and blues", "christian r&b",
+    },
+
+    # ── R&B / Hip-Hop ─────────────────────────────────────────────────────────
+    "rnb":      {
+        "r&b", "rnb", "rhythm and blues", "soul", "neo-soul", "motown", "funk",
+        "urban", "quiet storm", "new jack swing", "hip hop soul", "contemporary r&b",
+        "classic soul", "southern soul", "northern soul", "smooth r&b",
+    },
+
+    # ── Hip-Hop ───────────────────────────────────────────────────────────────
+    "hiphop":   {
+        "hip hop", "hip-hop", "rap", "gangsta rap", "trap", "drill", "grime",
+        "boom bap", "conscious rap", "east coast", "west coast", "southern hip hop",
+        "crunk", "g-funk", "mumble rap", "cloud rap", "lo-fi hip hop",
+        "alternative hip hop", "jazz rap", "political hip hop",
+    },
+
+    # ── Dance / Electronic ────────────────────────────────────────────────────
+    "dance":    {
+        "dance", "edm", "house", "techno", "trance", "club", "disco",
+        "dance-pop", "eurodance", "hi-nrg", "hi nrg", "dance hall", "dancehall",
+        "garage", "uk garage", "speed garage",
+    },
+    "electronic": {
+        "electronic", "electronica", "edm", "synth", "ambient", "industrial",
+        "downtempo", "idm", "glitch", "breakbeat", "drum and bass", "dnb",
+        "dubstep", "jungle", "trip hop", "chillout", "chill out",
+        "new wave", "synthwave", "retrowave", "vaporwave", "darkwave",
+        "electro", "electropop", "synth-pop", "synthpop",
+    },
+
+    # ── Rock (mainstream / billboard rock) ───────────────────────────────────
+    "rock":     {
+        "rock", "classic rock", "hard rock", "arena rock", "glam rock",
+        "garage rock", "psychedelic rock", "progressive rock", "prog rock",
+        "southern rock", "surf rock", "heartland rock", "blues rock",
+        "jam band", "rockabilly", "roots rock", "pub rock", "new wave",
+        "post-punk", "art rock", "piano rock", "power pop",
+    },
+
+    # ── Alternative ───────────────────────────────────────────────────────────
+    "alternative": {
+        "alternative", "alt rock", "alternative rock", "indie rock",
+        "grunge", "post-grunge", "britpop", "shoegaze", "noise rock",
+        "post-rock", "math rock", "emo", "post-hardcore", "dream pop",
+        "lo-fi", "college rock", "jangle pop",
+    },
+
+    # ── Indie ─────────────────────────────────────────────────────────────────
+    "indie":    {
+        "indie", "indie rock", "indie pop", "indie folk", "indie electronic",
+        "lo-fi", "bedroom pop", "chamber pop", "twee pop", "indiepop",
+    },
+
+    # ── Metal ─────────────────────────────────────────────────────────────────
+    "metal":    {
+        "metal", "heavy metal", "death metal", "thrash metal", "black metal",
+        "doom metal", "power metal", "speed metal", "glam metal", "hair metal",
+        "nu-metal", "nu metal", "metalcore", "deathcore", "symphonic metal",
+        "progressive metal", "groove metal", "industrial metal", "hard rock",
+    },
+
+    # ── Folk ──────────────────────────────────────────────────────────────────
+    "folk":     {
+        "folk", "folk rock", "folk pop", "indie folk", "contemporary folk",
+        "traditional folk", "acoustic", "singer-songwriter", "americana",
+        "celtic folk", "folk blues", "anti-folk", "freak folk",
+    },
+
+    # ── Jazz ──────────────────────────────────────────────────────────────────
+    "jazz":     {
+        "jazz", "bebop", "swing", "big band", "cool jazz", "hard bop",
+        "jazz fusion", "fusion", "soul jazz", "smooth jazz", "free jazz",
+        "latin jazz", "bossa nova", "jazz blues", "jazz funk", "vocal jazz",
+        "traditional jazz", "dixieland",
+    },
+
+    # ── Blues ─────────────────────────────────────────────────────────────────
+    "blues":    {
+        "blues", "chicago blues", "delta blues", "electric blues", "texas blues",
+        "rhythm and blues", "r&b", "soul blues", "jump blues", "boogie woogie",
+        "boogie", "country blues", "acoustic blues", "swamp blues",
+    },
 }
+
+# ── Genre tag → chart_name routing map ───────────────────────────────────────
+# Used to map Retriever genre_1/2/3 values → which chart_name to query in LBZ extras.
+# Broader than _CHART_GENRE_KEYWORDS — catches real-world Mutagen/Plex tag strings.
+# Keys are lowercased substrings; values are chart_name keys in chart_reference_extras.
+# Order matters: checked top-to-bottom, first match wins.
+_GENRE_TAG_TO_CHART_NAME: list = [
+    # CCM / Gospel — check before rock/pop since "christian rock" contains "rock"
+    ("christian country",      "ccm-country"),
+    ("christian bluegrass",    "ccm-country"),
+    ("christian americana",    "ccm-country"),
+    ("christian folk",         "ccm-folk"),
+    ("christian acoustic",     "ccm-folk"),
+    ("christian blues",        "ccm-blues"),
+    ("gospel blues",           "ccm-blues"),
+    ("christian",              "ccm"),
+    ("ccm",                    "ccm"),
+    ("gospel",                 "gospel"),
+    ("worship",                "ccm"),
+    ("praise",                 "ccm"),
+    ("hymn",                   "ccm"),
+    ("spiritual",              "ccm"),
+    ("religious",              "ccm"),
+    ("inspirational",          "ccm"),
+    ("jesus music",            "ccm"),
+    ("sacred",                 "ccm"),
+    # Hip-Hop — before r&b
+    ("hip hop",            "hiphop"),
+    ("hip-hop",            "hiphop"),
+    ("rap",                "hiphop"),
+    ("trap",               "hiphop"),
+    ("drill",              "hiphop"),
+    ("grime",              "hiphop"),
+    # R&B
+    ("r&b",                "rnb"),
+    ("rnb",                "rnb"),
+    ("rhythm and blues",   "rnb"),
+    ("soul",               "rnb"),
+    ("motown",             "rnb"),
+    ("funk",               "rnb"),
+    # Country
+    ("country",            "country"),
+    ("bluegrass",          "country"),
+    ("americana",          "country"),
+    ("honky tonk",         "country"),
+    ("outlaw",             "country"),
+    ("nashville",          "country"),
+    ("western",            "country"),
+    # Metal — before rock
+    ("metal",              "metal"),
+    ("metalcore",          "metal"),
+    ("deathcore",          "metal"),
+    # Alternative — before rock
+    ("grunge",             "alternative"),
+    ("shoegaze",           "alternative"),
+    ("britpop",            "alternative"),
+    ("post-grunge",        "alternative"),
+    # Indie — before rock/alternative
+    ("indie",              "indie"),
+    ("bedroom pop",        "indie"),
+    ("lo-fi",              "indie"),
+    # Electronic/Dance — before generic dance
+    ("synth-pop",          "electronic"),
+    ("synthpop",           "electronic"),
+    ("synthwave",          "electronic"),
+    ("ambient",            "electronic"),
+    ("idm",                "electronic"),
+    ("dubstep",            "electronic"),
+    ("drum and bass",      "electronic"),
+    ("dnb",                "electronic"),
+    ("trip hop",           "electronic"),
+    ("downtempo",          "electronic"),
+    ("new wave",           "electronic"),
+    ("darkwave",           "electronic"),
+    ("industrial",         "electronic"),
+    ("electronica",        "electronic"),
+    ("electronic",         "electronic"),
+    ("edm",                "dance"),
+    ("house",              "dance"),
+    ("techno",             "dance"),
+    ("trance",             "dance"),
+    ("disco",              "dance"),
+    ("eurodance",          "dance"),
+    ("dance",              "dance"),
+    # Folk
+    ("folk",               "folk"),
+    ("singer-songwriter",  "folk"),
+    # Jazz
+    ("jazz",               "jazz"),
+    ("bebop",              "jazz"),
+    ("swing",              "jazz"),
+    ("bossa nova",         "jazz"),
+    ("big band",           "jazz"),
+    # Blues
+    ("blues",              "blues"),
+    ("boogie",             "blues"),
+    # Rock — broad, catch-all after specifics
+    ("classic rock",       "classicrock"),
+    ("classic-rock",       "classicrock"),
+    ("arena rock",         "classicrock"),
+    ("blues rock",         "classicrock"),
+    ("southern rock",      "classicrock"),
+    ("heartland rock",     "classicrock"),
+    ("rockabilly",         "classicrock"),
+    ("rock and roll",      "classicrock"),
+    ("rock & roll",        "classicrock"),
+    ("rock",               "rock"),
+    ("punk",               "alternative"),
+    ("post-punk",          "alternative"),
+    ("emo",                "alternative"),
+    # Classical
+    ("classical",          "classical"),
+    ("orchestral",         "classical"),
+    ("symphony",           "classical"),
+    ("opera",              "classical"),
+    ("chamber music",      "classical"),
+    ("baroque",            "classical"),
+    # Pop — maps to adultpop chart data
+    ("pop",                "adultpop"),
+]
 
 
 def _genre_matches_chart(genre_tags: list, chart_name: str) -> bool:
@@ -228,17 +748,47 @@ def _genre_matches_chart(genre_tags: list, chart_name: str) -> bool:
     Returns True if the file's genre tags are compatible with the chart filter.
     Charts not in _CHART_GENRE_KEYWORDS (hot100, adultpop, ac, uk) accept
     any genre — they are broad/general charts.
+    Strict charts (CCM/gospel family): no genre tag = reject (not benefit of the doubt).
     """
     keywords = _CHART_GENRE_KEYWORDS.get(chart_name)
     if not keywords:
         return True  # hot100, adultpop, ac, uk — no genre restriction
     genre_text = " ".join(g.lower() for g in genre_tags if g)
     if not genre_text:
-        return True  # no genre info on file — benefit of the doubt
+        # Strict charts require a genre tag to confirm — reject ambiguous files
+        if chart_name in _STRICT_GENRE_CHARTS:
+            return False
+        return True  # non-strict charts: benefit of the doubt
     return any(kw in genre_text for kw in keywords)
 
 
 def _detect_genre_bucket(genre_tags: list, chart_names: list) -> str:
+    """Map genre tags + chart names to a Last.fm threshold bucket."""
+    all_text = " ".join((genre_tags or []) + (chart_names or [])).lower()
+    if any(kw in all_text for kw in _CCM_KEYWORDS): return "ccm"
+    if any(c in _CCM_CHARTS for c in (chart_names or [])): return "ccm"
+    if "country" in all_text: return "country"
+    if any(k in all_text for k in ("dance","electronic","edm","house","club")): return "dance"
+    if any(k in all_text for k in ("r&b","rnb","soul","hip hop","hip-hop","rap")): return "rnb"
+    if "rock" in all_text: return "rock"
+    return "default"
+
+
+def _genre_tags_to_chart_names(genre_tags: list) -> list:
+    """
+    Map Retriever genre_1/2/3 values to chart_name keys for LBZ extras routing.
+    Returns a deduplicated list of chart_name strings in priority order.
+    Checks all tags against _GENRE_TAG_TO_CHART_NAME ordered rules.
+    E.g. ["Christian Rock", "Rock"] → ["ccm", "rock"]
+    """
+    genre_text = " | ".join(g.lower() for g in genre_tags if g)
+    if not genre_text:
+        return []
+    found = []
+    for keyword, chart_name in _GENRE_TAG_TO_CHART_NAME:
+        if keyword in genre_text and chart_name not in found:
+            found.append(chart_name)
+    return found
     all_text = " ".join((genre_tags or []) + (chart_names or [])).lower()
     if any(kw in all_text for kw in _CCM_KEYWORDS): return "ccm"
     if any(c in _CCM_CHARTS for c in (chart_names or [])): return "ccm"
@@ -315,12 +865,25 @@ def _lookup_static(artist: str, title: str, charts: list) -> Optional[dict]:
     (historical pop 1890-2015).
     Returns dict with peak_position, weeks_on_chart, chart_name, confidence,
     chart_year, data_source — or None if no match.
+
+    CCM fan-out: sub-charts (ccm-ac, ccm-rock, worship, sgospel, ugospel, tgospel)
+    have no dedicated DB rows — they fan out to their parent chart_name ('ccm'/'gospel')
+    so the query still finds data. The result chart_name is preserved from the DB row.
     """
     if not os.path.exists(_STATIC_DB):
         return None
 
     artist_n = _norm(artist)
     title_n  = _norm(title)
+
+    # ── CCM/gospel sub-chart fan-out ─────────────────────────────────────────
+    # Expand requested charts to include parent chart names for sub-charts that
+    # share a data pool (e.g. ccm-ac → also query 'ccm').
+    expanded_charts = list(charts)
+    for c in charts:
+        parent = _CCM_SUBCHARTS_TO_PARENT.get(c)
+        if parent and parent not in expanded_charts:
+            expanded_charts.append(parent)
 
     try:
         conn = sqlite3.connect(_STATIC_DB, check_same_thread=False)
@@ -342,10 +905,10 @@ def _lookup_static(artist: str, title: str, charts: list) -> Optional[dict]:
         # ── Step 1: chart_reference (Billboard CSVs) + extras (user-imported) ─
         chart_filter = ""
         params: list = [artist_n, title_n]
-        if charts:
-            placeholders = ",".join("?" * len(charts))
+        if expanded_charts:
+            placeholders = ",".join("?" * len(expanded_charts))
             chart_filter = f"AND chart_name IN ({placeholders})"
-            params += charts
+            params += expanded_charts
 
         if has_extras:
             # UNION ALL — extras rows sit alongside static rows; ORDER BY picks best peak
@@ -378,7 +941,7 @@ def _lookup_static(artist: str, title: str, charts: list) -> Optional[dict]:
 
         # Fuzzy fallback if exact norm match fails
         if not rows:
-            like_params = [artist_n[:6] + "%"] + (charts if charts else [])
+            like_params = [artist_n[:6] + "%"] + (expanded_charts if expanded_charts else [])
             if has_extras:
                 union_like = list(like_params) + list(like_params)
                 candidates = conn.execute(f"""
@@ -489,6 +1052,89 @@ async def _lastfm_listeners(artist: str, title: str, lfm_key: str) -> int:
     except Exception:
         pass
     return 0
+
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  LBZ EXTRAS FALLBACK LOOKUP
+# ══════════════════════════════════════════════════════════════════════════════
+
+# LBZ genres stored in chart_reference_extras by chart_name
+_LBZ_CHART_NAMES = {
+    "hiphop", "metal", "alternative", "indie", "folk", "jazz", "blues", "electronic"
+}
+
+
+async def _lookup_lbz_extras(artist: str, title: str, charts: list) -> Optional[dict]:
+    """
+    Async lookup against chart_reference_extras for LBZ-imported genre data.
+    Fires after static DB miss, before Last.fm — zero API calls.
+    Only queries chart_names that are LBZ-sourced genres.
+    Returns same shape dict as _lookup_static, with confidence='medium'.
+    """
+    lbz_charts = [c for c in charts if c in _LBZ_CHART_NAMES]
+    if not lbz_charts:
+        return None
+
+    artist_n = _norm(artist)
+    title_n  = _norm(title)
+
+    try:
+        async with aiosqlite.connect(_DYNAMIC_DB) as db:
+            db.row_factory = aiosqlite.Row
+            placeholders = ",".join("?" * len(lbz_charts))
+
+            # Exact match first
+            async with db.execute(f"""
+                SELECT chart_name, peak_position, weeks_on_chart, chart_year, data_source
+                FROM chart_reference_extras
+                WHERE artist_norm = ? AND title_norm = ?
+                  AND chart_name IN ({placeholders})
+                ORDER BY peak_position ASC
+                LIMIT 10
+            """, [artist_n, title_n] + lbz_charts) as cur:
+                rows = await cur.fetchall()
+
+            # Fuzzy fallback
+            if not rows:
+                async with db.execute(f"""
+                    SELECT chart_name, peak_position, weeks_on_chart, chart_year,
+                           artist_norm, title_norm, data_source
+                    FROM chart_reference_extras
+                    WHERE artist_norm LIKE ?
+                      AND chart_name IN ({placeholders})
+                    LIMIT 300
+                """, [artist_n[:6] + "%"] + lbz_charts) as cur:
+                    candidates = await cur.fetchall()
+
+                best = None
+                best_score = 0.0
+                for c in candidates:
+                    score = (_fuzzy(artist_n, c["artist_norm"]) * 0.5 +
+                             _fuzzy(title_n,  c["title_norm"])  * 0.5)
+                    if score > best_score and score >= MATCH_THRESHOLD:
+                        best_score = score
+                        best = c
+                if best:
+                    rows = [best]
+
+            if not rows:
+                return None
+
+            best_row = rows[0]
+            return {
+                "peak_position":  best_row["peak_position"],
+                "weeks_on_chart": best_row["weeks_on_chart"] or 1,
+                "chart_name":     best_row["chart_name"],
+                "chart_year":     best_row["chart_year"],
+                "confidence":     "medium",
+                "data_source":    "listenbrainz_historical",
+                "all_charts":     [dict(r) for r in rows],
+            }
+
+    except Exception as e:
+        log.warning(f"LBZ extras lookup error: {e}")
+        return None
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2366,9 +3012,10 @@ async def groomer_startup():
 
 class ScanRequest(BaseModel):
     source:        str            # 'plex' | 'emby' | 'jellyfin' | 'local'
-    charts:        List[str]      # ['hot100', 'country', ...]
+    # charts removed — scan now runs against ALL sources simultaneously.
+    # Genre/chart filtering happens at playlist-build time via get_results() filters.
     data_source:   str = "auto"   # kept for backward compat
-    use_estimates: bool = False   # if True, use Last.fm for tracks not in static DB
+    use_estimates: bool = False   # if True, use Last.fm for tracks not in any DB source
     write_tags:    bool = False
     limit:         Optional[int] = None
     folder_path:   Optional[str] = None
@@ -2482,7 +3129,7 @@ async def _run_scan(req: ScanRequest):
     # Early log — ALWAYS hits before any heavy I/O so we have proof the
     # background task started, even if something catastrophic happens next.
     log.info(
-        f"Scan task entered — source={req.source} charts={req.charts} "
+        f"Scan task entered — source={req.source} "
         f"folder={req.folder_path or '(n/a)'} library={req.library_id or '(all)'} "
         f"job_id={_scan_job.get('job_id')}"
     )
@@ -2511,18 +3158,13 @@ async def _run_scan(req: ScanRequest):
         limit = req.limit or len(tracks)
         tracks = tracks[:limit]
         _scan_job["total"] = len(tracks)
-        _scan_job["message"] = f"Scanning {len(tracks):,} tracks..."
+        _scan_job["message"] = f"Scanning {len(tracks):,} tracks against all chart sources..."
 
-        # Pre-compute which requested charts have static DB entries — done ONCE
-        # Charts with no static data automatically fall through to Last.fm
-        charts_with_static = _get_charts_with_static_data(req.charts)
-        estimate_only_charts = [c for c in req.charts if c not in charts_with_static]
-        log.info(f"Static DB charts: {charts_with_static} | Estimate-only: {estimate_only_charts}")
-        if estimate_only_charts:
-            _scan_job["message"] = (
-                f"Note: {', '.join(estimate_only_charts)} have no static chart data — "
-                f"will use Last.fm listener estimates for these charts"
-            )
+        # Scan-everything: no chart filter at scan time.
+        # _lookup_static queries chart_reference + extras with no chart restriction.
+        # LBZ lookup is routed by Retriever genre tags on the track.
+        # Last.fm fires for any unmatched track when use_estimates=True.
+        log.info(f"Scan-everything mode: all chart sources active, genre routing via DB tags")
 
         loop = asyncio.get_event_loop()
 
@@ -2531,10 +3173,9 @@ async def _run_scan(req: ScanRequest):
             await db.execute("PRAGMA journal_mode=WAL")
 
             # ── SKIP CACHE AGE GATE ──────────────────────────────────────
-            # Misses older than 6 months are re-checked. Configurable.
             _MISS_AGE_SECONDS = 6 * 30 * 24 * 3600   # ~6 months
-            skipped_miss = 0   # counter for skip-cached misses
-            comment_readback_hits = 0  # counter for comment read-back matches
+            skipped_miss = 0
+            comment_readback_hits = 0
 
             # ── PRE-FETCH PATH PREFIXES (once, not per-track) ────────────
             _scan_server_prefix = ""
@@ -2552,14 +3193,13 @@ async def _run_scan(req: ScanRequest):
                 pass
 
             def _to_docker_path(fp: str) -> str:
-                """Translate server/desktop path → container path for file reads."""
                 if not fp:
                     return ""
                 if _scan_server_prefix and fp.startswith(_scan_server_prefix):
                     return _scan_docker_prefix + fp[len(_scan_server_prefix):]
                 if fp.startswith(_scan_docker_prefix) or fp.startswith("/music"):
                     return fp
-                return ""  # can't translate
+                return ""
 
             for idx, track in enumerate(tracks):
                 if _scan_job["stop_requested"]:
@@ -2575,24 +3215,37 @@ async def _run_scan(req: ScanRequest):
 
                 _scan_job["message"] = f"[{idx+1}/{len(tracks)}] {artist} — {title}"
 
-                # Check dynamic cache first (chart_data rows from THIS scan)
-                cached = await _check_cache(db, track, req.charts)
+                # Check dynamic cache (chart_data rows from THIS scan)
+                cached = await _check_cache(db, track, [])  # [] = any chart
                 if cached:
                     _scan_job["cached"]    += 1
                     _scan_job["processed"] += 1
                     continue
 
-                # Resolve track_id — required before any chart_data write
+                # Resolve track_id
                 track_id = await _resolve_track_id(db, track)
                 if track_id:
                     track["track_id"] = track_id
 
+                # ── PULL RETRIEVER GENRE TAGS FROM DB ────────────────────────
+                # genre_1/2/3 written by the Retriever live in the tracks table.
+                # Media server fetch dicts don't include these — pull them now
+                # so the LBZ router and Last.fm genre gate use real data.
+                if track_id and not track.get("genre_1"):
+                    try:
+                        async with db.execute(
+                            "SELECT genre_1, genre_2, genre_3 FROM tracks WHERE track_id=?",
+                            (track_id,)
+                        ) as cur:
+                            gr = await cur.fetchone()
+                        if gr:
+                            track["genre_1"] = gr[0] or ""
+                            track["genre_2"] = gr[1] or ""
+                            track["genre_3"] = gr[2] or ""
+                    except Exception:
+                        pass
+
                 # ── CHART STATUS SKIP CACHE ───────────────────────────────────
-                # Check tracks.chart_status before doing expensive lookups.
-                # 'miss' within age gate → skip instantly (no DB query, no API)
-                # 'hit' → still do the lookup (fast static DB) to re-populate
-                #         chart_data since we wiped it at scan start
-                # NULL  → first time, do full waterfall
                 if track_id:
                     cs_row = None
                     try:
@@ -2605,7 +3258,6 @@ async def _run_scan(req: ScanRequest):
                         pass
 
                     if cs_row and cs_row["chart_status"] == "miss":
-                        # Age-gate: only trust recent misses
                         last_checked = cs_row["chart_last_checked"] or ""
                         is_fresh = False
                         if last_checked:
@@ -2620,23 +3272,17 @@ async def _run_scan(req: ScanRequest):
                             _scan_job["cached"]    += 1
                             _scan_job["processed"] += 1
                             continue
-                        # Stale miss — fall through to re-check
 
-                # ── SMART WATERFALL ───────────────────────────────────────────
-                # Step 1: Static DB lookup (only for charts that have data)
-                static_charts = [c for c in req.charts if c in charts_with_static]
-                static_result = None
-                if static_charts:
-                    static_result = await loop.run_in_executor(
-                        None, _lookup_static, artist, title, static_charts
-                    )
+                # ── WATERFALL ────────────────────────────────────────────────
+                # Step 1: Static DB + extras — ALL charts, no restriction
+                static_result = await loop.run_in_executor(
+                    None, _lookup_static, artist, title, []   # [] = all charts
+                )
 
                 if static_result:
-                    # Real chart data found — store it, then read genre from file
                     await _store_result(db, track, static_result, req)
                     await _enrich_genre_from_file(db, track, loop)
                     _scan_job["matched"] += 1
-                    # Mark as hit in skip cache
                     if track_id:
                         try:
                             await db.execute(
@@ -2648,33 +3294,21 @@ async def _run_scan(req: ScanRequest):
                             pass
 
                 else:
-                    # ── Step 2: COMMENT TAG READ-BACK ─────────────────────────
-                    # Before hitting Last.fm, check if the file already has a
-                    # ChartHound comment written from a previous scan. Parse it
-                    # back into chart data. Zero API calls, instant.
-                    comment_result = None
-                    file_path = track.get("file_path", "")
-                    docker_fp = _to_docker_path(file_path)
-                    if docker_fp:
-                        raw_comment = await loop.run_in_executor(
-                            None, _read_comment_from_file, docker_fp
-                        )
-                        if raw_comment:
-                            parsed_entries = _parse_comment_tag(raw_comment)
-                            # Filter to only entries matching requested charts
-                            matching = [e for e in parsed_entries
-                                        if e["chart_name"] in req.charts]
-                            if matching:
-                                # Use the best (lowest peak) entry as primary
-                                best = min(matching, key=lambda e: e["peak_position"])
-                                best["all_charts"] = matching
-                                best["star_rating"] = peak_to_stars(best["peak_position"])
-                                comment_result = best
-                                comment_readback_hits += 1
-                                log.debug(f"Comment read-back hit: {artist} — {title} → {raw_comment}")
+                    # Step 1b: LBZ extras — routed by Retriever genre tags
+                    # Use genre_1/2/3 from DB to pick which chart_names to query.
+                    # Falls back to all LBZ chart names if no genre tag available.
+                    genre_tags_db = [
+                        track.get("genre_1", ""),
+                        track.get("genre_2", ""),
+                        track.get("genre_3", ""),
+                    ]
+                    routed_charts = _genre_tags_to_chart_names(genre_tags_db)
+                    # If no genre tags, try all LBZ charts (catch untagged library)
+                    lbz_query_charts = routed_charts if routed_charts else list(_LBZ_CHART_NAMES)
+                    lbz_result = await _lookup_lbz_extras(artist, title, lbz_query_charts)
 
-                    if comment_result:
-                        await _store_result(db, track, comment_result, req)
+                    if lbz_result:
+                        await _store_result(db, track, lbz_result, req)
                         await _enrich_genre_from_file(db, track, loop)
                         _scan_job["matched"] += 1
                         if track_id:
@@ -2687,27 +3321,55 @@ async def _run_scan(req: ScanRequest):
                             except Exception:
                                 pass
                     else:
-                        # ── Step 3: Last.fm fallback (genre-gated) ────────────
-                        # Only fires when:
-                        #   a) use_estimates=True (user opted in), OR
-                        #   b) All selected charts are estimate-only (no static data)
-                        # Genre gate: reject tracks whose genre tags don't match
-                        # the requested chart filter (prevents ABBA in CCM, etc.)
-                        all_estimate_only = len(estimate_only_charts) == len(req.charts)
-                        should_estimate = (req.use_estimates or all_estimate_only) and lfm_key
+                        # Step 2: Comment tag read-back
+                        comment_result = None
+                        file_path = track.get("file_path", "")
+                        docker_fp = _to_docker_path(file_path)
+                        if docker_fp:
+                            raw_comment = await loop.run_in_executor(
+                                None, _read_comment_from_file, docker_fp
+                            )
+                            if raw_comment:
+                                parsed_entries = _parse_comment_tag(raw_comment)
+                                if parsed_entries:
+                                    best = min(parsed_entries, key=lambda e: e["peak_position"])
+                                    best["all_charts"] = parsed_entries
+                                    best["star_rating"] = peak_to_stars(best["peak_position"])
+                                    comment_result = best
+                                    comment_readback_hits += 1
+                                    log.debug(f"Comment read-back: {artist} — {title}")
 
-                        matched_via_lfm = False
-                        if should_estimate:
-                            await asyncio.sleep(0.2)  # rate limit: max 5 req/sec to Last.fm
-                            listeners = await _lastfm_listeners(artist, title, lfm_key)
-                            genre_tags = [track.get("genre_1",""), track.get("genre_2","")]
-                            bucket_charts = estimate_only_charts or req.charts
-                            bucket = _detect_genre_bucket(genre_tags, bucket_charts)
+                        if comment_result:
+                            await _store_result(db, track, comment_result, req)
+                            await _enrich_genre_from_file(db, track, loop)
+                            _scan_job["matched"] += 1
+                            if track_id:
+                                try:
+                                    await db.execute(
+                                        "UPDATE tracks SET chart_status='hit', "
+                                        "chart_last_checked=datetime('now') WHERE track_id=?",
+                                        (track_id,)
+                                    )
+                                except Exception:
+                                    pass
+                        else:
+                            # Step 3: Last.fm popularity estimate (opt-in)
+                            # TARGETED: only fires when ALL of these are true:
+                            #   1. use_estimates=True (user opted in)
+                            #   2. Track has a genre tag (DB or file) — no genre = skip
+                            #   3. Genre routes to a LBZ gap chart (hiphop/metal/alt/indie/
+                            #      folk/jazz/blues/electronic) — broad charts have full
+                            #      static DB coverage so Last.fm adds nothing there
+                            matched_via_lfm = False
+                            if req.use_estimates and lfm_key:
 
-                            # ── GENRE GATE ────────────────────────────────────
-                            # Read genre from file if not already on track dict
-                            if not any(genre_tags):
-                                if docker_fp:
+                                # Get genre tags — prefer DB (Retriever), fall back to file
+                                genre_tags = [
+                                    track.get("genre_1", ""),
+                                    track.get("genre_2", ""),
+                                    track.get("genre_3", ""),
+                                ]
+                                if not any(genre_tags) and docker_fp:
                                     def _quick_genre(fp):
                                         try:
                                             from mutagen import File as MutagenFile
@@ -2722,49 +3384,71 @@ async def _run_scan(req: ScanRequest):
                                         None, _quick_genre, docker_fp
                                     )
 
-                            # Check if file genre matches the chart being estimated
-                            chart_for_estimate = (estimate_only_charts[0]
-                                                 if estimate_only_charts
-                                                 else (req.charts[0] if req.charts else "hot100"))
-                            genre_ok = _genre_matches_chart(genre_tags, chart_for_estimate)
+                                # Route genre → chart_name
+                                routed = _genre_tags_to_chart_names(genre_tags)
+                                chart_for_estimate = routed[0] if routed else None
 
-                            if genre_ok and _meets_min_threshold(listeners, bucket):
-                                est_peak = _listeners_to_est_peak(listeners, bucket)
-                                stars    = _listeners_to_stars(listeners, bucket)
-                                result = {
-                                    "peak_position":  est_peak,
-                                    "weeks_on_chart": 1,
-                                    "chart_name":     chart_for_estimate,
-                                    "chart_year":     None,
-                                    "confidence":     "low",
-                                    "data_source":    "lastfm_estimate",
-                                    "all_charts":     [],
-                                    "star_rating":    stars,
-                                    "listener_count": listeners,
-                                }
-                                await _store_result(db, track, result, req)
-                                await _enrich_genre_from_file(db, track, loop)
-                                _scan_job["matched"] += 1
-                                matched_via_lfm = True
+                                # GATE 1: must have a genre tag — no genre = no estimate
+                                # GATE 2: routed chart must be a LBZ gap genre
+                                #         (hot100/country/rock/rnb/dance/adultpop/ac/uk
+                                #          all have full static DB — Last.fm adds nothing)
+                                _LFM_ELIGIBLE_CHARTS = _LBZ_CHART_NAMES | _CCM_CHARTS
+                                lfm_eligible = (
+                                    any(genre_tags) and
+                                    chart_for_estimate is not None and
+                                    chart_for_estimate in _LFM_ELIGIBLE_CHARTS
+                                )
+
+                                if lfm_eligible:
+                                    await asyncio.sleep(0.2)  # max 5 req/sec
+                                    listeners = await _lastfm_listeners(artist, title, lfm_key)
+                                    bucket = _detect_genre_bucket(genre_tags, [chart_for_estimate])
+
+                                    # Strict gate for CCM/gospel
+                                    if chart_for_estimate in _STRICT_GENRE_CHARTS:
+                                        genre_ok = _genre_matches_chart(genre_tags, chart_for_estimate)
+                                    else:
+                                        genre_ok = True
+
+                                    if genre_ok and _meets_min_threshold(listeners, bucket):
+                                        est_peak = _listeners_to_est_peak(listeners, bucket)
+                                        stars    = _listeners_to_stars(listeners, bucket)
+                                        result = {
+                                            "peak_position":  est_peak,
+                                            "weeks_on_chart": 1,
+                                            "chart_name":     chart_for_estimate,
+                                            "chart_year":     None,
+                                            "confidence":     "low",
+                                            "data_source":    "lastfm_estimate",
+                                            "all_charts":     [],
+                                            "star_rating":    stars,
+                                            "listener_count": listeners,
+                                        }
+                                        await _store_result(db, track, result, req)
+                                        await _enrich_genre_from_file(db, track, loop)
+                                        _scan_job["matched"] += 1
+                                        matched_via_lfm = True
+                                    else:
+                                        _scan_job["failed"] += 1
+                                else:
+                                    # Not eligible for Last.fm — skip silently
+                                    _scan_job["failed"] += 1
                             else:
                                 _scan_job["failed"] += 1
-                        else:
-                            _scan_job["failed"] += 1
 
-                        # Mark skip cache: hit if Last.fm matched, miss if not
-                        if track_id:
-                            try:
-                                status = "hit" if matched_via_lfm else "miss"
-                                await db.execute(
-                                    "UPDATE tracks SET chart_status=?, "
-                                    "chart_last_checked=datetime('now') WHERE track_id=?",
-                                    (status, track_id)
-                                )
-                            except Exception:
-                                pass
+                            if track_id:
+                                try:
+                                    status = "hit" if matched_via_lfm else "miss"
+                                    await db.execute(
+                                        "UPDATE tracks SET chart_status=?, "
+                                        "chart_last_checked=datetime('now') WHERE track_id=?",
+                                        (status, track_id)
+                                    )
+                                except Exception:
+                                    pass
 
                 _scan_job["processed"] += 1
-                await asyncio.sleep(0)  # yield to event loop
+                await asyncio.sleep(0)
 
         elapsed = time.time() - (_scan_job["started_at"] or time.time())
         _scan_job.update({
@@ -2982,18 +3666,25 @@ def _get_charts_with_static_data(charts: list) -> set:
 
 
 async def _check_cache(db: aiosqlite.Connection, track: dict, charts: list) -> bool:
-    """Returns True if this track already has chart_data rows for the requested charts."""
+    """Returns True if this track already has any chart_data rows (scan-everything mode)."""
     track_id = track.get("track_id")
     if not track_id:
         return False
-    placeholders = ",".join("?" * len(charts)) if charts else "'hot100'"
-    params = [track_id] + (charts if charts else [])
-    async with db.execute(
-        f"SELECT COUNT(*) FROM chart_data WHERE track_id=? AND chart_name IN ({placeholders})",
-        params
-    ) as cur:
-        row = await cur.fetchone()
-        return bool(row and row[0] > 0)
+    if charts:
+        placeholders = ",".join("?" * len(charts))
+        params = [track_id] + charts
+        async with db.execute(
+            f"SELECT COUNT(*) FROM chart_data WHERE track_id=? AND chart_name IN ({placeholders})",
+            params
+        ) as cur:
+            row = await cur.fetchone()
+    else:
+        # Scan-everything: any existing chart_data row = cached
+        async with db.execute(
+            "SELECT COUNT(*) FROM chart_data WHERE track_id=?", (track_id,)
+        ) as cur:
+            row = await cur.fetchone()
+    return bool(row and row[0] > 0)
 
 
 def write_chart_tags(file_path: str, comment_string: str, star_rating: int) -> None:
@@ -3397,6 +4088,7 @@ async def get_results(
     charts:      Optional[str] = None,
     min_peak:    Optional[int] = None,
     max_peak:    Optional[int] = None,
+    min_weeks:   Optional[int] = None,
     min_year:    Optional[int] = None,
     max_year:    Optional[int] = None,
     confidence:  Optional[str] = None,
@@ -3407,33 +4099,92 @@ async def get_results(
 ):
     """
     Query chart_data joined with tracks for Groomer results table.
-    Filters: charts (comma-sep), peak range, year range, confidence, genre.
+    Filters: charts (comma-sep), peak range, weeks min, year range, confidence, genre.
     Paginated — default 500 rows per page.
     """
     conditions = []
     params: list = []
 
-    if charts:
-        chart_list = [c.strip() for c in charts.split(",") if c.strip()]
-        if chart_list:
-            conditions.append(f"cd.chart_name IN ({','.join('?'*len(chart_list))})")
-            params += chart_list
+    # charts param removed — genre filtering now by file tags via genre param
 
     if min_peak is not None:
         conditions.append("cd.peak_position >= ?"); params.append(min_peak)
     if max_peak is not None:
         conditions.append("cd.peak_position <= ?"); params.append(max_peak)
+    if min_weeks is not None:
+        conditions.append("cd.weeks_on_chart >= ?"); params.append(min_weeks)
     if confidence:
         conditions.append("cd.confidence = ?"); params.append(confidence)
     if genre:
+        # genre param is comma-separated tree leaf keys (e.g. "ccm-rock,sgospel")
+        # Empty / omitted = ALL tracks (no condition added).
+        # "untagged" = special key: match tracks with no genre tag on file.
+        # All other keys: match against genre_1/2/3 using whole-word boundary check
+        # so "christian rock" does NOT match a tag that just says "christian".
         genre_list = [g.strip() for g in genre.split(",") if g.strip()]
         if genre_list:
-            placeholders = " OR ".join(
-                ["(t.genre_1=? OR t.genre_2=? OR t.genre_3=?)"] * len(genre_list)
-            )
-            conditions.append(f"({placeholders})")
+            genre_clauses = []
             for g in genre_list:
-                params += [g, g, g]
+                # ── Special case: untagged ────────────────────────────────
+                if g == "untagged":
+                    genre_clauses.append(
+                        "(t.genre_1 IS NULL OR t.genre_1 = '') "
+                        "AND (t.genre_2 IS NULL OR t.genre_2 = '') "
+                        "AND (t.genre_3 IS NULL OR t.genre_3 = '')"
+                    )
+                    continue
+
+                keywords = _GENRE_FILTER_KEYWORDS.get(g)
+
+                # None = broad key (hot100 / ac / uk / adultpop) → no tag filter
+                if keywords is None:
+                    continue
+
+                kw_list = list(keywords)
+                if not kw_list:
+                    continue
+
+                # Build per-keyword whole-word LIKE clauses.
+                # Strategy: pad the genre column with spaces on both sides so
+                # every term (including those at start/end) has a word boundary.
+                # Match pattern: '% keyword %' against ' ' || genre || ' '
+                # This prevents "christian" matching inside "christian rock" etc.
+                col_exprs = [
+                    "(' ' || LOWER(COALESCE(t.genre_1,'')) || ' ')",
+                    "(' ' || LOWER(COALESCE(t.genre_2,'')) || ' ')",
+                    "(' ' || LOWER(COALESCE(t.genre_3,'')) || ' ')",
+                ]
+                per_kw = []
+                for kw in kw_list:
+                    pattern = f"% {kw} %"
+                    col_parts = " OR ".join(f"{col} LIKE ?" for col in col_exprs)
+                    per_kw.append(f"({col_parts})")
+                    params += [pattern, pattern, pattern]
+
+                tag_clause = "(" + " OR ".join(per_kw) + ")"
+
+                # Chart_name fallback for untagged tracks (reliable sources only)
+                fallback_chart = _CHART_SOURCE_TO_GENRE.get(g)
+                no_tag = ("(t.genre_1 IS NULL OR t.genre_1 = '') "
+                          "AND (t.genre_2 IS NULL OR t.genre_2 = '') "
+                          "AND (t.genre_3 IS NULL OR t.genre_3 = '')")
+
+                # CCM/gospel sub-genres: strict — no chart_name fallback
+                _ccm_keys = {"ccm","ccm-ac","ccm-rock","ccm-country","ccm-folk",
+                             "ccm-pop","ccm-hiphop","ccm-blues","worship",
+                             "gospel","sgospel","ugospel","tgospel"}
+                if g in _ccm_keys:
+                    genre_clauses.append(tag_clause)
+                elif fallback_chart and fallback_chart == g:
+                    genre_clauses.append(
+                        f"({tag_clause} OR (({no_tag}) AND cd.chart_name = ?))"
+                    )
+                    params.append(g)
+                else:
+                    genre_clauses.append(tag_clause)
+
+            if genre_clauses:
+                conditions.append("(" + " OR ".join(genre_clauses) + ")")
 
     where        = ("WHERE " + " AND ".join(conditions)) if conditions else ""
     # Keep filter_params separate — reused for COUNT query without limit/offset
@@ -3528,8 +4279,11 @@ class PlaylistPushRequest(BaseModel):
     server:        Optional[str] = None   # Required for push, optional for M3U
     playlist_name: str = "Chart Hits"
     track_ids:     Optional[List[int]] = None
-    charts:        Optional[List[str]] = None
-    max_peak:      Optional[int] = None
+    # Post-scan filters — applied to chart_data at playlist-build time, not at scan time
+    charts:        Optional[List[str]] = None      # e.g. ['rock','country'] — None = all
+    max_peak:      Optional[int] = None            # e.g. 40 = Top 40 only
+    min_weeks:     Optional[int] = None            # e.g. 4 = charted 4+ weeks
+    confidence:    Optional[str] = None            # 'high'|'medium'|'low'|None=all
     limit:         int = 5000
 
 
@@ -3677,6 +4431,10 @@ async def _get_playlist_tracks(req: PlaylistPushRequest) -> list:
         params += req.charts
     if req.max_peak:
         conditions.append("cd.peak_position <= ?"); params.append(req.max_peak)
+    if req.min_weeks:
+        conditions.append("cd.weeks_on_chart >= ?"); params.append(req.min_weeks)
+    if req.confidence:
+        conditions.append("cd.confidence = ?"); params.append(req.confidence)
 
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
     params.append(req.limit)

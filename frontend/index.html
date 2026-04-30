@@ -118,6 +118,71 @@ body::before{content:'';position:fixed;inset:0;background-image:url("data:image/
 .copy-btn:hover{border-color:var(--gold);color:var(--gold);}
 .copy-btn.copied{border-color:var(--green);color:var(--green);}
 
+/* GENRE PILLS */
+.grm-genre-pill{font-family:var(--mono);font-size:.58rem;padding:.25rem .6rem;border-radius:12px;border:1px solid var(--border2);background:var(--surface2);color:var(--muted);cursor:pointer;transition:all .15s;white-space:nowrap;}
+.grm-genre-pill:hover{border-color:var(--pink);color:var(--pink);}
+.grm-genre-pill.active{background:var(--pink);color:#000;border-color:var(--pink);font-weight:700;}
+.grm-genre-pill.grm-ccm-pill{border-color:rgba(192,132,252,.3);color:var(--purple);}
+.grm-genre-pill.grm-ccm-pill:hover{border-color:var(--purple);}
+.grm-genre-pill.grm-ccm-pill.active{background:var(--purple);color:#000;border-color:var(--purple);}
+.grm-genre-pill.grm-sub-pill{font-size:.54rem;padding:.2rem .5rem;}
+
+/* ── THREE-PANE GROOMER LAYOUT ────────────────────────────────── */
+.grm-layout{display:flex;min-height:calc(100vh - 120px);overflow:hidden;}
+.grm-config-panel{width:300px;min-width:300px;border-right:1px solid var(--border);padding:1.25rem;display:flex;flex-direction:column;gap:1rem;overflow-y:auto;background:var(--surface);transition:width .25s ease,min-width .25s ease,padding .25s ease;position:relative;flex-shrink:0;}
+.grm-config-panel.collapsed{width:28px;min-width:28px;padding:0;overflow:hidden;}
+.grm-tree-panel{width:230px;min-width:230px;border-right:1px solid var(--border);background:var(--surface);display:flex;flex-direction:column;transition:width .25s ease,min-width .25s ease;flex-shrink:0;overflow:hidden;}
+.grm-tree-panel.collapsed{width:28px;min-width:28px;}
+.grm-results-panel{flex:1;display:flex;flex-direction:column;padding:1.25rem 1.75rem;gap:1rem;overflow-y:auto;min-width:0;}
+.grm-collapse-btn{position:absolute;right:-12px;top:16px;width:22px;height:22px;border-radius:50%;background:var(--surface3);border:1px solid var(--border2);color:var(--muted);font-size:.6rem;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:10;transition:all .15s;line-height:1;}
+.grm-collapse-btn:hover{border-color:var(--pink);color:var(--pink);}
+.grm-tree-collapse-btn{width:28px;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;border-right:0px;transition:background .15s;gap:4px;flex-shrink:0;}
+.grm-tree-collapse-btn:hover{background:var(--surface2);}
+.grm-tree-collapse-btn .grm-tab-label{font-family:var(--mono);font-size:.48rem;letter-spacing:2px;color:var(--muted);writing-mode:vertical-rl;text-orientation:mixed;transform:rotate(180deg);}
+.grm-tree-inner{flex:1;overflow-y:auto;overflow-x:hidden;}
+.grm-tree-header{font-family:var(--mono);font-size:.52rem;letter-spacing:2px;color:var(--pink);padding:.75rem .85rem .4rem;display:flex;align-items:center;justify-content:space-between;}
+/* Tree rows */
+.gt-row{display:flex;align-items:center;gap:5px;padding:3px 8px;cursor:pointer;user-select:none;border-radius:4px;margin:0 4px;}
+.gt-row:hover{background:var(--surface2);}
+.gt-row.depth-1{padding-left:22px;}
+.gt-row.depth-2{padding-left:36px;}
+.gt-chev{font-size:7px;color:var(--muted2);width:9px;flex-shrink:0;transition:transform .15s;display:inline-block;}
+.gt-chev.open{transform:rotate(90deg);}
+.gt-chev.leaf{opacity:0;}
+.gt-cb{width:13px;height:13px;border:1.5px solid var(--border2);border-radius:3px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:8px;transition:all .1s;}
+.gt-cb.chk{background:var(--pink);border-color:var(--pink);color:#000;}
+.gt-cb.mix{background:transparent;border-color:var(--pink);color:var(--pink);}
+.gt-cb.ccm-chk{background:var(--purple);border-color:var(--purple);color:#000;}
+.gt-cb.ccm-mix{border-color:var(--purple);color:var(--purple);}
+.gt-label{font-family:var(--mono);font-size:.6rem;color:var(--text);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.gt-label.ccm{color:var(--purple);}
+.gt-label.muted{color:var(--muted);font-style:italic;}
+.gt-count{font-family:var(--mono);font-size:.5rem;color:var(--muted2);margin-left:auto;flex-shrink:0;}
+.grm-tree-divider{height:1px;background:var(--border);margin:5px 8px;}
+.grm-tree-allrow{display:flex;align-items:center;gap:5px;padding:5px 8px;cursor:pointer;user-select:none;border-radius:4px;margin:4px 4px 0;}
+.grm-tree-allrow:hover{background:var(--surface2);}
+.grm-tree-allrow .gt-cb{border-color:var(--pink);}
+.grm-retriever-warn-tree{background:rgba(245,166,35,.08);border-top:1px solid rgba(245,166,35,.2);padding:.5rem .75rem;font-family:var(--mono);font-size:.5rem;color:var(--amber);line-height:1.6;flex-shrink:0;}
+
+/* HELP MODAL */
+#helpModal{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:6000;display:flex;align-items:center;justify-content:center;padding:1rem;}
+#helpModal.hidden{display:none;}
+.help-modal-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;width:100%;max-width:560px;max-height:88vh;overflow-y:auto;display:flex;flex-direction:column;}
+.help-modal-header{padding:1.25rem 1.5rem 1rem;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;}
+.help-modal-title{font-family:var(--display);font-size:1.4rem;letter-spacing:2px;}
+.help-modal-subtitle{font-family:var(--mono);font-size:.55rem;color:var(--muted);margin-top:.2rem;letter-spacing:1px;}
+.help-modal-close{background:none;border:1px solid var(--border);color:var(--muted);font-family:var(--mono);font-size:.65rem;padding:.25rem .55rem;border-radius:4px;cursor:pointer;flex-shrink:0;transition:all .15s;}
+.help-modal-close:hover{color:var(--red);border-color:var(--red);}
+.help-modal-body{padding:1.25rem 1.5rem;display:flex;flex-direction:column;gap:1rem;}
+.help-section{display:flex;flex-direction:column;gap:.4rem;}
+.help-section-title{font-family:var(--display);font-size:.85rem;letter-spacing:1.5px;}
+.help-section-body{font-family:var(--mono);font-size:.58rem;color:var(--muted);line-height:1.85;}
+.help-section-body strong{font-weight:700;}
+.help-tag{display:inline-block;font-family:var(--mono);font-size:.52rem;padding:.1rem .4rem;border-radius:4px;margin:.1rem .15rem .1rem 0;}
+.help-divider{height:1px;background:var(--border);margin:.25rem 0;}
+.tab-help-btn{background:none;border:1px solid var(--border2);border-radius:5px;color:var(--muted2);font-family:var(--mono);font-size:.6rem;padding:.25rem .6rem;cursor:pointer;transition:all .15s;display:inline-flex;align-items:center;gap:.35rem;}
+.tab-help-btn:hover{border-color:var(--pink);color:var(--pink);}
+
 /* HEADER */
 header{border-bottom:1px solid var(--border);padding:0 1.5rem;display:flex;align-items:center;gap:1rem;height:62px;position:sticky;top:0;background:rgba(14,14,15,.97);backdrop-filter:blur(14px);z-index:300;}
 .vinyl-icon{width:30px;height:30px;border-radius:50%;background:radial-gradient(circle at 50%,#111 18%,#2a2a2a 19%,#1a1a1a 35%,#2a2a2a 36%,#1a1a1a 52%,#2a2a2a 53%,#1a1a1a 70%,#2a2a2a 71%,#0e0e0f 100%);border:1px solid #333;position:relative;animation:spin 4s linear infinite paused;flex-shrink:0;}
@@ -1389,10 +1454,11 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
 
     <!-- THE GROOMER -->
     <div class="tab-panel" id="panel-groomer">
-      <div style="display:grid;grid-template-columns:300px 1fr;min-height:calc(100vh - 120px)">
+      <div class="grm-layout">
 
-        <!-- LEFT PANEL -->
-        <div style="border-right:1px solid var(--border);padding:1.25rem;display:flex;flex-direction:column;gap:1rem;overflow-y:auto;background:var(--surface);">
+        <!-- PANE 1: CONFIG (collapsible) -->
+        <div class="grm-config-panel" id="grm-config-panel">
+          <button class="grm-collapse-btn" id="grm-config-toggle" onclick="grmToggleConfig()" title="Collapse config panel">◀</button>
 
           <!-- MODE TOGGLE -->
           <div>
@@ -1462,42 +1528,9 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
             </div>
           </div>
 
-          <!-- CHART CHECKBOXES -->
-          <div>
-            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--pink);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">CHART FILTERS<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
-            <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem;display:flex;flex-direction:column;gap:.4rem">
-              <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.75rem"><input type="checkbox" id="grm-hot100" checked style="accent-color:var(--pink)"><span>Billboard Hot 100</span></label>
-              <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.75rem"><input type="checkbox" id="grm-adultpop" checked style="accent-color:var(--pink)"><span>Adult Pop / Top 40</span></label>
-              <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.75rem"><input type="checkbox" id="grm-ac" checked style="accent-color:var(--pink)"><span>Adult Contemporary</span></label>
-              <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.75rem"><input type="checkbox" id="grm-uk" checked style="accent-color:var(--pink)"><span>UK Singles Chart</span></label>
-              <div style="height:1px;background:var(--border);margin:.15rem 0"></div>
-              <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.75rem"><input type="checkbox" id="grm-country" style="accent-color:var(--pink)"><span>Hot Country Songs</span></label>
-              <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.75rem"><input type="checkbox" id="grm-rnb" style="accent-color:var(--pink)"><span>R&amp;B / Hip-Hop</span></label>
-              <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.75rem"><input type="checkbox" id="grm-dance" style="accent-color:var(--pink)"><span>Dance / Electronic</span></label>
-              <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.75rem"><input type="checkbox" id="grm-rock" style="accent-color:var(--pink)"><span>Mainstream Rock</span></label>
-              <div style="height:1px;background:var(--border);margin:.15rem 0"></div>
-              <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.75rem"><input type="checkbox" id="grm-ccm" style="accent-color:var(--purple)"><span style="color:var(--purple)">CCM / Christian Songs</span><span style="font-family:var(--mono);font-size:.45rem;color:var(--amber);border:1px solid rgba(255,204,85,.3);border-radius:3px;padding:.05rem .25rem;margin-left:.25rem;vertical-align:middle">~ estimates</span></label>
-              <div style="margin-left:1.2rem;padding-left:.6rem;border-left:2px solid var(--border);display:flex;flex-direction:column;gap:.3rem">
-                <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.7rem;color:var(--muted)"><input type="checkbox" id="grm-ccm-ac" style="accent-color:var(--purple)"><span>Christian AC</span><span style="font-family:var(--mono);font-size:.45rem;color:var(--amber);border:1px solid rgba(255,204,85,.3);border-radius:3px;padding:.05rem .25rem;margin-left:.25rem;vertical-align:middle">~ estimates</span></label>
-                <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.7rem;color:var(--muted)"><input type="checkbox" id="grm-ccm-rock" style="accent-color:var(--purple)"><span>Christian Rock</span><span style="font-family:var(--mono);font-size:.45rem;color:var(--amber);border:1px solid rgba(255,204,85,.3);border-radius:3px;padding:.05rem .25rem;margin-left:.25rem;vertical-align:middle">~ estimates</span></label>
-                <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.7rem;color:var(--muted)"><input type="checkbox" id="grm-worship" style="accent-color:var(--purple)"><span>Worship / Praise</span><span style="font-family:var(--mono);font-size:.45rem;color:var(--amber);border:1px solid rgba(255,204,85,.3);border-radius:3px;padding:.05rem .25rem;margin-left:.25rem;vertical-align:middle">~ estimates</span></label>
-              </div>
-              <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.75rem"><input type="checkbox" id="grm-gospel" style="accent-color:var(--purple)"><span style="color:var(--purple)">Gospel Songs</span><span style="font-family:var(--mono);font-size:.45rem;color:var(--amber);border:1px solid rgba(255,204,85,.3);border-radius:3px;padding:.05rem .25rem;margin-left:.25rem;vertical-align:middle">~ estimates</span></label>
-              <div style="margin-left:1.2rem;padding-left:.6rem;border-left:2px solid var(--border);display:flex;flex-direction:column;gap:.3rem">
-                <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.7rem;color:var(--muted)"><input type="checkbox" id="grm-sgospel" style="accent-color:var(--purple)"><span>Southern Gospel</span><span style="font-family:var(--mono);font-size:.45rem;color:var(--amber);border:1px solid rgba(255,204,85,.3);border-radius:3px;padding:.05rem .25rem;margin-left:.25rem;vertical-align:middle">~ estimates</span></label>
-                <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.7rem;color:var(--muted)"><input type="checkbox" id="grm-ugospel" style="accent-color:var(--purple)"><span>Urban Gospel / R&amp;B</span><span style="font-family:var(--mono);font-size:.45rem;color:var(--amber);border:1px solid rgba(255,204,85,.3);border-radius:3px;padding:.05rem .25rem;margin-left:.25rem;vertical-align:middle">~ estimates</span></label>
-                <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.7rem;color:var(--muted)"><input type="checkbox" id="grm-tgospel" style="accent-color:var(--purple)"><span>Traditional Gospel</span><span style="font-family:var(--mono);font-size:.45rem;color:var(--amber);border:1px solid rgba(255,204,85,.3);border-radius:3px;padding:.05rem .25rem;margin-left:.25rem;vertical-align:middle">~ estimates</span></label>
-              </div>
-            </div>
-            <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted2);margin-top:.45rem;line-height:1.7">
-              <span style="color:var(--amber)">~ estimates</span> = no Billboard data in DB yet — uses Last.fm listener counts to rank popularity. Results have lower confidence.
-            </div>
-          </div>
-
-          <!-- CHART CRITERIA -->
-          <div>
-            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--pink);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">CHART CRITERIA<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
-            <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem;display:flex;flex-direction:column;gap:.65rem">
+            <!-- CHART CRITERIA sliders -->
+            <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem;display:flex;flex-direction:column;gap:.65rem;margin-bottom:.5rem">
+              <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted);letter-spacing:1px;margin-bottom:-.1rem">CHART CRITERIA</div>
               <div>
                 <div style="display:flex;justify-content:space-between;margin-bottom:.3rem">
                   <label style="font-size:.7rem;color:var(--muted)">Peak Position — From</label>
@@ -1523,9 +1556,18 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
                 <div style="display:flex;justify-content:space-between;margin-top:.2rem"><span style="font-size:.52rem;color:var(--muted);font-family:var(--mono)">1 wk</span><span style="font-size:.52rem;color:var(--muted);font-family:var(--mono)">52 wks</span></div>
               </div>
             </div>
-          </div>
 
-          <!-- Genre/Mood filters moved to results table header for post-scan filtering -->
+            <!-- Confidence filter -->
+            <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem">
+              <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted);letter-spacing:1px;margin-bottom:.5rem">CONFIDENCE</div>
+              <div style="display:flex;gap:.35rem">
+                <button id="grm-conf-all"    onclick="grmSetConf('')"       style="flex:1;padding:.35rem .4rem;background:var(--pink);color:#000;border:none;border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer;letter-spacing:.5px">ALL</button>
+                <button id="grm-conf-high"   onclick="grmSetConf('high')"   style="flex:1;padding:.35rem .4rem;background:var(--surface3);color:var(--green);border:1px solid var(--border2);border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer">HIGH</button>
+                <button id="grm-conf-medium" onclick="grmSetConf('medium')" style="flex:1;padding:.35rem .4rem;background:var(--surface3);color:var(--amber);border:1px solid var(--border2);border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer">MED</button>
+                <button id="grm-conf-low"    onclick="grmSetConf('low')"    style="flex:1;padding:.35rem .4rem;background:var(--surface3);color:var(--orange);border:1px solid var(--border2);border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer">LOW</button>
+              </div>
+              <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted2);margin-top:.45rem;line-height:1.7">HIGH = real Billboard data · MED = LBZ popularity data · LOW = Last.fm estimate</div>
+            </div>
 
           <!-- PLAYLIST NAME -->
           <div>
@@ -1566,10 +1608,45 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
             </div>
             <div id="grm-log" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:.7rem;font-family:var(--mono);font-size:.58rem;color:var(--muted);flex:1;min-height:120px;max-height:220px;overflow-y:auto;line-height:1.8"></div>
           </div>
-        </div>
+        </div><!-- /grm-config-panel -->
 
-        <!-- RIGHT PANEL — Scan progress + Results -->
-        <div style="display:flex;flex-direction:column;padding:1.25rem 1.75rem;gap:1rem;overflow-y:auto">
+        <!-- PANE 2: GENRE TREE (collapsible) -->
+        <div class="grm-tree-panel" id="grm-tree-panel">
+          <!-- Collapsed tab strip (visible when collapsed) -->
+          <div class="grm-tree-collapse-btn" id="grm-tree-tab" onclick="grmToggleTree()" style="display:none" title="Expand genre filter">
+            <span style="font-size:.55rem;color:var(--pink)">▶</span>
+            <span class="grm-tab-label">GENRE FILTER</span>
+          </div>
+          <!-- Tree inner content -->
+          <div class="grm-tree-inner" id="grm-tree-inner">
+            <div class="grm-tree-header">
+              GENRE FILTER
+              <button onclick="grmToggleTree()" title="Collapse" style="background:none;border:none;color:var(--muted2);font-size:.6rem;cursor:pointer;padding:.1rem .3rem;font-family:var(--mono)" onmouseover="this.style.color='var(--pink)'" onmouseout="this.style.color='var(--muted2)'">◀</button>
+            </div>
+            <!-- ALL row -->
+            <div class="grm-tree-allrow" id="gt-all-row" onclick="grmTreeAll()">
+              <div class="gt-cb chk" id="gt-cb-all">✓</div>
+              <span class="gt-label" style="font-size:.62rem;color:var(--pink)">ALL GENRES</span>
+            </div>
+            <div class="grm-tree-divider"></div>
+            <!-- Tree nodes injected by grmBuildTree() -->
+            <div id="grm-tree-nodes"></div>
+            <div class="grm-tree-divider"></div>
+            <!-- Untagged row -->
+            <div class="gt-row" id="gt-row-untagged" onclick="grmTreeLeaf('untagged',null)">
+              <span class="gt-chev leaf"></span>
+              <div class="gt-cb" id="gt-cb-untagged"></div>
+              <span class="gt-label muted">Untagged / No Genre</span>
+            </div>
+            <!-- Retriever warning -->
+            <div class="grm-retriever-warn-tree" id="grm-retriever-warn" style="display:none">
+              ⚠ Genre filtering uses tags from <strong>The Retriever</strong>. Untagged files only appear under ALL.
+            </div>
+          </div>
+        </div><!-- /grm-tree-panel -->
+
+        <!-- PANE 3: RESULTS (always visible) -->
+        <div class="grm-results-panel">
 
           <!-- SCAN PROGRESS (always visible at top) -->
           <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1rem 1.5rem">
@@ -1621,9 +1698,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
             <div style="display:flex;align-items:center;gap:.75rem;padding:.75rem 1rem;border-bottom:1px solid var(--border);flex-wrap:wrap">
               <span style="font-family:var(--display);font-size:1rem;letter-spacing:1px;color:var(--pink)">CHART MATCHES</span>
               <span style="font-family:var(--mono);font-size:.6rem;padding:.15rem .5rem;border-radius:10px;background:rgba(244,114,182,.12);border:1px solid rgba(244,114,182,.3);color:var(--pink)" id="grm-badge">0 songs</span>
-              <select id="grm-genre-filter" onchange="grmApplyGenreFilter()" style="display:none;background:var(--bg);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:.62rem;padding:.3rem .55rem;outline:none;cursor:pointer">
-                <option value="">All Genres</option>
-              </select>
+<!-- All Genres dropdown removed — genre filtering now via left panel checkboxes -->
               <input type="text" placeholder="Filter results…" oninput="grmFilter(this.value)" style="margin-left:auto;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:.65rem;padding:.35rem .6rem;outline:none;width:200px">
             </div>
             <div style="overflow-x:auto">
@@ -1633,6 +1708,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
                     <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap"><input type="checkbox" id="grm-select-all" onchange="grmSelectAll(this.checked)" style="accent-color:var(--pink)"></th>
                     <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer" onclick="grmSort('artist')">ARTIST <span id="sort-ind-artist"></span></th>
                     <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer" onclick="grmSort('title')">TITLE <span id="sort-ind-title"></span></th>
+                    <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer" onclick="grmSort('genre')">GENRE <span id="sort-ind-genre"></span></th>
                     <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer" onclick="grmSort('year')">YEAR <span id="sort-ind-year"></span></th>
                     <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer" onclick="grmSort('stars')">⭐ <span id="sort-ind-stars"></span></th>
                     <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer" onclick="grmSort('peak')">PEAK <span id="sort-ind-peak"></span></th>
@@ -1646,7 +1722,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
               <div id="grm-empty" style="text-align:center;padding:3rem;color:var(--muted2);font-family:var(--mono);font-size:.65rem;line-height:2">
                 NO RESULTS YET<br>
                 <span style="color:var(--border)">───────────────────────────</span><br>
-                Select your chart criteria and hit FIND CHART HITS
+                Run a scan to find chart hits in your library
               </div>
             </div>
           </div>
@@ -1663,8 +1739,8 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
             <button id="grm-push-m3u" onclick="grmDownloadM3U()" disabled title="Download as M3U file" style="padding:.45rem 1rem;background:var(--surface2);color:var(--teal);border:1px solid var(--teal);border-radius:5px;font-family:var(--mono);font-size:.65rem;cursor:pointer;opacity:.35;transition:all .2s">↓ M3U</button>
           </div>
 
-        </div>
-      </div>
+        </div><!-- /grm-results-panel -->
+      </div><!-- /grm-layout -->
     </div>
 
     <!-- THE BLOODHOUND -->
@@ -2095,11 +2171,11 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
           <!-- Static DB Sources -->
           <div class="card" id="vet-static-sources" style="padding:1.25rem 1.5rem;margin-top:.75rem">
             <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.75rem">
-              <div style="font-family:var(--display);font-size:1.1rem;letter-spacing:1.5px;color:var(--red)">📊 STATIC DB SOURCES</div>
+              <div style="font-family:var(--display);font-size:1.1rem;letter-spacing:1.5px;color:var(--red)">📊 CHART DATA SOURCES</div>
               <button class="btn btn-outline btn-sm" onclick="vetLoadStaticSources()" style="margin-left:auto;font-size:.55rem" title="Refresh counts">🔄 REFRESH</button>
             </div>
             <p style="font-family:var(--mono);font-size:.58rem;color:var(--muted);line-height:1.8;margin-bottom:.75rem">
-              Chart data sources. Shipped sources live in the read-only static DB. User-imported sources are appended to your dynamic DB and merged into all chart lookups automatically.
+              <strong style="color:var(--text)">Static sources</strong> ship with ChartHound and live in a read-only database. <strong style="color:var(--text)">Dynamic sources</strong> are imported by you and merged into all chart lookups automatically.
             </p>
             <div class="card" style="padding:.5rem .75rem;background:var(--bg)">
               <!-- Shipped (always loaded) -->
@@ -4118,6 +4194,7 @@ async function browseSubfolder(subPath) {
 // ══════════════════════════════════════════════════════════════════
 
 let grmResults       = [];
+let _grmHasScanned   = false;
 let grmSelected      = new Set();
 let grmScanJobId     = null;
 let grmScanPoll      = null;
@@ -4200,19 +4277,8 @@ async function grmBrowseRefresh() {
 
 // ── Init ──────────────────────────────────────────────────────────
 function grmInit() {
-  // Genre filter pills
-  const genres = ['Rock','Pop','Country','R&B','Hip-Hop','Jazz','Classical',
-                  'Electronic','Dance','Folk','Blues','Soul','Metal','Punk',
-                  'Reggae','Gospel','CCM','Worship','Latin','Indie','Alternative'];
-  const gw = document.getElementById('grm-genre-pills');
-  if (gw && !gw.children.length) {
-    gw.innerHTML = genres.map(g =>
-      `<span onclick="grmToggleGenre('${g}')" data-genre="${g}" data-active="0"
-        style="font-family:var(--mono);font-size:.57rem;padding:.18rem .5rem;
-        border-radius:20px;border:1px solid var(--border);background:var(--bg);
-        color:var(--muted);cursor:pointer;transition:all .15s">${g}</span>`
-    ).join('');
-  }
+  // Build genre tree
+  grmBuildTree();
   // Mood pills
   const moods = ['Energetic','Intense','Upbeat','Happy','Chill','Peaceful',
                  'Romantic','Soulful','Melancholic','Dark','Epic','Nostalgic',
@@ -4557,8 +4623,6 @@ function grmGetServer() {
 }
 
 async function grmStartScan() {
-  const charts = grmGetSelectedCharts();
-  if (!charts.length) { toast('Select at least one chart filter first.', 'warn'); return; }
   const mode      = grmCurrentMode;
   const server    = mode === 'server' ? grmGetServer() : 'local';
   const localPath = mode === 'local'
@@ -4571,14 +4635,14 @@ async function grmStartScan() {
   const labels    = {plex:'Plex', emby:'Emby', jellyfin:'Jellyfin', local:'Local'};
   const scope     = mode === 'server' ? labels[server] : `Local: ${localPath}`;
 
-  grmLog(`Starting scan — ${scope} · ${charts.length} chart(s) · peak ≤ ${peakMax} · weeks ≥ ${weeksMin}`, 'info');
+  grmLog(`Starting scan — ${scope} · scanning ALL chart sources · peak ≤ ${peakMax} · weeks ≥ ${weeksMin}`, 'info');
+  grmLog('ℹ Scan finds ALL chart hits in your library. Use the Playlist Filters to shape results after the scan.', 'info');
 
   try {
     const r = await fetch(`${API}/api/groomer/scan/start`, {
       method:'POST', headers:authHdrs(),
       body: JSON.stringify({
         source:      mode === 'server' ? server : 'local',
-        charts:      charts,
         data_source:    'auto',
         use_estimates:  document.getElementById('grm-use-estimates')?.checked || false,
         write_tags:     writeTags,
@@ -4818,18 +4882,277 @@ function grmGetSelectedMoods() {
   return [...document.querySelectorAll('[data-mood]')]
     .filter(p=>p.dataset.active==='1').map(p=>p.dataset.mood);
 }
-function grmGetSelectedCharts() {
-  const map = {
-    'grm-hot100':'hot100','grm-adultpop':'adultpop','grm-ac':'ac','grm-uk':'uk',
-    'grm-country':'country','grm-rnb':'rnb','grm-dance':'dance','grm-rock':'rock',
-    'grm-ccm':'ccm','grm-ccm-ac':'ccm-ac','grm-ccm-rock':'ccm-rock',
-    'grm-worship':'worship','grm-gospel':'gospel','grm-sgospel':'sgospel',
-    'grm-ugospel':'ugospel','grm-tgospel':'tgospel',
-  };
-  return Object.entries(map)
-    .filter(([id])=>document.getElementById(id)?.checked)
-    .map(([,v])=>v);
+// ── Genre Tree ───────────────────────────────────────────────────
+// Tree definition: [key, label, children[], isCCM]
+const _GRM_TREE = [
+  ['rock','Rock',[
+    ['classicrock','Classic Rock',[]],['hardrock','Hard Rock',[]],
+    ['softrock','Soft Rock',[]],['arenarock','Arena Rock',[]],
+    ['indierock','Indie Rock',[]],['folkrock','Folk Rock',[]],
+    ['southernrock','Southern Rock',[]],['punkrock','Punk / New Wave',[]],
+    ['alternative','Alternative Rock',[]],
+  ]],
+  ['pop','Pop',[
+    ['dancepop','Dance-Pop',[]],['synthpop','Synth-Pop',[]],
+    ['teenpop','Teen Pop',[]],['powerpop','Power Pop',[]],
+    ['adultpop','Adult Contemporary',[]],['indipop','Indie Pop',[]],
+  ]],
+  ['country','Country',[
+    ['tradcountry','Traditional Country',[]],['countrypop','Country Pop',[]],
+    ['outlawcountry','Outlaw Country',[]],['americana','Americana / Bluegrass',[]],
+    ['brocountry','Bro-Country',[]],['texascountry','Texas / Red Dirt',[]],
+  ]],
+  ['rnb','R&B / Soul',[
+    ['soul','Soul',[]],['neosoul','Neo-Soul',[]],['funk','Funk',[]],
+    ['motown','Motown / Classic Soul',[]],['quietstorm','Quiet Storm',[]],
+    ['newjack','New Jack Swing',[]],
+  ]],
+  ['hiphop','Hip-Hop / Rap',[
+    ['trap','Trap',[]],['boombap','Boom Bap',[]],
+    ['gangstarap','Gangsta Rap',[]],['conscrap','Conscious Rap',[]],
+    ['altrap','Alt Hip-Hop',[]],
+  ]],
+  ['metal','Metal',[
+    ['heavymetal','Heavy Metal',[]],['thrashmetal','Thrash Metal',[]],
+    ['deathmetal','Death Metal',[]],['doommetal','Doom / Stoner Metal',[]],
+    ['glaemmetal','Glam Metal',[]],
+  ]],
+  ['dance','Dance / Electronic',[
+    ['edm','EDM',[]],['house','House',[]],['techno','Techno',[]],
+    ['trance','Trance',[]],['disco','Disco',[]],['eurodance','Eurodance',[]],
+  ]],
+  ['folk','Folk',[
+    ['tradfolk','Traditional Folk',[]],['indifolk','Indie Folk',[]],
+    ['singersong','Singer-Songwriter',[]],
+  ]],
+  ['jazz','Jazz',[
+    ['smoothjazz','Smooth Jazz',[]],['vocaljazz','Vocal Jazz',[]],
+    ['bebop','Bebop',[]],['jazzfusion','Jazz Fusion',[]],
+  ]],
+  ['blues','Blues',[
+    ['chicagoblues','Chicago Blues',[]],['deltablues','Delta Blues',[]],
+    ['texasblues','Texas Blues',[]],
+  ]],
+  ['classical','Classical',[
+    ['orchestral','Orchestral',[]],['opera','Opera',[]],['baroque','Baroque',[]],
+  ]],
+  // CCM family — separator handled in render
+  ['ccm','CCM',[
+    ['ccm-ac','Christian AC',[]],['ccm-rock','Christian Rock',[]],
+    ['worship','Worship / Praise',[]],['ccm-country','Christian Country',[]],
+    ['ccm-folk','Christian Folk',[]],['ccm-pop','Christian Pop',[]],
+    ['ccm-hiphop','Christian Hip-Hop',[]],
+  ],true],
+  ['gospel','Gospel',[
+    ['sgospel','Southern Gospel',[]],['ugospel','Urban Gospel',[]],
+    ['tgospel','Traditional Gospel',[]],
+  ],true],
+];
+
+// State: set of selected leaf keys. Empty = ALL.
+let _grmTreeSelected = new Set();
+// Track which parents are expanded
+let _grmTreeExpanded = new Set(['rock']); // rock open by default
+
+function grmBuildTree() {
+  const container = document.getElementById('grm-tree-nodes');
+  if (!container) return;
+  let html = '';
+  let ccmDividerDone = false;
+  _GRM_TREE.forEach(([key, label, children, isCCM]) => {
+    if (isCCM && !ccmDividerDone) {
+      html += '<div class="grm-tree-divider"></div>';
+      ccmDividerDone = true;
+    }
+    const hasChildren = children.length > 0;
+    const expanded = _grmTreeExpanded.has(key);
+    const cbState = _grmParentState(key, children);
+    const ccmClass = isCCM ? ' ccm' : '';
+    const cbClass = isCCM
+      ? (cbState==='chk'?'gt-cb ccm-chk':cbState==='mix'?'gt-cb ccm-mix':'gt-cb')
+      : (cbState==='chk'?'gt-cb chk':cbState==='mix'?'gt-cb mix':'gt-cb');
+    const cbText = cbState==='chk'?'✓':cbState==='mix'?'—':'';
+    html += `<div class="gt-row" id="gt-row-${key}" onclick="grmTreeParentClick('${key}')">
+      <span class="gt-chev${hasChildren?'':' leaf'}${expanded?' open':''}" id="gt-chev-${key}">${hasChildren?'▶':''}</span>
+      <div class="${cbClass}" id="gt-cb-${key}">${cbText}</div>
+      <span class="gt-label${ccmClass}">${label}</span>
+    </div>`;
+    if (hasChildren) {
+      html += `<div id="gt-children-${key}" style="${expanded?'':'display:none'}">`;
+      children.forEach(([ckey, clabel]) => {
+        const sel = _grmTreeSelected.has(ckey);
+        const ccbClass = isCCM
+          ? (sel?'gt-cb ccm-chk':'gt-cb')
+          : (sel?'gt-cb chk':'gt-cb');
+        const ccbText = sel?'✓':'';
+        html += `<div class="gt-row depth-1" id="gt-row-${ckey}" onclick="grmTreeLeaf('${ckey}','${key}')">
+          <span class="gt-chev leaf"></span>
+          <div class="${ccbClass}" id="gt-cb-${ckey}">${ccbText}</div>
+          <span class="gt-label${isCCM?' ccm':''}" style="font-size:.58rem">${clabel}</span>
+        </div>`;
+      });
+      html += '</div>';
+    }
+  });
+  container.innerHTML = html;
+  _grmSyncAllRow();
 }
+
+function _grmParentState(pkey, children) {
+  if (!children.length) return _grmTreeSelected.has(pkey)?'chk':'';
+  const checked = children.filter(([k])=>_grmTreeSelected.has(k)).length;
+  if (checked === 0) return '';
+  if (checked === children.length) return 'chk';
+  return 'mix';
+}
+
+function _grmSyncAllRow() {
+  const cb = document.getElementById('gt-cb-all');
+  if (!cb) return;
+  if (_grmTreeSelected.size === 0) {
+    cb.className='gt-cb chk'; cb.textContent='✓';
+  } else {
+    cb.className='gt-cb'; cb.textContent='';
+  }
+}
+
+function grmTreeParentClick(pkey) {
+  // Find children for this parent
+  const node = _GRM_TREE.find(n=>n[0]===pkey);
+  if (!node) return;
+  const children = node[2];
+  // If click is on chevron area — toggle expand. But since we only have one onclick,
+  // we toggle expand AND handle checkbox together:
+  // First toggle expand
+  const childDiv = document.getElementById('gt-children-'+pkey);
+  const chev = document.getElementById('gt-chev-'+pkey);
+  if (childDiv) {
+    const open = childDiv.style.display !== 'none';
+    childDiv.style.display = open ? 'none' : '';
+    if (chev) chev.classList.toggle('open', !open);
+    if (!open) _grmTreeExpanded.add(pkey); else _grmTreeExpanded.delete(pkey);
+  }
+  // Then toggle parent checkbox (select/deselect all children + parent key)
+  if (children.length) {
+    const allChecked = children.every(([k])=>_grmTreeSelected.has(k));
+    children.forEach(([k])=>{
+      if (allChecked) _grmTreeSelected.delete(k); else _grmTreeSelected.add(k);
+    });
+    // Also add/remove the parent key itself so bare parent-tagged tracks are included
+    if (allChecked) _grmTreeSelected.delete(pkey); else _grmTreeSelected.add(pkey);
+  } else {
+    if (_grmTreeSelected.has(pkey)) _grmTreeSelected.delete(pkey);
+    else _grmTreeSelected.add(pkey);
+  }
+  grmBuildTree();
+  _grmFireFilter();
+}
+
+function grmTreeLeaf(key, parentKey) {
+  if (_grmTreeSelected.has(key)) _grmTreeSelected.delete(key);
+  else _grmTreeSelected.add(key);
+  // Sync parent state
+  if (parentKey) {
+    const node = _GRM_TREE.find(n=>n[0]===parentKey);
+    if (node) {
+      const children = node[2];
+      const cb = document.getElementById('gt-cb-'+parentKey);
+      const isCCM = !!node[3];
+      const state = _grmParentState(parentKey, children);
+      if (cb) {
+        cb.className = isCCM
+          ? (state==='chk'?'gt-cb ccm-chk':state==='mix'?'gt-cb ccm-mix':'gt-cb')
+          : (state==='chk'?'gt-cb chk':state==='mix'?'gt-cb mix':'gt-cb');
+        cb.textContent = state==='chk'?'✓':state==='mix'?'—':'';
+      }
+    }
+  }
+  // Update the leaf cb directly
+  const node2 = parentKey ? _GRM_TREE.find(n=>n[0]===parentKey) : null;
+  const isCCM2 = node2?!!node2[3]:false;
+  const sel = _grmTreeSelected.has(key);
+  const leafCb = document.getElementById('gt-cb-'+key);
+  if (leafCb) {
+    leafCb.className = isCCM2 ? (sel?'gt-cb ccm-chk':'gt-cb') : (sel?'gt-cb chk':'gt-cb');
+    leafCb.textContent = sel?'✓':'';
+  }
+  _grmSyncAllRow();
+  // Show/hide retriever warning
+  const warn = document.getElementById('grm-retriever-warn');
+  if (warn) warn.style.display = _grmTreeSelected.size > 0 ? '' : 'none';
+  _grmFireFilter();
+}
+
+function grmTreeAll() {
+  _grmTreeSelected.clear();
+  grmBuildTree();
+  const warn = document.getElementById('grm-retriever-warn');
+  if (warn) warn.style.display = 'none';
+  _grmFireFilter();
+}
+
+function _grmFireFilter() {
+  if (_grmHasScanned) grmSearch();
+}
+
+// Expose for grmSearch compatibility
+function grmGetActivePills() {
+  return [..._grmTreeSelected];
+}
+
+// Panel collapse/expand
+function grmToggleConfig() {
+  const panel = document.getElementById('grm-config-panel');
+  const btn = document.getElementById('grm-config-toggle');
+  const collapsed = panel.classList.toggle('collapsed');
+  btn.textContent = collapsed ? '▶' : '◀';
+  btn.title = collapsed ? 'Expand config panel' : 'Collapse config panel';
+  if (collapsed) btn.style.right = '-14px';
+  else btn.style.right = '-12px';
+}
+
+function grmToggleTree() {
+  const panel = document.getElementById('grm-tree-panel');
+  const inner = document.getElementById('grm-tree-inner');
+  const tab = document.getElementById('grm-tree-tab');
+  const collapsed = panel.classList.toggle('collapsed');
+  inner.style.display = collapsed ? 'none' : '';
+  tab.style.display = collapsed ? 'flex' : 'none';
+}
+
+// ── Playlist filter helpers ───────────────────────────────────────
+let grmCurrentConf = '';
+
+function grmPFSelectAll(checked) { /* legacy stub */ }
+
+function grmSetConf(val) {
+  grmCurrentConf = val;
+  // Update button styles
+  const btns = {
+    '':       'grm-conf-all',
+    'high':   'grm-conf-high',
+    'medium': 'grm-conf-medium',
+    'low':    'grm-conf-low',
+  };
+  Object.entries(btns).forEach(([k, id]) => {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    const active = k === val;
+    const colors = {'':'var(--pink)', 'high':'var(--green)', 'medium':'var(--amber)', 'low':'var(--orange)'};
+    btn.style.background   = active ? (colors[k] || 'var(--pink)') : 'var(--surface3)';
+    btn.style.color        = active ? '#000' : (colors[k] || 'var(--muted)');
+    btn.style.border       = active ? 'none' : '1px solid var(--border2)';
+  });
+  grmSearch();
+}
+
+// Wire slider auto-refresh
+document.addEventListener('DOMContentLoaded', () => {
+  ['grm-peak','grm-peak-min','grm-weeks'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('change', () => { if (grmResults.length) grmSearch(); });
+  });
+});
 
 // ── Results ───────────────────────────────────────────────────────
 let _grmOffset   = 0;
@@ -4837,20 +5160,21 @@ let _grmTotal    = 0;
 const GRM_PAGE   = 500;
 
 async function grmSearch(append = false) {
-  const charts  = grmGetSelectedCharts();
-  if (!charts.length) return;
-  const peakMax = document.getElementById('grm-peak').value;
-  const peakMin = document.getElementById('grm-peak-min')?.value || 1;
+  const peakMax  = document.getElementById('grm-peak').value;
+  const peakMin  = document.getElementById('grm-peak-min')?.value || 1;
+  const weeksMin = document.getElementById('grm-weeks')?.value || 1;
+  const conf     = grmCurrentConf || '';
   if (!append) { _grmOffset = 0; grmResults = []; grmSelected.clear(); }
-  const activeGenres = grmGetSelectedGenres();
+  const activePills = grmGetActivePills();
   const params  = new URLSearchParams({
-    charts:   charts.join(','),
     min_peak: peakMin,
     max_peak: peakMax,
     limit:    GRM_PAGE,
     offset:   _grmOffset,
   });
-  if (activeGenres.length) params.set('genre', activeGenres.join(','));
+  if (activePills.length) params.set('genre', activePills.join(','));
+  if (weeksMin > 1) params.set('min_weeks', weeksMin);
+  if (conf) params.set('confidence', conf);
   try {
     const r = await fetch(`${API}/api/groomer/results?${params}`, {headers:authHdrs()});
     if (!r.ok) return;
@@ -4862,10 +5186,10 @@ async function grmSearch(append = false) {
       grmResults = d.results || [];
     }
     _grmOffset += (d.results || []).length;
+    _grmHasScanned = true;
     grmRenderResults(grmResults, append);
     grmSyncBar();
     grmUpdateLoadMore();
-    grmBuildGenreDropdown();
   } catch {}
 }
 
@@ -4972,6 +5296,30 @@ function grmRenderResults(results, append = false) {
     tr.dataset.id     = t.track_id;
     tr.dataset.text   = `${artist} ${t.title||''} ${chartName}`.toLowerCase();
     tr.dataset.genres = [t.genre_1,t.genre_2,t.genre_3].filter(Boolean).join(',');
+    // Build genre pills for this track
+    const genreTags = [t.genre_1, t.genre_2, t.genre_3].filter(Boolean);
+    const genreColors = {
+      'rock':'var(--crimson)','classic rock':'var(--crimson)','hard rock':'var(--crimson)',
+      'country':'var(--green)','country rock':'var(--green)','americana':'var(--green)',
+      'pop':'var(--pink)','pop rock':'var(--pink)','dance-pop':'var(--pink)',
+      'r&b':'var(--purple)','soul':'var(--purple)','funk':'var(--purple)',
+      'hip hop':'var(--orange)','hip-hop':'var(--orange)','rap':'var(--orange)',
+      'electronic':'var(--blue)','dance':'var(--blue)','edm':'var(--blue)',
+      'metal':'var(--red)','heavy metal':'var(--red)',
+      'jazz':'var(--amber)','blues':'var(--teal)',
+      'folk':'var(--green)','indie':'var(--blue)',
+      'classical':'var(--gold)','christian':'var(--purple)','ccm':'var(--purple)',
+      'contemporary christian':'var(--purple)','gospel':'var(--purple)',
+      'christian rock':'var(--purple)','new wave':'var(--blue)',
+      'alternative':'var(--teal)','alternative rock':'var(--teal)',
+    };
+    const genrePillsHTML = genreTags.length
+      ? genreTags.map(g => {
+          const c = genreColors[g.toLowerCase()] || 'var(--muted)';
+          return `<span style="display:inline-block;font-family:var(--mono);font-size:.48rem;padding:.1rem .35rem;border-radius:6px;background:${c}22;border:1px solid ${c}44;color:${c};white-space:nowrap;margin:.1rem .15rem .1rem 0">${esc(g)}</span>`;
+        }).join('')
+      : '<span style="color:var(--muted2);font-size:.5rem">—</span>';
+
     tr.style.borderBottom = '1px solid var(--border)';
     tr.innerHTML = `
       <td style="padding:.45rem .75rem"><input type="checkbox" onchange="grmToggleTrack(${t.track_id},this.checked)" style="accent-color:var(--pink)"></td>
@@ -4985,6 +5333,7 @@ function grmRenderResults(results, append = false) {
               onmouseout="this.style.color='var(--muted2)'">📋</button>`
           : ''}
       </td>
+      <td style="padding:.45rem .75rem;max-width:180px">${genrePillsHTML}</td>
       <td style="padding:.45rem .75rem;color:var(--muted)">${t.chart_year||t.year||'—'}</td>
       <td style="padding:.45rem .75rem">${starsHTML}</td>
       <td style="padding:.45rem .75rem">${peakHTML}</td>
@@ -5042,13 +5391,14 @@ const _sortFields = {
   peak:   t => t.peak_position || 9999,
   weeks:  t => -(t.weeks_on_chart || 0),
   conf:   t => _confRank[t.confidence] ?? 9,
+  genre:  t => (t.genre_1 || '').toLowerCase(),
 };
 
 function grmSort(key) {
   if (_sortKey === key) { _sortAsc = !_sortAsc; }
   else { _sortKey = key; _sortAsc = (key === 'artist' || key === 'title'); }
   // Update indicators
-  ['artist','title','year','stars','peak','weeks','conf'].forEach(k => {
+  ['artist','title','year','stars','peak','weeks','conf','genre'].forEach(k => {
     const el = document.getElementById('sort-ind-' + k);
     if (el) el.textContent = k === _sortKey ? (_sortAsc ? ' ▲' : ' ▼') : '';
   });
