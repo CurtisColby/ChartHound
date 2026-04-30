@@ -19,7 +19,7 @@ I was tired of my Plex music library being a graveyard of mistagged albums and m
 
 At some point I looked up and realized "just a playlist creator" wasn't going to cut it anymore. So I spent many evenings and weekends developing a full-featured music and media management tool — adding album hunting through MusicBrainz, missing-media tracking through Radarr and Sonarr, chart hit discovery, file-first metadata tagging, and a properly secured connection vault for all the API keys it now needed. My OCD had absolutely taken the wheel, and the "little tool just for me" had grown teeth.
 
-I'm a solo developer. ChartHound exists because I wanted it to exist. I write the code with Claude (Anthropic's AI) as my code support partner — Claude helps me think through architecture, catches my bugs in code review, and writes the boilerplate I'd otherwise have to type by hand. Every architectural decision, every feature, and every line of business logic is mine. The result is code I actually understand, written faster than I could write alone.
+I'm a solo developer. ChartHound exists because I wanted it to exist. I write the code with Claude (Anthropic's AI) as my code support partner — Claude helps me think through architecture, catches my bugs in code review, and writes the boilerplate I'd otherwise have to type by hand. Every architectural decision, every feature, and every line of business logic is mine. I actively review every change, question every approach, and push back when something isn't right. The result is code I actually understand, written faster than I could write alone.
 
 Months of work later, I did a full security audit and hardening pass on April 24, 2026 — auditing the auth flow, encrypting credentials, locking down the registration endpoint, reviewing every endpoint for token exposure — before deciding to share ChartHound with the community. If you're a Plex, Emby, or Jellyfin user who cares about your music library the way I care about mine, I think you'll find a lot to like here.
 
@@ -154,7 +154,7 @@ docker compose up --build -d
 
 ### 5. Open ChartHound
 
-Navigate to `http://YOUR-SERVER-IP:8585` in your browser. The setup wizard will guide you through creating your admin account and connecting your first services.
+Navigate to `http://YOUR-SERVER-IP:8585` in your browser. Create your admin account, then head to **The Kennel** to connect your services. A full **User Guide** is available inside the app — look for the **OPEN USER GUIDE** button in The Kennel's left panel.
 
 ---
 
@@ -184,7 +184,7 @@ When you first open ChartHound, you'll see a login screen. Since no users exist 
 
 Once logged in, head straight to **The Kennel** to connect your services. Each service card has a URL field, a token/API key field, a **Save** button, and a **Test** button. Always test after saving to verify the connection works. The [Getting API Keys](#getting-api-keys) section below walks you through how to obtain each one.
 
-If you ever want a guided refresher on setup, **The Veterinarian** has a **Setup Wizard** button that walks through the steps again — useful when you're onboarding a friend onto their own ChartHound instance.
+> 📖 **A full User Guide is built into ChartHound.** Once logged in, find the **OPEN USER GUIDE** button in The Kennel's left panel under "HELP & DOCS". It covers every tab — what it does, what needs to be connected, and best practices — including step-by-step first-time setup instructions.
 
 ---
 
@@ -275,12 +275,12 @@ Tags are written to the actual file on disk before refreshing your media server 
 ### The Sniffer — Chart Hit Finder
 📡 *Find Missing Chart Hits & Grab Them*
 
-The Sniffer cross-references your music library against a database of over 108,000 real Billboard chart entries. It shows you which chart hits you own and which ones you're missing. Two modes:
+The Sniffer cross-references your music library against a master list of chart hits and popular tracks, showing you what you own and what you're missing. It uses your connected media server (Plex first, then Emby, then Jellyfin) for the library comparison — meaning it sees your entire library, not just folders you've scanned in The Retriever. Two modes:
 
-- **Chart Gap Fill** — Select which Billboard charts to check (Hot 100, Country, R&B, Rock, etc.), set a year range and peak position filter, and see every charting song you don't own.
+- **Chart Gap Fill** — Select genres, decades, and a notability tier (Essential/Notable/Deep Cuts), and see every charting song you don't own. Narrowing to a single genre gives you up to 1,000 of that genre's biggest hits. Add a decade filter to go even deeper.
 - **Trending** — Browse top tracks by genre using Last.fm data.
 
-For any missing track, click to search Prowlarr for album torrents. Results show seeders, size, and indexer. One-click grab sends the torrent to qBittorrent with a `charthound-music` category tag. The Sniffer's playlist generator dedupes by track identity and automatically picks the highest-quality version when you have multiple copies of the same song — see [The Little Things](#the-little-things) for details.
+For any missing track, click to search Prowlarr for album torrents. Results show seeders, size, and indexer. One-click grab sends the torrent to qBittorrent with a `charthound-music` category tag.
 
 ### The Groomer — Playlist Builder
 ✂️ *Build Playlists from What You Own*
@@ -294,11 +294,12 @@ Features a skip cache system so re-scans skip tracks that have already been chec
 ### The Bloodhound — Album Hunter
 🔍 *Hunt Every Album by Any Artist*
 
-Three search modes powered by MusicBrainz:
+Four search modes powered by MusicBrainz:
 
-- **Artist Search** — Find an artist, then browse their complete discography filtered by release type (Albums, Compilations, Singles, All).
+- **Artist Search** — Find an artist, then browse their complete discography filtered by release type (Albums, Compilations, Singles, All). Results are sortable by Artist, Title, Year, or Owned/Missing status.
 - **Album Search** — Search for any album by name across all of MusicBrainz.
 - **Compilation Search** — 31 preset compilation series (Now That's What I Call Music, WOW Hits, Grammy Nominees, etc.) plus custom search.
+- **Genre Browse** — Browse by primary genre (Rock, Pop, Country, R&B, Hip-Hop, Electronic, Jazz, Blues, Metal, Alternative, Folk, Classical, CCM/Gospel). Selecting a genre automatically pulls in all its sub-genres behind the scenes.
 
 Every result shows whether you already own it (cross-referenced against your library). Missing releases can be searched on Prowlarr and grabbed to qBittorrent directly from the results table.
 
