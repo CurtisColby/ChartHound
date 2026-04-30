@@ -128,17 +128,30 @@ body::before{content:'';position:fixed;inset:0;background-image:url("data:image/
 .grm-genre-pill.grm-sub-pill{font-size:.54rem;padding:.2rem .5rem;}
 
 /* ── THREE-PANE GROOMER LAYOUT ────────────────────────────────── */
-.grm-layout{display:flex;min-height:calc(100vh - 120px);overflow:hidden;}
-.grm-config-panel{width:300px;min-width:300px;border-right:1px solid var(--border);padding:1.25rem;display:flex;flex-direction:column;gap:1rem;overflow-y:auto;background:var(--surface);transition:width .25s ease,min-width .25s ease,padding .25s ease;position:relative;flex-shrink:0;}
-.grm-config-panel.collapsed{width:28px;min-width:28px;padding:0;overflow:hidden;}
-.grm-tree-panel{width:230px;min-width:230px;border-right:1px solid var(--border);background:var(--surface);display:flex;flex-direction:column;transition:width .25s ease,min-width .25s ease;flex-shrink:0;overflow:hidden;}
-.grm-tree-panel.collapsed{width:28px;min-width:28px;}
-.grm-results-panel{flex:1;display:flex;flex-direction:column;padding:1.25rem 1.75rem;gap:1rem;overflow-y:auto;min-width:0;}
-.grm-collapse-btn{position:absolute;right:-12px;top:16px;width:22px;height:22px;border-radius:50%;background:var(--surface3);border:1px solid var(--border2);color:var(--muted);font-size:.6rem;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:10;transition:all .15s;line-height:1;}
-.grm-collapse-btn:hover{border-color:var(--pink);color:var(--pink);}
-.grm-tree-collapse-btn{width:28px;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;border-right:0px;transition:background .15s;gap:4px;flex-shrink:0;}
-.grm-tree-collapse-btn:hover{background:var(--surface2);}
-.grm-tree-collapse-btn .grm-tab-label{font-family:var(--mono);font-size:.48rem;letter-spacing:2px;color:var(--muted);writing-mode:vertical-rl;text-orientation:mixed;transform:rotate(180deg);}
+.grm-layout{display:flex;min-height:calc(100vh - 120px);overflow:hidden;user-select:none;}
+/* Panes */
+.grm-config-panel{width:300px;min-width:32px;border-right:none;padding:1.25rem;display:flex;flex-direction:column;gap:1rem;overflow-y:auto;overflow-x:hidden;background:var(--surface);position:relative;flex-shrink:0;}
+.grm-config-panel.collapsed{width:32px;min-width:32px;padding:0;overflow:hidden;}
+.grm-tree-panel{width:230px;min-width:32px;background:var(--surface);display:flex;flex-direction:column;flex-shrink:0;overflow:hidden;}
+.grm-tree-panel.collapsed{width:32px;min-width:32px;}
+.grm-results-panel{flex:1;display:flex;flex-direction:column;padding:1.25rem 1.75rem;gap:1rem;overflow-y:auto;min-width:200px;}
+/* Drag dividers */
+.grm-divider{width:5px;flex-shrink:0;background:var(--border);cursor:col-resize;position:relative;transition:background .15s;z-index:5;}
+.grm-divider:hover,.grm-divider.dragging{background:var(--pink);}
+.grm-divider::after{content:'';position:absolute;inset:-4px 0;} /* wider hit area */
+/* Collapsed tab strips */
+.grm-collapsed-tab{display:none;flex-direction:column;align-items:center;justify-content:flex-start;padding-top:14px;gap:10px;width:32px;height:100%;cursor:pointer;background:var(--surface);transition:background .15s;}
+.grm-collapsed-tab:hover{background:var(--surface2);}
+.grm-collapsed-tab .gct-arrow{font-size:.65rem;color:var(--pink);line-height:1;}
+.grm-collapsed-tab .gct-label{font-family:var(--mono);font-size:.42rem;letter-spacing:2px;color:var(--muted);writing-mode:vertical-rl;transform:rotate(180deg);margin-top:4px;}
+/* Visible when collapsed */
+.grm-config-panel.collapsed .grm-collapsed-tab,
+.grm-tree-panel.collapsed .grm-collapsed-tab{display:flex;}
+.grm-config-panel.collapsed .grm-config-inner,
+.grm-tree-panel.collapsed .grm-tree-inner{display:none;}
+/* Collapse toggle button inside panel headers */
+.grm-pane-toggle{background:none;border:none;color:var(--pink);font-size:.7rem;cursor:pointer;padding:.1rem .4rem;line-height:1;opacity:.7;transition:opacity .15s;}
+.grm-pane-toggle:hover{opacity:1;}
 .grm-tree-inner{flex:1;overflow-y:auto;overflow-x:hidden;}
 .grm-tree-header{font-family:var(--mono);font-size:.52rem;letter-spacing:2px;color:var(--pink);padding:.75rem .85rem .4rem;display:flex;align-items:center;justify-content:space-between;}
 /* Tree rows */
@@ -328,6 +341,8 @@ input[readonly]{color:var(--muted);cursor:not-allowed;}
 .btn-red:hover:not(:disabled){background:#fca5a5;box-shadow:0 0 18px rgba(248,113,113,.4);}
 .btn-outline{background:transparent;border:1px solid var(--border);color:var(--text);font-size:.75rem;font-family:var(--body);letter-spacing:.5px;}
 .btn-outline:hover{border-color:var(--muted2);}
+.bh-genre-pill{padding:.35rem .65rem;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:20px;font-family:var(--mono);font-size:.58rem;cursor:pointer;transition:all .2s;letter-spacing:.5px;}
+.bh-genre-pill:hover{border-color:var(--orange);color:var(--orange);}
 .btn-sm{padding:.32rem .65rem;font-size:.78rem;width:auto;}
 
 /* FEATURE BANNERS */
@@ -378,6 +393,12 @@ input[readonly]{color:var(--muted);cursor:not-allowed;}
 .progress-wrap{margin:.5rem 0;}
 .progress-bar{width:100%;height:5px;background:var(--border);border-radius:3px;overflow:hidden;}
 .progress-fill{height:100%;width:0%;background:var(--teal);border-radius:3px;transition:width .5s;}
+@keyframes pulse-sweep{0%{transform:translateX(-100%);}100%{transform:translateX(400%);}}
+.bar-pulsing{position:relative;overflow:hidden;background:var(--border) !important;}
+.bar-pulsing::after{content:'';position:absolute;top:0;left:0;height:100%;width:25%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.5),transparent);animation:pulse-sweep 1.2s ease-in-out infinite;}
+.snf-pulse-bar,.bh-pulse-bar{width:100%;height:4px;background:var(--border);border-radius:3px;overflow:hidden;margin-top:.4rem;display:none;position:relative;}
+.snf-pulse-bar::after{content:'';position:absolute;top:0;left:0;height:100%;width:25%;background:linear-gradient(90deg,transparent,rgba(255,196,0,.7),transparent);animation:pulse-sweep 1.2s ease-in-out infinite;}
+.bh-pulse-bar::after{content:'';position:absolute;top:0;left:0;height:100%;width:25%;background:linear-gradient(90deg,transparent,rgba(251,146,60,.7),transparent);animation:pulse-sweep 1.2s ease-in-out infinite;}
 .progress-stats{display:flex;gap:1rem;margin-top:.5rem;}
 .p-stat{display:flex;flex-direction:column;align-items:center;gap:.15rem;}
 .p-stat-num{font-family:var(--display);font-size:1.3rem;color:var(--teal);line-height:1;}
@@ -1052,7 +1073,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
               <div style="font-family:var(--mono);font-size:.6rem;color:var(--muted)" id="scanStatusSub">Configure options and click Start Scan</div>
             </div>
             <div class="progress-wrap">
-              <div class="progress-bar"><div class="progress-fill" id="scanProgressBar"></div></div>
+              <div class="progress-bar" id="scanProgressWrap"><div class="progress-fill" id="scanProgressBar"></div></div>
             </div>
             <div class="progress-stats">
               <div class="p-stat"><div class="p-stat-num" id="statTotal">0</div><div class="p-stat-label">TOTAL</div></div>
@@ -1068,10 +1089,14 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
               <span class="log-info">ChartHound Retriever ready. Configure options above and start a scan.</span>
             </div>
           </div>
+          <div id="previewZeroMatch" style="display:none;margin-top:1rem;padding:.75rem 1rem;background:var(--surface2);border:1px solid var(--amber);border-radius:6px;font-family:var(--mono);font-size:.65rem;color:var(--amber);line-height:1.8">
+            ⚠ Scan complete but <strong>0 chart matches</strong> were found. If you've scanned this folder before and expected results, try clicking <strong>CLEAR METADATA CACHE</strong> below and scanning again.
+          </div>
           <div id="previewSection" style="display:none">
             <div class="section-label sl-teal">PREVIEW RESULTS</div>
             <div style="display:flex;gap:.5rem;margin-bottom:.75rem;align-items:center">
               <button class="btn btn-teal btn-sm" onclick="writeSelected()">✓ WRITE SELECTED</button>
+              <button class="btn btn-outline btn-sm" onclick="pvwKeepSelected()" title="Tags are fine — remove selected tracks from list without writing anything">✓ KEEP</button>
               <button class="btn btn-pink btn-sm" onclick="openOverride()">✏️ OVERRIDE GENRES</button>
               <button class="btn btn-outline btn-sm" onclick="selectAll(true)">SELECT ALL</button>
               <button class="btn btn-outline btn-sm" onclick="selectAll(false)">DESELECT ALL</button>
@@ -1385,11 +1410,17 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
             <button onclick="document.getElementById('snf-banner-lidarr').style.display='none'" style="background:none;border:none;color:inherit;cursor:pointer;font-size:.85rem;padding:0 0 0 .75rem;opacity:.5;flex-shrink:0;line-height:1" title="Dismiss">✕</button>
           </div>
 
+          <div id="snf-banner-scanned-only" class="feature-banner" style="display:none;background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.3);color:var(--red);margin-bottom:0;justify-content:space-between;align-items:flex-start">
+            <span>⚠ <strong>Partial library view:</strong> No media server (Plex, Emby, Jellyfin) could be reached. Owned/Missing results only reflect folders scanned in <strong>The Retriever</strong> — music you haven't scanned yet will appear as Missing even if you own it. Connect a media server in <strong>The Kennel</strong> for accurate results.</span>
+            <button onclick="document.getElementById('snf-banner-scanned-only').style.display='none'" style="background:none;border:none;color:inherit;cursor:pointer;font-size:.85rem;padding:0 0 0 .75rem;opacity:.5;flex-shrink:0;line-height:1" title="Dismiss">✕</button>
+          </div>
+
           <!-- STATS BAR -->
           <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1rem 1.5rem">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem">
               <div style="font-family:var(--display);font-size:1.1rem;letter-spacing:1.5px" id="snf-status-title">READY TO SNIFF</div>
               <div style="font-family:var(--mono);font-size:.58rem;color:var(--muted)" id="snf-status-sub">Pick genres and decades, then click Find Missing Tracks</div>
+              <div class="snf-pulse-bar" id="snf-pulse-bar"></div>
             </div>
             <div style="display:flex;gap:1.5rem;flex-wrap:wrap">
               <div style="text-align:center;min-width:70px">
@@ -1454,11 +1485,17 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
 
     <!-- THE GROOMER -->
     <div class="tab-panel" id="panel-groomer">
-      <div class="grm-layout">
+      <div class="grm-layout" id="grm-layout">
 
-        <!-- PANE 1: CONFIG (collapsible) -->
+        <!-- PANE 1: CONFIG -->
         <div class="grm-config-panel" id="grm-config-panel">
-          <button class="grm-collapse-btn" id="grm-config-toggle" onclick="grmToggleConfig()" title="Collapse config panel">◀</button>
+          <!-- Collapsed strip (shown when collapsed) -->
+          <div class="grm-collapsed-tab" onclick="grmToggleConfig()" title="Expand config">
+            <span class="gct-arrow">▶</span>
+            <span class="gct-label">SCAN CONFIG</span>
+          </div>
+          <!-- Panel content -->
+          <div class="grm-config-inner" style="display:flex;flex-direction:column;gap:1rem;flex:1;overflow-y:auto;overflow-x:hidden">
 
           <!-- MODE TOGGLE -->
           <div>
@@ -1608,20 +1645,24 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
             </div>
             <div id="grm-log" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:.7rem;font-family:var(--mono);font-size:.58rem;color:var(--muted);flex:1;min-height:120px;max-height:220px;overflow-y:auto;line-height:1.8"></div>
           </div>
+          </div><!-- /grm-config-inner -->
         </div><!-- /grm-config-panel -->
 
-        <!-- PANE 2: GENRE TREE (collapsible) -->
+        <!-- DIVIDER 1 -->
+        <div class="grm-divider" id="grm-divider-1"></div>
+
+        <!-- PANE 2: GENRE TREE -->
         <div class="grm-tree-panel" id="grm-tree-panel">
-          <!-- Collapsed tab strip (visible when collapsed) -->
-          <div class="grm-tree-collapse-btn" id="grm-tree-tab" onclick="grmToggleTree()" style="display:none" title="Expand genre filter">
-            <span style="font-size:.55rem;color:var(--pink)">▶</span>
-            <span class="grm-tab-label">GENRE FILTER</span>
+          <!-- Collapsed strip -->
+          <div class="grm-collapsed-tab" onclick="grmToggleTree()" title="Expand genre filter">
+            <span class="gct-arrow">▶</span>
+            <span class="gct-label">GENRE FILTER</span>
           </div>
           <!-- Tree inner content -->
           <div class="grm-tree-inner" id="grm-tree-inner">
             <div class="grm-tree-header">
               GENRE FILTER
-              <button onclick="grmToggleTree()" title="Collapse" style="background:none;border:none;color:var(--muted2);font-size:.6rem;cursor:pointer;padding:.1rem .3rem;font-family:var(--mono)" onmouseover="this.style.color='var(--pink)'" onmouseout="this.style.color='var(--muted2)'">◀</button>
+              <button class="grm-pane-toggle" onclick="grmToggleTree()" title="Collapse">◀</button>
             </div>
             <!-- ALL row -->
             <div class="grm-tree-allrow" id="gt-all-row" onclick="grmTreeAll()">
@@ -1645,6 +1686,9 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
           </div>
         </div><!-- /grm-tree-panel -->
 
+        <!-- DIVIDER 2 -->
+        <div class="grm-divider" id="grm-divider-2"></div>
+
         <!-- PANE 3: RESULTS (always visible) -->
         <div class="grm-results-panel">
 
@@ -1656,7 +1700,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
               <div style="font-family:var(--mono);font-size:.58rem;color:var(--muted)" id="grm-status-sub">Load chart data, then select a server and start scan</div>
             </div>
             <!-- Progress bar -->
-            <div style="background:var(--surface2);border-radius:4px;height:6px;overflow:hidden;border:1px solid var(--border);margin-bottom:.75rem">
+            <div id="grm-scan-wrap" style="background:var(--surface2);border-radius:4px;height:6px;overflow:hidden;border:1px solid var(--border);margin-bottom:.75rem;position:relative;">
               <div id="grm-scan-bar" style="height:100%;width:0%;background:var(--pink);transition:width .4s ease;border-radius:4px"></div>
             </div>
             <!-- Phase indicator — hidden by default, shown during scans -->
@@ -1757,6 +1801,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
               <button id="bh-mode-artist" onclick="bhSetMode('artist')" style="flex:1;padding:.5rem;background:var(--orange);color:#000;border:none;border-radius:5px;font-family:var(--mono);font-size:.6rem;letter-spacing:1px;cursor:pointer;transition:all .2s">🎤 ARTIST</button>
               <button id="bh-mode-album" onclick="bhSetMode('album')" style="flex:1;padding:.5rem;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:5px;font-family:var(--mono);font-size:.6rem;letter-spacing:1px;cursor:pointer;transition:all .2s">💿 ALBUM</button>
               <button id="bh-mode-comp" onclick="bhSetMode('comp')" style="flex:1;padding:.5rem;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:5px;font-family:var(--mono);font-size:.6rem;letter-spacing:1px;cursor:pointer;transition:all .2s">📀 COMPS</button>
+              <button id="bh-mode-genre" onclick="bhSetMode('genre')" style="flex:1;padding:.5rem;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:5px;font-family:var(--mono);font-size:.6rem;letter-spacing:1px;cursor:pointer;transition:all .2s">🎵 GENRE</button>
             </div>
           </div>
 
@@ -1845,6 +1890,26 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
             </div>
           </div>
 
+          <!-- GENRE BROWSE -->
+          <div id="bh-genre-section" style="display:none">
+            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--orange);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">SELECT GENRE<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
+            <div style="display:flex;flex-wrap:wrap;gap:.4rem">
+              <button onclick="bhGenreSearch('rock')"        class="bh-genre-pill">🎸 Rock</button>
+              <button onclick="bhGenreSearch('pop')"         class="bh-genre-pill">🎤 Pop</button>
+              <button onclick="bhGenreSearch('country')"     class="bh-genre-pill">🤠 Country</button>
+              <button onclick="bhGenreSearch('rnb')"         class="bh-genre-pill">🎷 R&amp;B / Soul</button>
+              <button onclick="bhGenreSearch('hiphop')"      class="bh-genre-pill">🎧 Hip-Hop</button>
+              <button onclick="bhGenreSearch('electronic')"  class="bh-genre-pill">🎛 Electronic</button>
+              <button onclick="bhGenreSearch('jazz')"        class="bh-genre-pill">🎺 Jazz</button>
+              <button onclick="bhGenreSearch('blues')"       class="bh-genre-pill">🎵 Blues</button>
+              <button onclick="bhGenreSearch('metal')"       class="bh-genre-pill">🤘 Metal</button>
+              <button onclick="bhGenreSearch('alternative')" class="bh-genre-pill">🌀 Alternative</button>
+              <button onclick="bhGenreSearch('folk')"        class="bh-genre-pill">🪕 Folk</button>
+              <button onclick="bhGenreSearch('classical')"   class="bh-genre-pill">🎻 Classical</button>
+              <button onclick="bhGenreSearch('ccm')"         class="bh-genre-pill" style="background:rgba(167,139,250,.15);border-color:var(--purple);color:var(--purple)">✝ CCM / Gospel</button>
+            </div>
+          </div>
+
           <!-- ACTIVITY LOG -->
           <div style="flex:1;display:flex;flex-direction:column;min-height:0">
             <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--orange);margin-bottom:.5rem;display:flex;align-items:center;gap:.5rem">
@@ -1864,6 +1929,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.5rem">
               <div style="font-family:var(--display);font-size:1.1rem;letter-spacing:1.5px" id="bh-status-title">READY TO HUNT</div>
               <div style="font-family:var(--mono);font-size:.58rem;color:var(--muted)" id="bh-status-sub">Search for an artist, album, or compilation to begin</div>
+              <div class="bh-pulse-bar" id="bh-pulse-bar"></div>
             </div>
             <div style="display:flex;gap:1.5rem;flex-wrap:wrap">
               <div style="text-align:center;min-width:70px">
@@ -1895,11 +1961,11 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
               <table style="width:100%;border-collapse:collapse;font-family:var(--mono);font-size:.6rem">
                 <thead>
                   <tr style="background:var(--surface2)">
-                    <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap">ARTIST</th>
-                    <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap">TITLE</th>
+                    <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer" onclick="bhSort('artist')">ARTIST <span id="bh-sort-artist"></span></th>
+                    <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer" onclick="bhSort('title')">TITLE <span id="bh-sort-title"></span></th>
                     <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap">TYPE</th>
-                    <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap">YEAR</th>
-                    <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap">STATUS</th>
+                    <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer" onclick="bhSort('year')">YEAR <span id="bh-sort-year"></span></th>
+                    <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer" onclick="bhSort('status')">STATUS <span id="bh-sort-status"></span></th>
                     <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap">ACTION</th>
                   </tr>
                 </thead>
@@ -2664,6 +2730,7 @@ async function startScan() {
   // Clear previous scan results
   document.getElementById('previewTableBody').innerHTML = '';
   document.getElementById('previewSection').style.display = 'none';
+  const _pzm = document.getElementById('previewZeroMatch'); if (_pzm) _pzm.style.display = 'none';
   selectedTrackIds.clear();
   _retAllTracks = [];
   document.getElementById('selectedCount').textContent = '0 selected';
@@ -2673,6 +2740,7 @@ async function startScan() {
   document.getElementById('scanStatusTitle').textContent = 'SCANNING…';
   document.getElementById('scanStatusSub').textContent = 'Fetching metadata — please wait…';
   document.getElementById('vinylIcon').classList.add('spinning');
+  document.getElementById('scanProgressWrap').classList.add('bar-pulsing');
   try {
     const r = await fetch(`${API}/api/retriever/scan/start`, {method:'POST', headers:authHdrs(), body:JSON.stringify(body)});
     const d = await r.json();
@@ -2757,6 +2825,7 @@ function updateScanProgress(job) {
   const total = job.total_tracks || 1;
   const pct = Math.round((job.processed / total) * 100);
   document.getElementById('scanProgressBar').style.width = pct + '%';
+  if (pct > 0) document.getElementById('scanProgressWrap').classList.remove('bar-pulsing');
   document.getElementById('statTotal').textContent = job.total_tracks || 0;
   document.getElementById('statProcessed').textContent = job.processed || 0;
   document.getElementById('statFailed').textContent = job.failed || 0;
@@ -2767,7 +2836,12 @@ async function loadPreviewResults() {
     const r = await fetch(`${API}/api/retriever/scan/preview/${scanJobId}?limit=100`, {headers:authHdrs()});
     if (!r.ok) return;
     const tracks = await r.json();
-    if (!tracks.length) return;
+    const zeroEl = document.getElementById('previewZeroMatch');
+    if (!tracks.length) {
+      if (zeroEl) zeroEl.style.display = 'block';
+      return;
+    }
+    if (zeroEl) zeroEl.style.display = 'none';
     document.getElementById('previewSection').style.display = 'block';
     _retAllTracks = tracks;
     retRenderTable(tracks);
@@ -2881,6 +2955,21 @@ function selectAllByAlbum() {
   toast(`Selected all tracks in ${albums.size} album(s).`, 'ok');
 }
 
+function pvwKeepSelected() {
+  if (!selectedTrackIds.size) { toast('Select at least one track first.', 'warn'); return; }
+  let removed = 0;
+  document.querySelectorAll('#previewTableBody tr[data-id]').forEach(tr => {
+    const id = parseInt(tr.dataset.id);
+    if (selectedTrackIds.has(id)) {
+      selectedTrackIds.delete(id);
+      tr.remove();
+      removed++;
+    }
+  });
+  document.getElementById('selectedCount').textContent = `${selectedTrackIds.size} selected`;
+  toast(`Kept ${removed} track(s) as-is — removed from list.`, 'ok');
+}
+
 // ── Multi-folder queue ────────────────────────────────────────────────────────
 let _subfolderQueue = [];
 let _processedFolders = new Set();
@@ -2940,34 +3029,55 @@ function renderSubfolderQueue() {
 // ── Override panel ────────────────────────────────────────────────────────────
 const GENRE_LIST = [
   // Rock
-  'Rock','Hard Rock','Classic Rock','Soft Rock','Alternative Rock','Indie Rock',
-  'Progressive Rock','Punk Rock','Glam Rock','Blues Rock','Southern Rock','Arena Rock',
-  'Rockabilly','New Wave','Psychedelic Rock',
+  'Rock',
+    'Classic Rock','Hard Rock','Soft Rock','Arena Rock','Glam Rock',
+    'Alternative Rock','Indie Rock','Progressive Rock','Psychedelic Rock',
+    'Punk Rock','New Wave','Blues Rock','Folk Rock','Southern Rock','Rockabilly',
   // Pop
-  'Pop','Synth-Pop','Dance-Pop','Country Pop','Pop Rock','Indie Pop','Dream Pop',
-  'Bubblegum Pop','Classic Hits','Oldies','Easy Listening','Adult Contemporary',
+  'Pop',
+    'Adult Contemporary','Easy Listening','Oldies','Classic Hits',
+    'Synth-Pop','Dance-Pop','Pop Rock','Indie Pop','Dream Pop',
+    'Bubblegum Pop','Country Pop',
   // Country
-  'Country','Country Rock','Bluegrass','Americana','Outlaw Country','Western',
-  // R&B / Soul / Funk
-  'R&B','Soul','Funk','Neo Soul','Motown','Rhythm and Blues',
-  // Hip-Hop / Rap
-  'Hip-Hop','Rap',
+  'Country',
+    'Classic Country','Outlaw Country','Country Rock','Country Pop',
+    'Bluegrass','Americana','Western','Honky Tonk',
+  // R&B / Soul
+  'R&B',
+    'Soul','Motown','Funk','Neo Soul','Rhythm and Blues',
+  // Hip-Hop
+  'Hip-Hop',
+    'Rap','Trap','Old School Hip-Hop',
   // Electronic / Dance
-  'Electronic','EDM','House','Dance','Techno','Synthwave','Disco','Trance',
-  // Jazz / Blues / Big Band
-  'Jazz','Blues','Smooth Jazz','Big Band','Swing','Bebop',
+  'Electronic',
+    'Dance','EDM','House','Techno','Trance','Synthwave','Disco',
+  // Jazz
+  'Jazz',
+    'Smooth Jazz','Big Band','Swing','Bebop','Jazz Fusion',
+  // Blues
+  'Blues',
+    'Delta Blues','Chicago Blues','Electric Blues',
   // Metal
-  'Metal','Heavy Metal','Death Metal','Power Metal',
+  'Metal',
+    'Heavy Metal','Hard Rock','Death Metal','Power Metal','Thrash Metal',
+  // Alternative
+  'Alternative',
+    'Indie','Grunge','Post-Punk','Emo',
   // Folk / Acoustic
-  'Folk','Acoustic','Singer-Songwriter',
+  'Folk',
+    'Acoustic','Singer-Songwriter','Bluegrass','Americana',
   // Classical
-  'Classical','Orchestral','Chamber Music',
-  // Christian / Gospel
-  'CCM','Contemporary Christian','Worship','Gospel','Southern Gospel',
-  'Urban Gospel','Christian Rock','Christian Pop','Inspirational','Devotional',
+  'Classical',
+    'Orchestral','Chamber Music','Opera',
+  // CCM / Gospel
+  'CCM',
+    'Contemporary Christian','Christian Rock','Christian Pop',
+    'Christian Country','Christian Folk','Christian Blues',
+    'Worship','Gospel','Southern Gospel','Urban Gospel',
+    'Inspirational','Devotional',
   // Special / Mixed
-  'Compilation','Mixed','Novelty','Comedy','Funny','Spoken Word','Soundtrack',
-  'Holiday','Children\'s','Instrumental',
+  'Compilation','Soundtrack','Holiday','Instrumental',
+  'Spoken Word','Comedy','Children\'s',
   // Custom — type your own
   'Custom…',
 ];
@@ -3946,7 +4056,7 @@ async function confirmClearDatabase() {
       document.getElementById('statMatched').textContent = '0';
       document.getElementById('statFailed').textContent = '0';
       document.getElementById('statCached').textContent = '0';
-      document.getElementById('scanProgressBar').style.width = '0%';
+      document.getElementById('scanProgressBar').style.width = '0%'; document.getElementById('scanProgressWrap').classList.remove('bar-pulsing');
     } else {
       toast('Failed to clear database.', 'error');
     }
@@ -3972,7 +4082,7 @@ async function clearCache() {
       document.getElementById('statMatched').textContent = '0';
       document.getElementById('statFailed').textContent = '0';
       document.getElementById('statCached').textContent = '0';
-      document.getElementById('scanProgressBar').style.width = '0%';
+      document.getElementById('scanProgressBar').style.width = '0%'; document.getElementById('scanProgressWrap').classList.remove('bar-pulsing');
       document.getElementById('scanStatusTitle').textContent = 'READY TO SCAN';
       document.getElementById('scanStatusSub').textContent = 'Configure options and click Start Scan';
       scanJobId = null;
@@ -4657,6 +4767,7 @@ async function grmStartScan() {
     grmScannedServer = mode === 'server' ? server : null;
     document.getElementById('grm-btn-scan').disabled  = true;
     document.getElementById('grm-btn-scan').style.opacity = '.5';
+    document.getElementById('grm-scan-wrap').classList.add('bar-pulsing');
     document.getElementById('grm-btn-stop').disabled  = false;
     document.getElementById('grm-btn-stop').style.opacity = '1';
     document.getElementById('grm-status-title').textContent = `SCANNING ${scope.toUpperCase()}…`;
@@ -4703,6 +4814,7 @@ async function grmPollScan() {
     const rate = total > 0 ? ((matched/Math.max(processed,1))*100).toFixed(1)+'%' : '—';
 
     document.getElementById('grm-scan-bar').style.width = `${pct}%`;
+    if (pct > 0) document.getElementById('grm-scan-wrap').classList.remove('bar-pulsing');
     document.getElementById('grm-s-total').textContent   = total.toLocaleString();
     document.getElementById('grm-s-scanned').textContent = processed.toLocaleString();
     document.getElementById('grm-s-hits').textContent    = matched.toLocaleString();
@@ -4831,6 +4943,7 @@ function grmScanDone(success) {
   const stop = document.getElementById('grm-btn-stop');
   stop.disabled = true;  stop.style.opacity = '.4';
   grmScanJobId = null;
+  document.getElementById('grm-scan-wrap').classList.remove('bar-pulsing');
   // Hide phase banner
   const banner = document.getElementById('grm-phase-banner');
   if (banner) banner.style.display = 'none';
@@ -5103,22 +5216,65 @@ function grmGetActivePills() {
 // Panel collapse/expand
 function grmToggleConfig() {
   const panel = document.getElementById('grm-config-panel');
-  const btn = document.getElementById('grm-config-toggle');
-  const collapsed = panel.classList.toggle('collapsed');
-  btn.textContent = collapsed ? '▶' : '◀';
-  btn.title = collapsed ? 'Expand config panel' : 'Collapse config panel';
-  if (collapsed) btn.style.right = '-14px';
-  else btn.style.right = '-12px';
+  panel.classList.toggle('collapsed');
 }
 
 function grmToggleTree() {
   const panel = document.getElementById('grm-tree-panel');
-  const inner = document.getElementById('grm-tree-inner');
-  const tab = document.getElementById('grm-tree-tab');
-  const collapsed = panel.classList.toggle('collapsed');
-  inner.style.display = collapsed ? 'none' : '';
-  tab.style.display = collapsed ? 'flex' : 'none';
+  panel.classList.toggle('collapsed');
 }
+
+// ── Drag-to-resize pane dividers ─────────────────────────────────
+(function() {
+  function initDivider(dividerId, leftPanelId, minLeft, minRight) {
+    const divider = document.getElementById(dividerId);
+    if (!divider) return;
+    let dragging = false;
+    let startX = 0;
+    let startWidth = 0;
+
+    divider.addEventListener('mousedown', e => {
+      const leftPanel = document.getElementById(leftPanelId);
+      if (!leftPanel || leftPanel.classList.contains('collapsed')) return;
+      dragging = true;
+      startX = e.clientX;
+      startWidth = leftPanel.offsetWidth;
+      divider.classList.add('dragging');
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', e => {
+      if (!dragging) return;
+      const leftPanel = document.getElementById(leftPanelId);
+      if (!leftPanel) return;
+      const layout = document.getElementById('grm-layout');
+      const delta = e.clientX - startX;
+      const newWidth = Math.max(minLeft, Math.min(startWidth + delta, layout.offsetWidth - minRight));
+      leftPanel.style.width = newWidth + 'px';
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (!dragging) return;
+      dragging = false;
+      divider.classList.remove('dragging');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    });
+
+    // Double-click divider = collapse left panel
+    divider.addEventListener('dblclick', () => {
+      const leftPanel = document.getElementById(leftPanelId);
+      if (leftPanel) leftPanel.classList.toggle('collapsed');
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    initDivider('grm-divider-1', 'grm-config-panel', 180, 400);
+    initDivider('grm-divider-2', 'grm-tree-panel',   160, 300);
+  });
+})();
 
 // ── Playlist filter helpers ───────────────────────────────────────
 let grmCurrentConf = '';
@@ -5699,7 +5855,7 @@ async function snfGapAnalysis(append) {
   const decadeLabel = decades.length ? decades.join(', ') : 'all decades';
   const peakLabel  = peakMax >= 100 ? '' : ' \u00b7 peak \u2264 #' + peakMax;
   snfLog('Searching ' + genreLabel + ' \u00b7 ' + decadeLabel + ' \u00b7 ' + tierLabel + peakLabel + '\u2026', 'info');
-  document.getElementById('snf-status-title').textContent = 'SEARCHING\u2026';
+  document.getElementById('snf-status-title').textContent = 'SEARCHING\u2026'; document.getElementById('snf-pulse-bar').style.display = 'block';
   document.getElementById('snf-btn-search').disabled = true;
   try {
     const r = await fetch(API + '/api/sniffer/gap-by-genre', {
@@ -5729,21 +5885,24 @@ async function snfGapAnalysis(append) {
     const peakNote = peakMax < 100 ? ' \u00b7 peak filter \u2264 #' + peakMax : '';
     document.getElementById('snf-status-sub').textContent =
       snfTotal.toLocaleString() + ' master entries \u00b7 ' + (d.owned||0).toLocaleString() + ' owned \u00b7 ' + (d.missing||0).toLocaleString() + ' missing' + peakNote;
+    // Show banner if library came from scanned tracks only (no media server)
+    const scanOnlyBanner = document.getElementById('snf-banner-scanned-only');
+    if (scanOnlyBanner) scanOnlyBanner.style.display = (d.library_source === 'scanned_only') ? 'flex' : 'none';
     snfRenderResults();
     snfUpdateLoadMore();
-    snfLog('\u2713 Found ' + snfTotal.toLocaleString() + ' entries \u2014 ' + (d.missing||0).toLocaleString() + ' missing', 'ok');
+    snfLog('\u2713 Found ' + snfTotal.toLocaleString() + ' entries \u2014 ' + (d.missing||0).toLocaleString() + ' missing' + (d.library_source ? ' \u00b7 library via ' + d.library_source : ''), 'ok');
   } catch(e) {
     snfLog('\u2717 ' + e.message, 'err');
     document.getElementById('snf-status-title').textContent = 'ERROR';
   }
-  document.getElementById('snf-btn-search').disabled = false;
+  document.getElementById('snf-btn-search').disabled = false; document.getElementById('snf-pulse-bar').style.display = 'none';
 }
 
 async function snfTrending(append) {
   const tag = document.getElementById('snf-trending-tag').value;
   if (!append) { snfResults = []; snfOffset = 0; _snfTrendingPage = 1; }
   snfLog('Fetching trending ' + tag + ' tracks (page ' + _snfTrendingPage + ')\u2026', 'info');
-  document.getElementById('snf-status-title').textContent = 'SEARCHING\u2026';
+  document.getElementById('snf-status-title').textContent = 'SEARCHING\u2026'; document.getElementById('snf-pulse-bar').style.display = 'block';
   document.getElementById('snf-btn-search').disabled = true;
   try {
     const r = await fetch(API + '/api/sniffer/trending', {
@@ -5773,7 +5932,7 @@ async function snfTrending(append) {
     snfLog('\u2717 ' + e.message, 'err');
     document.getElementById('snf-status-title').textContent = 'ERROR';
   }
-  document.getElementById('snf-btn-search').disabled = false;
+  document.getElementById('snf-btn-search').disabled = false; document.getElementById('snf-pulse-bar').style.display = 'none';
 }
 
 function snfLoadMore() {
@@ -6091,7 +6250,8 @@ var _bhCards = {};
 var _bhOffset = 0;
 var _bhMbCount = 0;
 var _bhLastQuery = '';
-var _bhLastSearchType = ''; // 'album' or 'comp'
+var _bhLastLabel = '';
+var _bhLastSearchType = ''; // 'album', 'comp', or 'genre'
 var _bhCurrentFilter = 'all';
 
 function bhInit() {
@@ -6108,8 +6268,9 @@ function bhLog(msg, type) {
 
 function bhSetMode(mode) {
   _bhMode = mode;
-  ['artist','album','comp'].forEach(function(m) {
+  ['artist','album','comp','genre'].forEach(function(m) {
     var btn = document.getElementById('bh-mode-' + m);
+    if (!btn) return;
     if (m === mode) {
       btn.style.background = 'var(--orange)'; btn.style.color = '#000'; btn.style.border = 'none';
     } else {
@@ -6117,8 +6278,9 @@ function bhSetMode(mode) {
     }
   });
   document.getElementById('bh-artist-section').style.display = mode === 'artist' ? 'block' : 'none';
-  document.getElementById('bh-album-section').style.display = mode === 'album' ? 'block' : 'none';
-  document.getElementById('bh-comp-section').style.display = mode === 'comp' ? 'block' : 'none';
+  document.getElementById('bh-album-section').style.display  = mode === 'album'  ? 'block' : 'none';
+  document.getElementById('bh-comp-section').style.display   = mode === 'comp'   ? 'block' : 'none';
+  document.getElementById('bh-genre-section').style.display  = mode === 'genre'  ? 'block' : 'none';
 }
 
 // ── Artist Search ──
@@ -6190,7 +6352,7 @@ function bhSetReleaseType(type) {
 async function bhLoadReleases() {
   if (!_bhSelectedArtist) return;
   bhLog('📀 Loading ' + _bhReleaseType + 's for ' + _bhSelectedArtist.name, 'info');
-  document.getElementById('bh-status-title').textContent = 'LOADING…';
+  document.getElementById('bh-status-title').textContent = 'LOADING…'; document.getElementById('bh-pulse-bar').style.display = 'block';
   document.getElementById('bh-status-sub').textContent = _bhSelectedArtist.name + ' — ' + _bhReleaseType + 's';
   try {
     var r = await fetch(API + '/api/bloodhound/artist-releases', {
@@ -6209,7 +6371,7 @@ async function bhLoadReleases() {
     bhRenderResults();
   } catch(e) {
     bhLog('✗ Failed to load releases: ' + e.message, 'err');
-    document.getElementById('bh-status-title').textContent = 'ERROR';
+    document.getElementById('bh-status-title').textContent = 'ERROR'; document.getElementById('bh-pulse-bar').style.display = 'none';
   }
 }
 
@@ -6219,7 +6381,7 @@ async function bhAlbumSearch(loadMore) {
   if (!q) return;
   if (!loadMore) { _bhOffset = 0; _bhResults = []; _bhLastQuery = q; _bhLastSearchType = 'album'; }
   bhLog('🔍 Searching MusicBrainz for album: ' + q + (loadMore ? ' (offset ' + _bhOffset + ')' : ''), 'info');
-  document.getElementById('bh-status-title').textContent = 'SEARCHING…';
+  document.getElementById('bh-status-title').textContent = 'SEARCHING…'; document.getElementById('bh-pulse-bar').style.display = 'block';
   try {
     var r = await fetch(API + '/api/bloodhound/album-search', {
       method:'POST', headers:authHdrs(),
@@ -6241,7 +6403,7 @@ async function bhAlbumSearch(loadMore) {
     bhUpdateLoadMore();
   } catch(e) {
     bhLog('✗ Album search failed: ' + e.message, 'err');
-    document.getElementById('bh-status-title').textContent = 'ERROR';
+    document.getElementById('bh-status-title').textContent = 'ERROR'; document.getElementById('bh-pulse-bar').style.display = 'none';
   }
 }
 
@@ -6259,7 +6421,7 @@ function bhCompCustomSearch() {
 async function bhCompDoSearch(q, loadMore) {
   if (!loadMore) { _bhOffset = 0; _bhResults = []; _bhLastQuery = q; _bhLastSearchType = 'comp'; }
   bhLog('🔍 Searching MusicBrainz for compilations: ' + q + (loadMore ? ' (offset ' + _bhOffset + ')' : ''), 'info');
-  document.getElementById('bh-status-title').textContent = 'SEARCHING…';
+  document.getElementById('bh-status-title').textContent = 'SEARCHING…'; document.getElementById('bh-pulse-bar').style.display = 'block';
   try {
     var r = await fetch(API + '/api/bloodhound/album-search', {
       method:'POST', headers:authHdrs(),
@@ -6281,13 +6443,67 @@ async function bhCompDoSearch(q, loadMore) {
     bhUpdateLoadMore();
   } catch(e) {
     bhLog('✗ Compilation search failed: ' + e.message, 'err');
-    document.getElementById('bh-status-title').textContent = 'ERROR';
+    document.getElementById('bh-status-title').textContent = 'ERROR'; document.getElementById('bh-pulse-bar').style.display = 'none';
   }
 }
 
 function bhLoadMore() {
   if (_bhLastSearchType === 'album') bhAlbumSearch(true);
   else if (_bhLastSearchType === 'comp') bhCompDoSearch(_bhLastQuery, true);
+  else if (_bhLastSearchType === 'genre') bhGenreDoSearch(_bhLastQuery, _bhLastLabel, true);
+}
+
+// ── Genre Browse ──
+const _BH_GENRE_MAP = {
+  rock:        { label: 'Rock',          query: 'tag:rock' },
+  pop:         { label: 'Pop',           query: 'tag:pop' },
+  country:     { label: 'Country',       query: 'tag:country' },
+  rnb:         { label: 'R&B / Soul',    query: 'tag:rnb OR tag:soul OR tag:rhythm-and-blues' },
+  hiphop:      { label: 'Hip-Hop',       query: 'tag:hip-hop OR tag:rap' },
+  electronic:  { label: 'Electronic',    query: 'tag:electronic OR tag:edm OR tag:house OR tag:techno' },
+  jazz:        { label: 'Jazz',          query: 'tag:jazz' },
+  blues:       { label: 'Blues',         query: 'tag:blues' },
+  metal:       { label: 'Metal',         query: 'tag:metal OR tag:heavy-metal' },
+  alternative: { label: 'Alternative',   query: 'tag:alternative OR tag:indie' },
+  folk:        { label: 'Folk',          query: 'tag:folk OR tag:acoustic' },
+  classical:   { label: 'Classical',     query: 'tag:classical OR tag:orchestral' },
+  ccm:         { label: 'CCM / Gospel',  query: 'tag:christian OR tag:gospel OR tag:ccm OR tag:worship' },
+};
+
+function bhGenreSearch(key) {
+  var g = _BH_GENRE_MAP[key];
+  if (!g) return;
+  bhGenreDoSearch(g.query, g.label, false);
+}
+
+async function bhGenreDoSearch(q, label, loadMore) {
+  if (!loadMore) { _bhOffset = 0; _bhResults = []; _bhLastQuery = q; _bhLastLabel = label || q; _bhLastSearchType = 'genre'; }
+  bhLog('🎵 Browsing genre: ' + (label || q) + (loadMore ? ' (offset ' + _bhOffset + ')' : ''), 'info');
+  document.getElementById('bh-status-title').textContent = 'SEARCHING…'; document.getElementById('bh-pulse-bar').style.display = 'block';
+  try {
+    var r = await fetch(API + '/api/bloodhound/album-search', {
+      method:'POST', headers:authHdrs(),
+      body: JSON.stringify({ query: q, offset: _bhOffset }),
+    });
+    var d = await r.json();
+    if (!r.ok) throw new Error(d.detail || 'HTTP ' + r.status);
+    var newResults = (d.results || []).map(function(rg) {
+      return { artist: rg.artist || '', title: rg.title || '', type: rg.primary_type || '', year: (rg.first_release||'').substring(0,4), mbid: rg.mbid, secondary: rg.secondary_types || [], in_library: rg.in_library || false };
+    });
+    _bhResults = _bhResults.concat(newResults);
+    _bhOffset = _bhOffset + (d.limit || 100);
+    _bhMbCount = d.mb_count || 0;
+    var lbl = label || _bhLastLabel || q;
+    bhLog('✓ Found ' + newResults.length + ' result(s) — ' + _bhResults.length + ' total loaded' + (_bhMbCount ? ' of ' + _bhMbCount : ''), 'ok');
+    document.getElementById('bh-s-total').textContent = _bhResults.length;
+    document.getElementById('bh-status-title').textContent = lbl.toUpperCase();
+    document.getElementById('bh-status-sub').textContent = _bhResults.length + ' loaded' + (_bhMbCount ? ' of ' + _bhMbCount : '');
+    bhRenderResults();
+    bhUpdateLoadMore();
+  } catch(e) {
+    bhLog('✗ Genre search failed: ' + e.message, 'err');
+    document.getElementById('bh-status-title').textContent = 'ERROR'; document.getElementById('bh-pulse-bar').style.display = 'none';
+  }
 }
 
 function bhUpdateLoadMore() {
@@ -6302,7 +6518,32 @@ function bhUpdateLoadMore() {
 }
 
 // ── Render Results Table ──
+var _bhSortKey = '';
+var _bhSortAsc = true;
+
+function bhSort(key) {
+  if (_bhSortKey === key) { _bhSortAsc = !_bhSortAsc; } else { _bhSortKey = key; _bhSortAsc = key === 'year' ? false : true; }
+  ['artist','title','year','status'].forEach(function(k) {
+    var el = document.getElementById('bh-sort-' + k);
+    if (el) el.textContent = k === _bhSortKey ? (_bhSortAsc ? '▲' : '▼') : '';
+  });
+  var fns = {
+    artist: function(r) { return (r.artist||'').toLowerCase(); },
+    title:  function(r) { return (r.title||'').toLowerCase(); },
+    year:   function(r) { return parseInt(r.year) || 0; },
+    status: function(r) { return r.in_library ? 0 : 1; },
+  };
+  var fn = fns[key];
+  if (!fn) return;
+  _bhResults.sort(function(a,b) {
+    var av = fn(a), bv = fn(b);
+    return _bhSortAsc ? (av < bv ? -1 : av > bv ? 1 : 0) : (av > bv ? -1 : av < bv ? 1 : 0);
+  });
+  bhRenderResults();
+}
+
 function bhRenderResults() {
+  var pb = document.getElementById('bh-pulse-bar'); if (pb) pb.style.display = 'none';
   var tbody = document.getElementById('bh-tbody');
   var empty = document.getElementById('bh-empty');
   tbody.innerHTML = '';

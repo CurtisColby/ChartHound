@@ -45,6 +45,7 @@ from app.security import decrypt_token
 from app.routers.groomer import (
     _norm, _fuzzy,
     CHART_DISPLAY, MATCH_THRESHOLD,
+    _fetch_plex_tracks, _fetch_emby_tracks, _fetch_jellyfin_tracks,
 )
 
 log      = logging.getLogger("charthound.sniffer")
@@ -118,8 +119,98 @@ async def _get_connection(service: str) -> dict:
         "extra":    json.loads(row["extra_json"] or "{}") if row["extra_json"] else {},
     }
 
-async def _build_library_index() -> dict:
+async def _get_media_server_conn(service: str) -> dict | None:
+    """Return decrypted connection dict for a media server, or None if not configured."""
+    try:
+        async with aiosqlite.connect(_DYNAMIC_DB) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT base_url, token_enc, extra_json FROM connections WHERE service=?",
+                (service,)
+            ) as cur:
+                row = await cur.fetchone()
+        if not row or not row["base_url"]:
+            return None
+        return {
+            "base_url": row["base_url"],
+            "token":    decrypt_token(row["token_enc"]) if row["token_enc"] else "",
+            "extra":    json.loads(row["extra_json"] or "{}") if row["extra_json"] else {},
+        }
+    except Exception:
+        return None
+
+
+async def _build_library_index() -> tuple[dict, str]:
+    """
+    Build (artist_norm, title_norm) → track_id index from the best available source.
+
+    Priority:
+      1. Plex  — live API, full library, handles adds/deletes automatically
+      2. Emby  — same
+      3. Jellyfin — same
+      4. tracks table (Retriever scans) — fallback, may be incomplete
+
+    Returns: (index_dict, source_label)
+      source_label is one of: "plex" | "emby" | "jellyfin" | "scanned_only"
+    """
     library_index: dict = {}
+
+    # ── 1. Plex ──────────────────────────────────────────────────────────────
+    conn = await _get_media_server_conn("plex")
+    if conn:
+        try:
+            tracks = await _fetch_plex_tracks(conn["base_url"], conn["token"])
+            if tracks:
+                for t in tracks:
+                    a_n = _norm(t.get("artist") or t.get("tag_artist") or "")
+                    t_n = _norm(t.get("title") or "")
+                    if a_n and t_n:
+                        library_index[(a_n, t_n)] = t.get("track_id")
+                if library_index:
+                    log.info(f"Sniffer library index: {len(library_index)} tracks from Plex")
+                    return library_index, "plex"
+        except Exception as e:
+            log.warning(f"Sniffer: Plex fetch failed ({e}), trying next source")
+
+    # ── 2. Emby ──────────────────────────────────────────────────────────────
+    conn = await _get_media_server_conn("emby")
+    if conn:
+        try:
+            tracks = await _fetch_emby_tracks(
+                conn["base_url"], conn["token"], conn["extra"].get("user_id", "")
+            )
+            if tracks:
+                for t in tracks:
+                    a_n = _norm(t.get("artist") or t.get("tag_artist") or "")
+                    t_n = _norm(t.get("title") or "")
+                    if a_n and t_n:
+                        library_index[(a_n, t_n)] = t.get("track_id")
+                if library_index:
+                    log.info(f"Sniffer library index: {len(library_index)} tracks from Emby")
+                    return library_index, "emby"
+        except Exception as e:
+            log.warning(f"Sniffer: Emby fetch failed ({e}), trying next source")
+
+    # ── 3. Jellyfin ───────────────────────────────────────────────────────────
+    conn = await _get_media_server_conn("jellyfin")
+    if conn:
+        try:
+            tracks = await _fetch_jellyfin_tracks(
+                conn["base_url"], conn["token"], conn["extra"].get("user_id", "")
+            )
+            if tracks:
+                for t in tracks:
+                    a_n = _norm(t.get("artist") or t.get("tag_artist") or "")
+                    t_n = _norm(t.get("title") or "")
+                    if a_n and t_n:
+                        library_index[(a_n, t_n)] = t.get("track_id")
+                if library_index:
+                    log.info(f"Sniffer library index: {len(library_index)} tracks from Jellyfin")
+                    return library_index, "jellyfin"
+        except Exception as e:
+            log.warning(f"Sniffer: Jellyfin fetch failed ({e}), trying next source")
+
+    # ── 4. Fallback: tracks table (Retriever scans) ───────────────────────────
     try:
         async with aiosqlite.connect(_DYNAMIC_DB) as db:
             db.row_factory = aiosqlite.Row
@@ -137,8 +228,10 @@ async def _build_library_index() -> dict:
                     if a_n and t_n:
                         library_index[(a_n, t_n)] = row["track_id"]
     except Exception as e:
-        log.warning(f"Could not load library index: {e}")
-    return library_index
+        log.warning(f"Could not load library index from tracks table: {e}")
+
+    log.info(f"Sniffer library index: {len(library_index)} tracks from scanned library (fallback)")
+    return library_index, "scanned_only"
 
 def _check_library(artist: str, title: str, library_index: dict) -> tuple:
     a_n = _norm(artist)
@@ -229,7 +322,7 @@ async def gap_analysis(req: GapAnalysisRequest, _=Depends(require_auth)):
     if not entries:
         return {"results": [], "total": 0, "offset": req.offset, "limit": req.limit}
 
-    lib = await _build_library_index()
+    lib, _lib_source = await _build_library_index()
     results = []
     for e in entries:
         owned, tid = _check_library(e["artist"], e["title"], lib)
@@ -916,7 +1009,7 @@ async def gap_by_genre(req: GapByGenreRequest, _=Depends(require_auth)):
     total_master = len(items)
 
     # Library cross-reference (always live — library state changes more often than master list)
-    lib = await _build_library_index()
+    lib, library_source = await _build_library_index()
 
     # Apply include_owned filter, then paginate
     enriched = []
@@ -945,18 +1038,19 @@ async def gap_by_genre(req: GapByGenreRequest, _=Depends(require_auth)):
     page = enriched[req.offset: req.offset + req.limit]
     owned_ct = sum(1 for r in enriched if r["in_library"])
     return {
-        "results":      page,
-        "total":        total_filtered,
-        "total_master": total_master,
-        "owned":        owned_ct,
-        "missing":      total_filtered - owned_ct,
-        "offset":       req.offset,
-        "limit":        req.limit,
-        "tier":         req.tier,
-        "genres":       req.genres,
-        "decades":      req.decades,
-        "lastfm_used":  lastfm_used,
-        "cache_built":  cached.get("built_at"),
+        "results":        page,
+        "total":          total_filtered,
+        "total_master":   total_master,
+        "owned":          owned_ct,
+        "missing":        total_filtered - owned_ct,
+        "offset":         req.offset,
+        "limit":          req.limit,
+        "tier":           req.tier,
+        "genres":         req.genres,
+        "decades":        req.decades,
+        "lastfm_used":    lastfm_used,
+        "cache_built":    cached.get("built_at"),
+        "library_source": library_source,
     }
 
 
@@ -1006,7 +1100,7 @@ async def trending(req: TrendingRequest, _=Depends(require_auth)):
     if not tracks:
         return {"results": [], "total": 0, "tag": req.tag, "page": req.page}
 
-    lib = await _build_library_index()
+    lib, _lib_source = await _build_library_index()
     results = []
     for t in tracks:
         owned, tid = _check_library(t["artist"], t["title"], lib)
