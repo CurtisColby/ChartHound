@@ -45,7 +45,6 @@ from app.security import decrypt_token
 from app.routers.groomer import (
     _norm, _fuzzy,
     CHART_DISPLAY, MATCH_THRESHOLD,
-    _fetch_plex_tracks, _fetch_emby_tracks, _fetch_jellyfin_tracks,
 )
 
 log      = logging.getLogger("charthound.sniffer")
@@ -142,96 +141,278 @@ async def _get_media_server_conn(service: str) -> dict | None:
 
 async def _build_library_index() -> tuple[dict, str]:
     """
-    Build (artist_norm, title_norm) → track_id index from the best available source.
+    Build (artist_norm, title_norm) → track_id index.
 
     Priority:
-      1. Plex  — live API, full library, handles adds/deletes automatically
-      2. Emby  — same
-      3. Jellyfin — same
-      4. tracks table (Retriever scans) — fallback, may be incomplete
+      1. library_cache table (populated by sync-library endpoint)
+      2. If cache is empty: trigger a file scan auto-populate, then return it
+         (first-run safety net so the app works out of the box)
 
     Returns: (index_dict, source_label)
-      source_label is one of: "plex" | "emby" | "jellyfin" | "scanned_only"
     """
-    library_index: dict = {}
-
-    # ── 1. Plex ──────────────────────────────────────────────────────────────
-    conn = await _get_media_server_conn("plex")
-    if conn:
-        try:
-            tracks = await _fetch_plex_tracks(conn["base_url"], conn["token"])
-            if tracks:
-                for t in tracks:
-                    a_n = _norm(t.get("artist") or t.get("tag_artist") or "")
-                    t_n = _norm(t.get("title") or "")
-                    if a_n and t_n:
-                        library_index[(a_n, t_n)] = t.get("track_id")
-                if library_index:
-                    log.info(f"Sniffer library index: {len(library_index)} tracks from Plex")
-                    return library_index, "plex"
-        except Exception as e:
-            log.warning(f"Sniffer: Plex fetch failed ({e}), trying next source")
-
-    # ── 2. Emby ──────────────────────────────────────────────────────────────
-    conn = await _get_media_server_conn("emby")
-    if conn:
-        try:
-            tracks = await _fetch_emby_tracks(
-                conn["base_url"], conn["token"], conn["extra"].get("user_id", "")
-            )
-            if tracks:
-                for t in tracks:
-                    a_n = _norm(t.get("artist") or t.get("tag_artist") or "")
-                    t_n = _norm(t.get("title") or "")
-                    if a_n and t_n:
-                        library_index[(a_n, t_n)] = t.get("track_id")
-                if library_index:
-                    log.info(f"Sniffer library index: {len(library_index)} tracks from Emby")
-                    return library_index, "emby"
-        except Exception as e:
-            log.warning(f"Sniffer: Emby fetch failed ({e}), trying next source")
-
-    # ── 3. Jellyfin ───────────────────────────────────────────────────────────
-    conn = await _get_media_server_conn("jellyfin")
-    if conn:
-        try:
-            tracks = await _fetch_jellyfin_tracks(
-                conn["base_url"], conn["token"], conn["extra"].get("user_id", "")
-            )
-            if tracks:
-                for t in tracks:
-                    a_n = _norm(t.get("artist") or t.get("tag_artist") or "")
-                    t_n = _norm(t.get("title") or "")
-                    if a_n and t_n:
-                        library_index[(a_n, t_n)] = t.get("track_id")
-                if library_index:
-                    log.info(f"Sniffer library index: {len(library_index)} tracks from Jellyfin")
-                    return library_index, "jellyfin"
-        except Exception as e:
-            log.warning(f"Sniffer: Jellyfin fetch failed ({e}), trying next source")
-
-    # ── 4. Fallback: tracks table (Retriever scans) ───────────────────────────
+    # ── 1. Read from library_cache ────────────────────────────────────────────
     try:
         async with aiosqlite.connect(_DYNAMIC_DB) as db:
             db.row_factory = aiosqlite.Row
-            async with db.execute("""
-                SELECT t.track_id,
-                       LOWER(COALESCE(t.tag_artist, a.name, '')) as artist_name,
-                       LOWER(t.title) as title_name
-                FROM tracks t
-                LEFT JOIN artists a ON t.artist_id = a.artist_id
-                WHERE t.title IS NOT NULL AND t.title != ''
-            """) as cur:
+            async with db.execute(
+                "SELECT artist_norm, title_norm, track_id, source FROM library_cache LIMIT 1"
+            ) as cur:
+                probe = await cur.fetchone()
+
+        if probe is not None:
+            # Cache has data — load it all
+            library_index: dict = {}
+            source_label = "cache"
+            async with aiosqlite.connect(_DYNAMIC_DB) as db:
+                db.row_factory = aiosqlite.Row
+                async with db.execute(
+                    "SELECT artist_norm, title_norm, track_id, source FROM library_cache"
+                ) as cur:
+                    async for row in cur:
+                        a_n = row["artist_norm"] or ""
+                        t_n = row["title_norm"] or ""
+                        if a_n and t_n:
+                            library_index[(a_n, t_n)] = row["track_id"]
+                            source_label = row["source"] or "cache"
+            log.info(f"Library index: {len(library_index)} tracks from cache (source: {source_label})")
+            return library_index, source_label
+    except Exception as e:
+        log.warning(f"library_cache read failed: {e}")
+
+    # ── 2. Cache empty — auto-populate via file scan then return ─────────────
+    log.info("library_cache empty — running first-run file scan auto-populate")
+    await _do_sync_library()
+    # Now read what we just wrote
+    try:
+        library_index = {}
+        source_label = "scanned_only"
+        async with aiosqlite.connect(_DYNAMIC_DB) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT artist_norm, title_norm, track_id, source FROM library_cache"
+            ) as cur:
                 async for row in cur:
-                    a_n = _norm(row["artist_name"] or "")
-                    t_n = _norm(row["title_name"] or "")
+                    a_n = row["artist_norm"] or ""
+                    t_n = row["title_norm"] or ""
                     if a_n and t_n:
                         library_index[(a_n, t_n)] = row["track_id"]
+                        source_label = row["source"] or "scanned_only"
+        log.info(f"Library index after auto-populate: {len(library_index)} tracks")
+        return library_index, source_label
     except Exception as e:
-        log.warning(f"Could not load library index from tracks table: {e}")
+        log.warning(f"library_cache read after auto-populate failed: {e}")
+        return {}, "scanned_only"
 
-    log.info(f"Sniffer library index: {len(library_index)} tracks from scanned library (fallback)")
-    return library_index, "scanned_only"
+
+# ── Sync state (in-memory, single-process) ──────────────────────────────────
+_sync_state: dict = {
+    "status":      "idle",   # idle | running | done | error
+    "progress_pct": 0,
+    "track_count":  0,
+    "source":       "",
+    "last_synced":  "",
+    "error":        "",
+}
+
+
+async def _do_sync_library(incremental: bool = False):
+    """
+    Populate library_cache from physical file scan of the music root.
+    Falls back to tracks table if music root is unavailable.
+
+    incremental=True: only process files modified since last_synced.
+                      Uses INSERT OR REPLACE so new/changed files update the cache.
+                      Full DELETE+rebuild is skipped — existing rows are preserved.
+    incremental=False (default): full rebuild — DELETE all rows then rescan everything.
+    """
+    global _sync_state
+    _sync_state.update({"status": "running", "progress_pct": 0, "track_count": 0,
+                         "source": "", "last_synced": "", "error": ""})
+
+    rows: list[tuple] = []
+    source_label = "scanned_only"
+
+    # For incremental: get last_synced timestamp as cutoff
+    cutoff_ts: float = 0.0
+    if incremental:
+        try:
+            async with aiosqlite.connect(_DYNAMIC_DB) as db:
+                async with db.execute(
+                    "SELECT value FROM library_cache_meta WHERE key='last_synced'"
+                ) as cur:
+                    row = await cur.fetchone()
+                    if row and row[0]:
+                        cutoff_ts = datetime.fromisoformat(row[0]).timestamp()
+                        log.info(f"Library cache incremental sync: cutoff={row[0]}")
+        except Exception as e:
+            log.warning(f"Library cache: could not read last_synced for incremental, doing full scan: {e}")
+            incremental = False
+
+    try:
+        # ── 1. Physical file scan (primary source) ────────────────────────────
+        music_root = getattr(settings, "docker_music_prefix", "/music")
+        if os.path.isdir(music_root):
+            log.info(f"Library cache sync: {'incremental' if incremental else 'full'} scan at {music_root}")
+            try:
+                import concurrent.futures
+                from mutagen import File as MutagenFile
+                audio_exts = {".mp3", ".flac", ".m4a", ".aac", ".ogg",
+                              ".wma", ".wav", ".aiff", ".ape", ".opus"}
+                file_list = []
+                for dirpath, _, filenames in os.walk(music_root):
+                    for fn in filenames:
+                        if os.path.splitext(fn)[1].lower() in audio_exts:
+                            fpath = os.path.join(dirpath, fn)
+                            if incremental and cutoff_ts > 0:
+                                try:
+                                    if os.path.getmtime(fpath) <= cutoff_ts:
+                                        continue
+                                except OSError:
+                                    pass
+                            file_list.append(fpath)
+
+                total = len(file_list)
+                log.info(f"Library cache sync: {total} audio files to process")
+
+                if total == 0 and incremental:
+                    log.info("Library cache incremental sync: no new files since last sync")
+                    # Just update last_synced timestamp
+                    now_iso = datetime.now(timezone.utc).isoformat()
+                    async with aiosqlite.connect(_DYNAMIC_DB) as db:
+                        await db.execute(
+                            "INSERT OR REPLACE INTO library_cache_meta(key,value) VALUES(?,?)",
+                            ("last_synced", now_iso)
+                        )
+                        await db.commit()
+                    _sync_state.update({
+                        "status": "done", "progress_pct": 100,
+                        "source": "file_scan", "last_synced": now_iso,
+                    })
+                    # Read current count for status display
+                    async with aiosqlite.connect(_DYNAMIC_DB) as db:
+                        async with db.execute("SELECT COUNT(*) FROM library_cache") as cur:
+                            row = await cur.fetchone()
+                            _sync_state["track_count"] = row[0] if row else 0
+                    log.info("Library cache incremental sync: complete (no new files)")
+                    return
+
+                def _read_tags(fpath):
+                    try:
+                        mf = MutagenFile(fpath, easy=True)
+                        if mf is None or not hasattr(mf, "tags") or not mf.tags:
+                            return None
+                        artist = (mf.tags.get("artist") or mf.tags.get("TPE1") or [""])[0]
+                        title  = (mf.tags.get("title")  or mf.tags.get("TIT2")  or [""])[0]
+                        if isinstance(artist, list): artist = artist[0] if artist else ""
+                        if isinstance(title,  list): title  = title[0]  if title  else ""
+                        return str(artist), str(title)
+                    except Exception:
+                        return None
+
+                with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+                    futures = {executor.submit(_read_tags, fp): fp for fp in file_list}
+                    done_count = 0
+                    for future in concurrent.futures.as_completed(futures, timeout=600):
+                        done_count += 1
+                        try:
+                            result = future.result(timeout=5)
+                            if result:
+                                a_n = _norm(result[0])
+                                t_n = _norm(result[1])
+                                if a_n and t_n:
+                                    rows.append((a_n, t_n, None, "file_scan"))
+                        except concurrent.futures.TimeoutError:
+                            pass
+                        except Exception:
+                            pass
+                        if total > 0 and done_count % 500 == 0:
+                            _sync_state["progress_pct"] = int((done_count / total) * 90)
+                            _sync_state["track_count"]  = len(rows)
+                            log.info(f"Library cache sync: {done_count}/{total} files scanned, {len(rows)} tracks found")
+
+                if rows:
+                    source_label = "file_scan"
+                    log.info(f"Library cache sync: {len(rows)} tracks from physical file scan")
+            except Exception as e:
+                log.warning(f"Library cache sync: file scan failed ({e})")
+
+        # ── 2. Fallback: tracks table ─────────────────────────────────────────
+        if not rows and not incremental:
+            log.info("Library cache sync: music root unavailable, falling back to tracks table")
+            try:
+                async with aiosqlite.connect(_DYNAMIC_DB) as db:
+                    async with db.execute("""
+                        SELECT t.track_id,
+                               LOWER(COALESCE(t.tag_artist, a.name, '')) as artist_name,
+                               LOWER(t.title) as title_name
+                        FROM tracks t
+                        LEFT JOIN artists a ON t.artist_id = a.artist_id
+                        WHERE t.title IS NOT NULL AND t.title != ''
+                    """) as cur:
+                        async for row in cur:
+                            a_n = _norm(row[1] or "")
+                            t_n = _norm(row[2] or "")
+                            if a_n and t_n:
+                                rows.append((a_n, t_n, row[0], "scanned_only"))
+                if rows:
+                    source_label = "scanned_only"
+                    log.info(f"Library cache sync: {len(rows)} tracks from tracks table fallback")
+            except Exception as e:
+                log.warning(f"Library cache sync: tracks table fallback failed ({e})")
+
+        # ── Write to library_cache ────────────────────────────────────────────
+        _sync_state["progress_pct"] = 95
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        async with aiosqlite.connect(_DYNAMIC_DB) as db:
+            if incremental:
+                # Merge — INSERT OR REPLACE only new/changed rows
+                if rows:
+                    await db.executemany(
+                        "INSERT OR REPLACE INTO library_cache(artist_norm, title_norm, track_id, source) "
+                        "VALUES (?,?,?,?)",
+                        rows
+                    )
+            else:
+                # Full rebuild
+                await db.execute("DELETE FROM library_cache")
+                if rows:
+                    await db.executemany(
+                        "INSERT OR REPLACE INTO library_cache(artist_norm, title_norm, track_id, source) "
+                        "VALUES (?,?,?,?)",
+                        rows
+                    )
+            await db.execute(
+                "INSERT OR REPLACE INTO library_cache_meta(key, value) VALUES (?,?)",
+                ("last_synced", now_iso)
+            )
+            await db.execute(
+                "INSERT OR REPLACE INTO library_cache_meta(key, value) VALUES (?,?)",
+                ("source_label", source_label)
+            )
+            # Update track count to reflect full table size
+            async with db.execute("SELECT COUNT(*) FROM library_cache") as cur:
+                row = await cur.fetchone()
+                total_cached = row[0] if row else len(rows)
+            await db.execute(
+                "INSERT OR REPLACE INTO library_cache_meta(key, value) VALUES (?,?)",
+                ("track_count", str(total_cached))
+            )
+            await db.commit()
+
+        _sync_state.update({
+            "status":       "done",
+            "progress_pct": 100,
+            "track_count":  total_cached,
+            "source":       source_label,
+            "last_synced":  now_iso,
+        })
+        log.info(f"Library cache sync complete: {total_cached} tracks cached, source={source_label}, incremental={incremental}")
+
+    except Exception as e:
+        _sync_state.update({"status": "error", "error": str(e)})
+        log.error(f"Library cache sync error: {e}")
+
 
 def _check_library(artist: str, title: str, library_index: dict) -> tuple:
     a_n = _norm(artist)
@@ -249,7 +430,69 @@ def _check_library(artist: str, title: str, library_index: dict) -> tuple:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  GAP ANALYSIS
+#  SYNC LIBRARY CACHE — ENDPOINTS
+# ══════════════════════════════════════════════════════════════════════════════
+
+@router.post("/sync-library")
+async def sync_library(_=Depends(require_auth)):
+    """
+    Trigger a library cache sync. Runs as background task.
+    Blocked if a Retriever scan is currently running.
+    """
+    global _sync_state
+    if _sync_state["status"] == "running":
+        raise HTTPException(409, "Library sync already in progress.")
+
+    # Block if Retriever is actively scanning
+    try:
+        async with aiosqlite.connect(_DYNAMIC_DB) as db:
+            async with db.execute(
+                "SELECT COUNT(*) FROM scan_jobs WHERE job_type='retriever' AND status='running'"
+            ) as cur:
+                row = await cur.fetchone()
+                if row and row[0] > 0:
+                    raise HTTPException(
+                        409, "The Retriever is currently scanning. Wait for it to finish before syncing."
+                    )
+    except HTTPException:
+        raise
+    except Exception:
+        pass  # If table doesn't exist yet, allow sync
+
+    asyncio.create_task(_do_sync_library())
+    return {"ok": True, "message": "Library sync started"}
+
+
+@router.get("/sync-status")
+async def sync_status(_=Depends(require_auth)):
+    """Poll sync progress. Also reads persisted last_synced from DB for display after restart."""
+    state = dict(_sync_state)
+
+    # Always pull persisted meta so UI is correct after restart or when idle
+    if state["status"] in ("idle", "done"):
+        try:
+            async with aiosqlite.connect(_DYNAMIC_DB) as db:
+                async with db.execute(
+                    "SELECT key, value FROM library_cache_meta"
+                ) as cur:
+                    rows = await cur.fetchall()
+                    for row in rows:
+                        if row[0] == "last_synced":
+                            state["last_synced"] = row[1] or ""
+                        elif row[0] == "source_label":
+                            state["source"] = row[1] or ""
+                        elif row[0] == "track_count":
+                            try:
+                                state["track_count"] = int(row[1] or 0)
+                            except (ValueError, TypeError):
+                                pass
+                async with db.execute("SELECT COUNT(*) FROM library_cache") as cur:
+                    row = await cur.fetchone()
+                    state["cached_count"] = row[0] if row else 0
+        except Exception as e:
+            log.warning(f"sync-status DB read failed: {e}")
+
+    return state
 # ══════════════════════════════════════════════════════════════════════════════
 
 @router.post("/gap-analysis")

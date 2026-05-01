@@ -605,6 +605,11 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
     <div class="nav-spacer"></div>
     <div class="nav-heartbeat" id="navHeartbeat">⟳ —</div>
     <div class="nav-version">v1.0.0 · MILESTONE 8</div>
+    <div id="nav-update-banner" style="display:none;margin:.3rem .6rem;padding:.35rem .5rem;background:rgba(245,166,35,.12);border:1px solid rgba(245,166,35,.35);border-radius:5px;font-family:var(--mono);font-size:.48rem;color:var(--amber);line-height:1.6;cursor:pointer" onclick="window.open('https://github.com/DowntownDiscipline96/ChartHound/releases','_blank')" title="View release notes">
+      ⬆ <span id="nav-update-text">Update available</span><br>
+      <span style="color:var(--muted2)">Click to view release →</span>
+      <span onclick="event.stopPropagation();document.getElementById('nav-update-banner').style.display='none'" style="float:right;opacity:.5;font-size:.6rem;cursor:pointer">✕</span>
+    </div>
   </nav>
 
   <div class="content-area">
@@ -1201,6 +1206,19 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
             </div>
           </div>
 
+          <!-- SCAN BUTTON — directly under mode so it's always visible -->
+          <button id="snf-btn-search" onclick="snfRunAnalysis()" style="width:100%;padding:.65rem;background:var(--gold);color:#000;border:none;border-radius:6px;font-family:var(--display);font-size:1.1rem;letter-spacing:2px;cursor:pointer;transition:all .2s">🔍 FIND MISSING TRACKS</button>
+
+          <!-- ACTIVITY LOG -->
+          <div style="display:flex;flex-direction:column;min-height:0;max-height:160px">
+            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--gold);margin-bottom:.5rem;display:flex;align-items:center;gap:.5rem">
+              ACTIVITY LOG
+              <span style="flex:1;height:1px;background:var(--border);display:block"></span>
+              <button onclick="document.getElementById('snf-log').innerHTML=''" style="background:none;border:none;color:var(--muted2);font-family:var(--mono);font-size:.52rem;cursor:pointer;padding:.1rem .3rem;letter-spacing:.5px" title="Clear log">✕ CLEAR</button>
+            </div>
+            <div id="snf-log" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:.7rem;font-family:var(--mono);font-size:.58rem;color:var(--muted);flex:1;min-height:80px;max-height:140px;overflow-y:auto;line-height:1.8"></div>
+          </div>
+
           <!-- GAP FILL OPTIONS -->
           <div id="snf-gap-section">
             <!-- GENRES -->
@@ -1298,21 +1316,6 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
             </div>
           </div>
 
-          <!-- ACTIONS -->
-          <div>
-            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--gold);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">ACTIONS<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
-            <button id="snf-btn-search" onclick="snfRunAnalysis()" style="width:100%;padding:.65rem;background:var(--gold);color:#000;border:none;border-radius:6px;font-family:var(--display);font-size:1.1rem;letter-spacing:2px;cursor:pointer;transition:all .2s">🔍 FIND MISSING TRACKS</button>
-          </div>
-
-          <!-- ACTIVITY LOG -->
-          <div style="flex:1;display:flex;flex-direction:column;min-height:0;max-height:280px">
-            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--gold);margin-bottom:.5rem;display:flex;align-items:center;gap:.5rem">
-              ACTIVITY LOG
-              <span style="flex:1;height:1px;background:var(--border);display:block"></span>
-              <button onclick="document.getElementById('snf-log').innerHTML=''" style="background:none;border:none;color:var(--muted2);font-family:var(--mono);font-size:.52rem;cursor:pointer;padding:.1rem .3rem;letter-spacing:.5px" title="Clear log">✕ CLEAR</button>
-            </div>
-            <div id="snf-log" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:.7rem;font-family:var(--mono);font-size:.58rem;color:var(--muted);flex:1;min-height:120px;max-height:220px;overflow-y:auto;line-height:1.8"></div>
-          </div>
         </div>
 
         <!-- RIGHT PANEL — Results -->
@@ -1324,9 +1327,11 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
             <button onclick="document.getElementById('snf-banner-lidarr').style.display='none'" style="background:none;border:none;color:inherit;cursor:pointer;font-size:.85rem;padding:0 0 0 .75rem;opacity:.5;flex-shrink:0;line-height:1" title="Dismiss">✕</button>
           </div>
 
-          <div id="snf-banner-scanned-only" class="feature-banner" style="display:none;background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.3);color:var(--red);margin-bottom:0;justify-content:space-between;align-items:flex-start">
-            <span>⚠ <strong>Partial library view:</strong> No media server (Plex, Emby, Jellyfin) could be reached. Owned/Missing results only reflect folders scanned in <strong>The Retriever</strong> — music you haven't scanned yet will appear as Missing even if you own it. Connect a media server in <strong>The Kennel</strong> for accurate results.</span>
-            <button onclick="document.getElementById('snf-banner-scanned-only').style.display='none'" style="background:none;border:none;color:inherit;cursor:pointer;font-size:.85rem;padding:0 0 0 .75rem;opacity:.5;flex-shrink:0;line-height:1" title="Dismiss">✕</button>
+          <!-- LIBRARY CACHE STATUS -->
+          <div id="snf-cache-status" style="font-family:var(--mono);font-size:.55rem;color:var(--muted);display:flex;align-items:center;gap:.5rem;padding:.4rem .75rem;background:var(--surface);border:1px solid var(--border);border-radius:6px">
+            <span style="color:var(--muted2)">📦 Library cache:</span>
+            <span id="snf-cache-info" style="color:var(--teal)">Loading…</span>
+            <span style="margin-left:auto;color:var(--gold);cursor:pointer;text-decoration:underline" onclick="switchTab('vet')">Go to Veterinarian to sync →</span>
           </div>
 
           <!-- STATS BAR -->
@@ -1418,6 +1423,22 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
               <button id="grm-mode-server" onclick="grmSetMode('server')" style="flex:1;padding:.5rem;background:var(--pink);color:#000;border:none;border-radius:5px;font-family:var(--mono);font-size:.65rem;letter-spacing:1px;cursor:pointer;transition:all .2s">📡 MEDIA SERVER</button>
               <button id="grm-mode-local" onclick="grmSetMode('local')" style="flex:1;padding:.5rem;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:5px;font-family:var(--mono);font-size:.65rem;letter-spacing:1px;cursor:pointer;transition:all .2s">📁 LOCAL FOLDER</button>
             </div>
+          </div>
+
+          <!-- SCAN BUTTONS — directly under mode so always visible -->
+          <div style="display:flex;flex-direction:column;gap:.5rem">
+            <button id="grm-btn-scan" onclick="grmStartScan()" style="width:100%;padding:.65rem;background:var(--pink);color:#000;border:none;border-radius:6px;font-family:var(--display);font-size:1.1rem;letter-spacing:2px;cursor:pointer;transition:all .2s">▶ START SCAN</button>
+            <button id="grm-btn-stop" onclick="grmStopScan()" disabled style="width:100%;padding:.45rem;background:transparent;color:var(--red);border:1px solid var(--red);border-radius:5px;font-family:var(--mono);font-size:.65rem;letter-spacing:1px;cursor:pointer;opacity:.4;transition:all .2s">⏹ STOP SCAN</button>
+          </div>
+
+          <!-- ACTIVITY LOG -->
+          <div style="display:flex;flex-direction:column;min-height:0;max-height:160px">
+            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--pink);margin-bottom:.5rem;display:flex;align-items:center;gap:.5rem">
+              ACTIVITY LOG
+              <span style="flex:1;height:1px;background:var(--border);display:block"></span>
+              <button onclick="document.getElementById('grm-log').innerHTML=''" style="background:none;border:none;color:var(--muted2);font-family:var(--mono);font-size:.52rem;cursor:pointer;padding:.1rem .3rem;letter-spacing:.5px" title="Clear log" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--muted2)'">✕ CLEAR</button>
+            </div>
+            <div id="grm-log" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:.7rem;font-family:var(--mono);font-size:.58rem;color:var(--muted);flex:1;min-height:80px;max-height:140px;overflow-y:auto;line-height:1.8"></div>
           </div>
 
           <!-- SERVER SELECTOR (server mode) -->
@@ -1541,24 +1562,6 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
             </div>
           </div>
 
-          <!-- ACTIONS -->
-          <div>
-            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--pink);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">ACTIONS<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
-            <div style="display:flex;flex-direction:column;gap:.5rem">
-              <button id="grm-btn-scan" onclick="grmStartScan()" style="width:100%;padding:.65rem;background:var(--pink);color:#000;border:none;border-radius:6px;font-family:var(--display);font-size:1.1rem;letter-spacing:2px;cursor:pointer;transition:all .2s">▶ START SCAN</button>
-              <button id="grm-btn-stop" onclick="grmStopScan()" disabled style="width:100%;padding:.45rem;background:transparent;color:var(--red);border:1px solid var(--red);border-radius:5px;font-family:var(--mono);font-size:.65rem;letter-spacing:1px;cursor:pointer;opacity:.4;transition:all .2s">⏹ STOP SCAN</button>
-            </div>
-          </div>
-
-          <!-- ACTIVITY LOG -->
-          <div style="flex:1;display:flex;flex-direction:column;min-height:0;max-height:280px">
-            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--pink);margin-bottom:.5rem;display:flex;align-items:center;gap:.5rem">
-              ACTIVITY LOG
-              <span style="flex:1;height:1px;background:var(--border);display:block"></span>
-              <button onclick="document.getElementById('grm-log').innerHTML=''" style="background:none;border:none;color:var(--muted2);font-family:var(--mono);font-size:.52rem;cursor:pointer;padding:.1rem .3rem;letter-spacing:.5px" title="Clear log" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--muted2)'">✕ CLEAR</button>
-            </div>
-            <div id="grm-log" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:.7rem;font-family:var(--mono);font-size:.58rem;color:var(--muted);flex:1;min-height:120px;max-height:220px;overflow-y:auto;line-height:1.8"></div>
-          </div>
           </div><!-- /grm-config-inner -->
         </div><!-- /grm-config-panel -->
 
@@ -1838,6 +1841,13 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
         <!-- RIGHT PANEL — Results -->
         <div style="display:flex;flex-direction:column;padding:1.25rem 1.75rem;gap:1rem;overflow-y:auto">
 
+          <!-- LIBRARY CACHE STATUS -->
+          <div id="bh-cache-status" style="font-family:var(--mono);font-size:.55rem;color:var(--muted);display:flex;align-items:center;gap:.5rem;padding:.4rem .75rem;background:var(--surface);border:1px solid var(--border);border-radius:6px">
+            <span style="color:var(--muted2)">📦 Library cache:</span>
+            <span id="bh-cache-info" style="color:var(--teal)">Loading…</span>
+            <span style="margin-left:auto;color:var(--gold);cursor:pointer;text-decoration:underline" onclick="switchTab('vet')">Go to Veterinarian to sync →</span>
+          </div>
+
           <!-- STATUS BAR -->
           <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1rem 1.5rem">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.5rem">
@@ -2079,6 +2089,24 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
               <div class="vault-row"><div class="vault-row-label">Static DB</div><div class="vault-row-status" id="vet-static-size" style="color:var(--teal)">—</div></div>
               <div class="vault-row"><div class="vault-row-label">Chart Reference</div><div class="vault-row-status" id="vet-chartref-count" style="color:var(--text)">—</div></div>
               <div class="vault-row"><div class="vault-row-label">Billboard Pop</div><div class="vault-row-status" id="vet-billpop-count" style="color:var(--text)">—</div></div>
+            </div>
+
+            <!-- Library Cache -->
+            <div class="section-label" style="color:var(--red)">LIBRARY CACHE</div>
+            <div class="card" style="padding:.65rem 1rem;display:flex;flex-direction:column;gap:.4rem">
+              <div class="vault-row"><div class="vault-row-label">Cached Tracks</div><div class="vault-row-status" id="vet-lc-count" style="color:var(--teal)">—</div></div>
+              <div class="vault-row"><div class="vault-row-label">Source</div><div class="vault-row-status" id="vet-lc-source" style="color:var(--text)">—</div></div>
+              <div class="vault-row"><div class="vault-row-label">Last Synced</div><div class="vault-row-status" id="vet-lc-synced" style="color:var(--muted)">Never</div></div>
+              <div id="vet-lc-stale-warn" style="display:none;font-family:var(--mono);font-size:.52rem;color:var(--amber);line-height:1.6;margin-top:.2rem">⚠ Cache is over 24h old. Re-sync for accurate results.</div>
+              <!-- Progress bar -->
+              <div id="vet-lc-progress-wrap" style="display:none;margin-top:.3rem">
+                <div style="height:4px;background:var(--border);border-radius:2px;overflow:hidden">
+                  <div id="vet-lc-progress-bar" style="height:100%;width:0%;background:var(--teal);transition:width .3s"></div>
+                </div>
+                <div id="vet-lc-progress-label" style="font-family:var(--mono);font-size:.5rem;color:var(--muted);margin-top:.25rem">Scanning…</div>
+              </div>
+              <button class="btn btn-outline btn-sm" id="vet-lc-sync-btn" onclick="vetSyncLibrary()" style="width:100%;font-size:.6rem;margin-top:.25rem">🔄 SYNC LIBRARY CACHE</button>
+              <div class="field-hint" style="margin-top:0;margin-bottom:0">Scans your music library so The Sniffer and Bloodhound know what you own. Works without Plex, Emby, or Jellyfin.</div>
             </div>
 
             <!-- Skip Cache -->
@@ -2347,6 +2375,24 @@ async function showApp(isPlaceholderKey = false) {
   await loadPathSettings();
   startHeartbeat();
   toast(`Welcome back, ${currentUser}. Head to The Kennel to connect your services.`, 'ok');
+  checkForUpdate();
+}
+
+async function checkForUpdate() {
+  const CURRENT = 'v1.0.0';
+  try {
+    const r = await fetch('https://api.github.com/repos/DowntownDiscipline96/ChartHound/releases/latest', {
+      headers: {'Accept': 'application/vnd.github+json'},
+      cache: 'no-store'
+    });
+    if (!r.ok) return;
+    const d = await r.json();
+    const latest = d.tag_name || '';
+    if (latest && latest !== CURRENT) {
+      document.getElementById('nav-update-text').textContent = `Update: ${CURRENT} → ${latest}`;
+      document.getElementById('nav-update-banner').style.display = 'block';
+    }
+  } catch(e) { /* silent — no network or rate limited */ }
 }
 
 // TABS
@@ -5738,9 +5784,6 @@ async function snfGapAnalysis(append) {
     const peakNote = peakMax < 100 ? ' \u00b7 peak filter \u2264 #' + peakMax : '';
     document.getElementById('snf-status-sub').textContent =
       snfTotal.toLocaleString() + ' master entries \u00b7 ' + (d.owned||0).toLocaleString() + ' owned \u00b7 ' + (d.missing||0).toLocaleString() + ' missing' + peakNote;
-    // Show banner if library came from scanned tracks only (no media server)
-    const scanOnlyBanner = document.getElementById('snf-banner-scanned-only');
-    if (scanOnlyBanner) scanOnlyBanner.style.display = (d.library_source === 'scanned_only') ? 'flex' : 'none';
     snfRenderResults();
     snfUpdateLoadMore();
     snfLog('\u2713 Found ' + snfTotal.toLocaleString() + ' entries \u2014 ' + (d.missing||0).toLocaleString() + ' missing' + (d.library_source ? ' \u00b7 library via ' + d.library_source : ''), 'ok');
@@ -6044,6 +6087,7 @@ function snfInit() {
   const peakEl = document.getElementById('snf-peak');
   if (peakEl) snfUpdatePeak(peakEl.value);
   snfInjectScrollNav();
+  _loadCacheStatusStrip('snf-cache-info');
 }
 
 function snfInjectScrollNav() {
@@ -6109,6 +6153,30 @@ var _bhCurrentFilter = 'all';
 
 function bhInit() {
   bhInjectScrollNav();
+  _loadCacheStatusStrip('bh-cache-info');
+}
+
+async function _loadCacheStatusStrip(elId) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  try {
+    const r = await fetch(`${API}/api/sniffer/sync-status`, {headers: authHdrs()});
+    if (!r.ok) { el.textContent = 'Unknown'; return; }
+    const d = await r.json();
+    const count = d.cached_count || d.track_count || 0;
+    const srcMap = {plex:'Plex', emby:'Emby', jellyfin:'Jellyfin',
+                    file_scan:'File Scan', scanned_only:'Retriever Scan'};
+    const src = srcMap[d.source] || d.source || '?';
+    if (count > 0 && d.last_synced) {
+      el.textContent = `${count.toLocaleString()} tracks · ${src} · synced ${_timeAgo(d.last_synced)}`;
+      el.style.color = 'var(--teal)';
+    } else {
+      el.textContent = 'Never synced — results may be inaccurate';
+      el.style.color = 'var(--amber)';
+    }
+  } catch(e) {
+    el.textContent = 'Unknown';
+  }
 }
 
 function bhLog(msg, type) {
@@ -6645,6 +6713,7 @@ let _vetDbgRunning = false;
 function vetInit() {
   vetLoadHealth();
   vetLoadSkipCache();
+  vetLoadLibraryCache();
   vetLoadStaticSources();
 }
 
@@ -6790,6 +6859,101 @@ async function vetLoadSkipCache() {
     setT('vet-sc-miss',      (d.miss || 0).toLocaleString());
     setT('vet-sc-unchecked', (d.unchecked || 0).toLocaleString());
   } catch {}
+}
+
+// ── Library Cache sync ────────────────────────────────────────────────────
+let _lcPollTimer = null;
+
+async function vetLoadLibraryCache() {
+  try {
+    const r = await fetch(`${API}/api/sniffer/sync-status`, {headers: authHdrs()});
+    if (!r.ok) { console.warn('vetLoadLibraryCache: HTTP', r.status); return; }
+    const d = await r.json();
+    const count = d.cached_count || d.track_count || 0;
+    const lcCount = document.getElementById('vet-lc-count');
+    const lcSource = document.getElementById('vet-lc-source');
+    const lcSynced = document.getElementById('vet-lc-synced');
+    const lcStale  = document.getElementById('vet-lc-stale-warn');
+    if (lcCount)  lcCount.textContent  = count > 0 ? count.toLocaleString() : '—';
+
+    const srcMap = {plex:'Plex', emby:'Emby', jellyfin:'Jellyfin',
+                    file_scan:'File Scan', scanned_only:'Retriever Scan', cache:'Cached'};
+    if (lcSource) lcSource.textContent = srcMap[d.source] || (d.source || '—');
+
+    if (d.last_synced) {
+      if (lcSynced) lcSynced.textContent = _timeAgo(d.last_synced);
+      const hrs = (Date.now() - new Date(d.last_synced).getTime()) / 3600000;
+      if (lcStale) lcStale.style.display = hrs > 24 ? 'block' : 'none';
+    } else {
+      if (lcSynced) lcSynced.textContent = 'Never';
+      if (lcStale)  lcStale.style.display = 'none';
+    }
+  } catch(e) { console.warn('vetLoadLibraryCache error:', e); }
+}
+
+function _timeAgo(isoStr) {
+  const ms = Date.now() - new Date(isoStr).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 2)  return 'Just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24)  return `${hrs}h ago`;
+  return `${Math.floor(hrs/24)}d ago`;
+}
+
+async function vetSyncLibrary() {
+  const btn = document.getElementById('vet-lc-sync-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ SYNCING…';
+  document.getElementById('vet-lc-progress-wrap').style.display = 'block';
+  document.getElementById('vet-lc-progress-bar').style.width = '0%';
+  document.getElementById('vet-lc-progress-label').textContent = 'Starting sync…';
+
+  try {
+    const r = await fetch(`${API}/api/sniffer/sync-library`, {method:'POST', headers:authHdrs()});
+    const d = await r.json();
+    if (!r.ok) {
+      toast(d.detail || 'Sync failed', 'error');
+      btn.disabled = false;
+      btn.textContent = '🔄 SYNC LIBRARY CACHE';
+      document.getElementById('vet-lc-progress-wrap').style.display = 'none';
+      return;
+    }
+  } catch(e) {
+    toast('Sync error: ' + e.message, 'error');
+    btn.disabled = false;
+    btn.textContent = '🔄 SYNC LIBRARY CACHE';
+    document.getElementById('vet-lc-progress-wrap').style.display = 'none';
+    return;
+  }
+
+  // Poll for progress
+  if (_lcPollTimer) clearInterval(_lcPollTimer);
+  _lcPollTimer = setInterval(async () => {
+    try {
+      const r = await fetch(`${API}/api/sniffer/sync-status`, {headers: authHdrs()});
+      const d = await r.json();
+      const pct = d.progress_pct || 0;
+      document.getElementById('vet-lc-progress-bar').style.width = pct + '%';
+      const count = d.track_count || 0;
+      document.getElementById('vet-lc-progress-label').textContent =
+        `${count.toLocaleString()} tracks indexed… ${pct}%`;
+
+      if (d.status === 'done' || d.status === 'error') {
+        clearInterval(_lcPollTimer);
+        _lcPollTimer = null;
+        document.getElementById('vet-lc-progress-wrap').style.display = 'none';
+        btn.disabled = false;
+        btn.textContent = '🔄 SYNC LIBRARY CACHE';
+        if (d.status === 'done') {
+          toast(`Library cache synced — ${(d.track_count||0).toLocaleString()} tracks (${d.source || 'unknown'})`, 'ok');
+        } else {
+          toast('Sync failed: ' + (d.error || 'unknown error'), 'error');
+        }
+        vetLoadLibraryCache();
+      }
+    } catch(e) { /* silent */ }
+  }, 2000);
 }
 
 async function vetResetSkipCache() {

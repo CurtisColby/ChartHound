@@ -53,7 +53,7 @@ import time
 import aiosqlite
 import httpx
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from fastapi.responses import PlainTextResponse
@@ -149,184 +149,88 @@ _CHART_KEY_FROM_DISPLAY.update({
 # Broad charts (hot100, ac, adultpop, uk) have no genre restriction — accept all.
 # CCM/gospel family checked against CCM keywords (strict).
 _GENRE_FILTER_KEYWORDS: dict = {
-    # ── Broad charts — no file-tag restriction ────────────────────────────────
+    # Broad — no file-tag restriction
     "hot100":    None,
     "adultpop":  None,
     "ac":        None,
     "uk":        None,
-
-    # ── Rock (parent) — matches any rock tag; sub-genres are more specific ────
-    # Rule: parent key contains ALL sub-genre terms so selecting parent = superset.
-    "rock":         {"rock","classic rock","hard rock","arena rock","alternative rock",
-                     "indie rock","garage rock","punk rock","post-punk","new wave",
-                     "power pop","piano rock","blues rock","southern rock","art rock",
-                     "soft rock","folk rock","roots rock","heartland rock","rockabilly",
-                     "psychedelic rock","progressive rock","prog rock","glam rock",
-                     "pub rock","rock and roll","rock & roll"},
-    # Sub-genres — discriminating terms ONLY, no bare "rock" to avoid bleed
-    "classicrock":  {"classic rock","classic-rock","arena rock","blues rock","roots rock",
-                     "heartland rock","southern rock","rockabilly","psychedelic rock",
-                     "progressive rock","prog rock","art rock","glam rock","pub rock",
-                     "rock and roll","rock & roll"},
-    "hardrock":     {"hard rock","heavy rock","hard-rock"},
-    "softrock":     {"soft rock","soft-rock","adult rock","mellow rock"},
-    "arenarock":    {"arena rock","stadium rock","arena-rock"},
-    "indierock":    {"indie rock","indie-rock"},
-    "folkrock":     {"folk rock","folk-rock"},
-    "southernrock": {"southern rock","southern-rock"},
-    "punkrock":     {"punk rock","punk-rock","new wave","post-punk","post punk"},
-    "alternative":  {"alternative rock","alternative","alt rock","alt-rock","grunge",
-                     "post-grunge","britpop","shoegaze","noise rock","post-rock",
-                     "math rock","emo","post-hardcore","dream pop","college rock",
-                     "jangle pop"},
-
-    # ── Pop (parent + subs) ───────────────────────────────────────────────────
-    "pop":          {"pop","pop rock","synth-pop","synthpop","dance-pop","electropop",
-                     "power pop","bubblegum pop","teen pop","art pop","chamber pop",
-                     "indie pop","dream pop","k-pop","j-pop","europop"},
-    "dancepop":     {"dance-pop","dance pop"},
-    "synthpop":     {"synth-pop","synthpop","electropop"},
-    "teenpop":      {"teen pop","bubblegum pop"},
-    "powerpop":     {"power pop","power-pop"},
-    "adultpop":     {"adult contemporary","adult pop","soft pop"},
-    "indipop":      {"indie pop","indie-pop","chamber pop"},
-
-    # ── Country (parent + subs) ───────────────────────────────────────────────
-    "country":      {"country","country pop","outlaw country","alt-country",
-                     "alternative country","americana","bluegrass","honky tonk",
-                     "honky-tonk","western","nashville","country folk","cowboy",
-                     "texas country","red dirt","cajun","zydeco","bro-country",
-                     "new country","traditional country","country rock","country blues",
-                     "country soul"},
-    "tradcountry":  {"traditional country","classic country","honky tonk","honky-tonk",
-                     "western","nashville sound"},
-    "countrypop":   {"country pop","country-pop","nashville pop"},
-    "outlawcountry":{"outlaw country","outlaw-country","red dirt","texas country"},
-    "americana":    {"americana","bluegrass","alt-country","alternative country",
-                     "country folk","cowboy"},
-    "brocountry":   {"bro-country","bro country","new country"},
-    "texascountry": {"texas country","red dirt","tex-mex"},
-
-    # ── R&B / Soul (parent + subs) ────────────────────────────────────────────
-    "rnb":          {"r&b","rnb","rhythm and blues","soul","neo-soul","motown","funk",
-                     "quiet storm","new jack swing","hip hop soul","contemporary r&b",
-                     "classic soul","southern soul","northern soul","smooth r&b"},
-    "soul":         {"soul","classic soul","southern soul","northern soul","deep soul"},
-    "neosoul":      {"neo-soul","neo soul"},
-    "funk":         {"funk","g-funk","p-funk"},
-    "motown":       {"motown","classic soul","northern soul"},
-    "quietstorm":   {"quiet storm"},
-    "newjack":      {"new jack swing"},
-
-    # ── Hip-Hop (parent + subs) ───────────────────────────────────────────────
-    "hiphop":       {"hip hop","hip-hop","rap","gangsta rap","trap","drill","grime",
-                     "boom bap","conscious rap","east coast","west coast","southern hip hop",
-                     "crunk","mumble rap","cloud rap","lo-fi hip hop","alternative hip hop",
-                     "jazz rap"},
-    "trap":         {"trap"},
-    "boombap":      {"boom bap","boom-bap","east coast","west coast","jazz rap"},
-    "gangstarap":   {"gangsta rap","gangster rap","g-rap"},
-    "conscrap":     {"conscious rap","alternative hip hop","political rap"},
-    "altrap":       {"alternative hip hop","lo-fi hip hop","cloud rap"},
-
-    # ── Metal (parent + subs) ─────────────────────────────────────────────────
-    "metal":        {"metal","heavy metal","death metal","thrash metal","black metal",
-                     "doom metal","power metal","speed metal","glam metal","hair metal",
-                     "nu-metal","nu metal","metalcore","deathcore","symphonic metal",
-                     "progressive metal","groove metal","industrial metal"},
-    "heavymetal":   {"heavy metal"},
-    "thrashmetal":  {"thrash metal","speed metal"},
-    "deathmetal":   {"death metal","deathcore"},
-    "doommetal":    {"doom metal","stoner metal","sludge metal"},
-    "glaemmetal":   {"glam metal","hair metal","sleaze rock"},
-
-    # ── Dance / Electronic (parent + subs) ───────────────────────────────────
-    "dance":        {"dance","edm","house","techno","trance","club","disco","dance-pop",
-                     "eurodance","hi-nrg","hi nrg","dancehall","garage","uk garage",
-                     "speed garage"},
-    "edm":          {"edm","electronic dance"},
-    "house":        {"house","deep house","tech house","progressive house"},
-    "techno":       {"techno"},
-    "trance":       {"trance","progressive trance"},
-    "disco":        {"disco","post-disco"},
-    "eurodance":    {"eurodance","euro dance","hi-nrg","hi nrg"},
-    "electronic":   {"electronic","electronica","synth","ambient","industrial",
-                     "downtempo","idm","glitch","breakbeat","drum and bass","dnb",
-                     "dubstep","jungle","trip hop","chillout","chill out",
-                     "synthwave","retrowave","vaporwave","darkwave","electro",
-                     "synth-pop","synthpop"},
-
-    # ── Folk (parent + subs) ─────────────────────────────────────────────────
-    "folk":         {"folk","folk pop","contemporary folk","traditional folk","acoustic",
-                     "singer-songwriter","celtic folk","folk blues","anti-folk","freak folk"},
-    "tradfolk":     {"traditional folk","celtic folk","acoustic folk"},
-    "indifolk":     {"indie folk","indie-folk"},
-    "singersong":   {"singer-songwriter","acoustic"},
-
-    # ── Jazz (parent + subs) ─────────────────────────────────────────────────
-    "jazz":         {"jazz","bebop","swing","big band","cool jazz","hard bop",
-                     "jazz fusion","fusion","soul jazz","smooth jazz","free jazz",
-                     "latin jazz","bossa nova","jazz blues","jazz funk","vocal jazz",
-                     "traditional jazz","dixieland"},
-    "smoothjazz":   {"smooth jazz"},
-    "vocaljazz":    {"vocal jazz"},
-    "bebop":        {"bebop","hard bop","cool jazz"},
-    "jazzfusion":   {"jazz fusion","fusion"},
-
-    # ── Blues (parent + subs) ────────────────────────────────────────────────
-    "blues":        {"blues","chicago blues","delta blues","electric blues","texas blues",
-                     "soul blues","jump blues","boogie woogie","boogie","acoustic blues",
-                     "swamp blues"},
-    "chicagoblues": {"chicago blues","electric blues"},
-    "deltablues":   {"delta blues","acoustic blues"},
-    "texasblues":   {"texas blues"},
-
-    # ── Classical (parent + subs) ─────────────────────────────────────────────
-    "classical":    {"classical","classical music","orchestral","symphony","opera",
-                     "chamber music","baroque","romantic","contemporary classical",
-                     "neo-classical","neoclassical","concerto","sonata","choral",
-                     "choir","score"},
-    "orchestral":   {"orchestral","symphony","concerto","symphonic"},
-    "opera":        {"opera","operatic"},
-    "baroque":      {"baroque"},
-
-    # ── Indie (standalone) ────────────────────────────────────────────────────
-    "indie":        {"indie","indie rock","indie pop","indie folk","indie electronic",
-                     "lo-fi","bedroom pop","twee pop","indiepop"},
-
-    # ════════════════════════════════════════════════════════════════════════
-    # CCM / Gospel family — STRICT: sub-genres use ONLY their specific terms.
-    # "christian" alone does NOT appear in sub-genre sets — it only lives in
-    # the parent "ccm" key. This is the Amy Grant fix: selecting "Christian Rock"
-    # sends key "ccm-rock" → only matches tags containing "christian rock".
-    # ════════════════════════════════════════════════════════════════════════
-    "ccm":          {"christian","ccm","contemporary christian","jesus music",
-                     "christian rock","christian pop","christian hip hop","christian metal",
-                     "christian country","christian r&b","christian soul","christian folk",
-                     "christian ac","christian adult contemporary","christian blues",
-                     "worship","praise","hymn","inspirational","spiritual","sacred",
-                     "gospel","southern gospel","urban gospel","traditional gospel",
-                     "black gospel","new gospel","religious"},
-    "gospel":       {"gospel","southern gospel","urban gospel","traditional gospel",
-                     "black gospel","new gospel"},
-    "ccm-ac":       {"christian ac","christian adult contemporary","contemporary christian",
-                     "christian inspirational"},
-    "ccm-rock":     {"christian rock","christian metal","christian hardcore",
-                     "christian punk","christian hard rock"},
-    "ccm-country":  {"christian country","gospel country","country gospel",
-                     "christian bluegrass","christian americana"},
-    "ccm-folk":     {"christian folk","gospel folk","folk gospel",
-                     "christian singer-songwriter","worship folk"},
-    "ccm-pop":      {"christian pop","christian pop music"},
-    "ccm-hiphop":   {"christian hip hop","christian rap","gospel rap","holy hip hop"},
-    "ccm-blues":    {"christian blues","gospel blues","blues gospel","sacred blues"},
-    "worship":      {"worship","praise","praise and worship","praise & worship"},
-    "sgospel":      {"southern gospel"},
-    "ugospel":      {"urban gospel"},
-    "tgospel":      {"traditional gospel","black gospel","gospel choir"},
-
-    # ── Untagged — tracks with no genre tags ─────────────────────────────────
-    "untagged":     None,  # handled specially in SQL
+    # Genre-specific — must match file tag OR chart_name
+    "country":   {"country","country pop","country rock","outlaw country","alt-country",
+                  "alternative country","americana","bluegrass","honky tonk","honky-tonk",
+                  "western","nashville","country folk","cowboy","texas country",
+                  "red dirt","cajun","zydeco","bro-country","new country","traditional country"},
+    "classicrock":{"classic rock","classic-rock","hard rock","arena rock","blues rock",
+                   "roots rock","heartland rock","southern rock","rockabilly",
+                   "psychedelic rock","progressive rock","prog rock","art rock",
+                   "glam rock","pub rock","rock and roll","rock & roll"},
+    "rock":      {"rock","classic rock","hard rock","arena rock","alternative rock",
+                  "indie rock","garage rock","punk rock","post-punk","new wave",
+                  "power pop","piano rock","blues rock","southern rock","art rock"},
+    "rnb":       {"r&b","rnb","rhythm and blues","soul","neo-soul","motown","funk",
+                  "urban","quiet storm","new jack swing","hip hop soul","contemporary r&b",
+                  "classic soul","southern soul","northern soul","smooth r&b"},
+    "hiphop":    {"hip hop","hip-hop","rap","gangsta rap","trap","drill","grime",
+                  "boom bap","conscious rap","east coast","west coast","southern hip hop",
+                  "crunk","g-funk","mumble rap","cloud rap","lo-fi hip hop",
+                  "alternative hip hop","jazz rap"},
+    "dance":     {"dance","edm","house","techno","trance","club","disco",
+                  "dance-pop","eurodance","hi-nrg","hi nrg","dancehall","garage",
+                  "uk garage","speed garage"},
+    "electronic":{"electronic","electronica","edm","synth","ambient","industrial",
+                  "downtempo","idm","glitch","breakbeat","drum and bass","dnb",
+                  "dubstep","jungle","trip hop","chillout","chill out",
+                  "new wave","synthwave","retrowave","vaporwave","darkwave",
+                  "electro","electropop","synth-pop","synthpop"},
+    "metal":     {"metal","heavy metal","death metal","thrash metal","black metal",
+                  "doom metal","power metal","speed metal","glam metal","hair metal",
+                  "nu-metal","nu metal","metalcore","deathcore","symphonic metal",
+                  "progressive metal","groove metal","industrial metal","hard rock"},
+    "alternative":{"alternative","alt rock","alternative rock","indie rock",
+                   "grunge","post-grunge","britpop","shoegaze","noise rock",
+                   "post-rock","math rock","emo","post-hardcore","dream pop",
+                   "lo-fi","college rock","jangle pop"},
+    "indie":     {"indie","indie rock","indie pop","indie folk","indie electronic",
+                  "lo-fi","bedroom pop","chamber pop","twee pop","indiepop"},
+    "folk":      {"folk","folk rock","folk pop","indie folk","contemporary folk",
+                  "traditional folk","acoustic","singer-songwriter","americana",
+                  "celtic folk","folk blues","anti-folk","freak folk"},
+    "jazz":      {"jazz","bebop","swing","big band","cool jazz","hard bop",
+                  "jazz fusion","fusion","soul jazz","smooth jazz","free jazz",
+                  "latin jazz","bossa nova","jazz blues","jazz funk","vocal jazz",
+                  "traditional jazz","dixieland"},
+    "blues":     {"blues","chicago blues","delta blues","electric blues","texas blues",
+                  "rhythm and blues","r&b","soul blues","jump blues","boogie woogie",
+                  "boogie","country blues","acoustic blues","swamp blues"},
+    "classical": {"classical","classical music","orchestral","symphony","opera",
+                  "chamber music","baroque","romantic","contemporary classical",
+                  "neo-classical","neoclassical","piano","concerto","sonata",
+                  "choral","choir","instrumental","score"},
+    # Pop — broad
+    "pop":       {"pop","pop rock","synth-pop","synthpop","dance-pop","electropop",
+                  "power pop","bubblegum pop","teen pop","art pop","chamber pop",
+                  "indie pop","dream pop","k-pop","j-pop","europop"},
+    # CCM family — strict: genre tag required
+    "ccm":       {"christian","ccm","contemporary christian","gospel","worship","praise",
+                  "hymn","religious","inspirational","southern gospel","urban gospel",
+                  "traditional gospel","jesus music","spiritual","sacred","christian rock",
+                  "christian pop","christian hip hop","christian metal","christian country",
+                  "christian r&b","christian soul","new gospel","black gospel"},
+    "gospel":    {"gospel","southern gospel","urban gospel","traditional gospel",
+                  "black gospel","new gospel","christian","religious","spiritual","sacred"},
+    "ccm-ac":    {"christian","ccm","contemporary christian","worship","inspirational",
+                  "adult contemporary","christian adult contemporary"},
+    "ccm-rock":  {"christian rock","christian metal","christian hardcore","christian punk",
+                  "christian","ccm","worship","praise"},
+    "ccm-country":{"christian country","gospel country","country gospel",
+                   "southern gospel country","christian americana","christian bluegrass"},
+    "ccm-folk":  {"christian folk","gospel folk","folk gospel","christian acoustic",
+                  "christian singer-songwriter","worship folk"},
+    "ccm-blues": {"christian blues","gospel blues","blues gospel","sacred blues",
+                  "spiritual blues","christian rhythm and blues","christian r&b"},
+    "worship":   {"worship","praise","christian","ccm","gospel","spiritual"},
+    "sgospel":   {"southern gospel","gospel","christian","religious"},
+    "ugospel":   {"urban gospel","gospel","christian","religious","r&b"},
+    "tgospel":   {"traditional gospel","gospel","christian","religious","hymn"},
 }
 
 # ── Chart source → genre key fallback (for tracks with no file genre tags) ──
@@ -3002,7 +2906,59 @@ async def _scheduler_loop():
 async def groomer_startup():
     """Called from main.py lifespan to start the weekly refresh scheduler."""
     asyncio.create_task(_scheduler_loop())
+    asyncio.create_task(_library_cache_scheduler())
     log.info("Groomer scheduler started (auto-refresh every 7 days for current-week sources).")
+    log.info("Library cache scheduler started (auto-sync every 24h from physical files).")
+
+
+async def _library_cache_scheduler():
+    """
+    Auto-populate and refresh library_cache from physical files.
+    - On startup: if cache is empty run a full sync immediately (first install).
+    - Otherwise: sleep until next 3am local time, then run incremental sync.
+    - Repeats every 24h at 3am.
+    """
+    from app.routers.sniffer import _do_sync_library, _sync_state
+
+    await asyncio.sleep(60)  # wait for app to be fully ready
+
+    # ── First-run check: if cache is empty do a full sync now ─────────────────
+    try:
+        cache_empty = True
+        async with aiosqlite.connect(_DYNAMIC_DB) as db:
+            async with db.execute("SELECT COUNT(*) FROM library_cache") as cur:
+                row = await cur.fetchone()
+                cache_empty = (not row or row[0] == 0)
+        if cache_empty:
+            log.info("Library cache scheduler: cache empty on startup — running full sync")
+            await _do_sync_library(incremental=False)
+        else:
+            log.info("Library cache scheduler: cache populated, will sync at next 3am")
+    except Exception as e:
+        log.warning(f"Library cache scheduler startup check error: {e}")
+
+    # ── Nightly 3am loop ──────────────────────────────────────────────────────
+    while True:
+        try:
+            # Calculate seconds until next 3:00am local time
+            now = datetime.now()
+            next_3am = now.replace(hour=3, minute=0, second=0, microsecond=0)
+            if now >= next_3am:
+                next_3am = next_3am + timedelta(days=1)
+            sleep_secs = (next_3am - now).total_seconds()
+            log.info(f"Library cache scheduler: next sync at 3am ({sleep_secs/3600:.1f}h away)")
+            await asyncio.sleep(sleep_secs)
+
+            # Run incremental sync at 3am
+            if _sync_state.get("status") != "running":
+                log.info("Library cache scheduler: running nightly incremental sync at 3am")
+                await _do_sync_library(incremental=True)
+            else:
+                log.info("Library cache scheduler: sync already running, skipping nightly")
+
+        except Exception as e:
+            log.warning(f"Library cache scheduler error: {e}")
+            await asyncio.sleep(3600)  # retry in 1h if something goes wrong
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -3057,6 +3013,27 @@ async def _migrate_chart_data():
             if "chart_last_checked" not in tr_cols:
                 await db.execute("ALTER TABLE tracks ADD COLUMN chart_last_checked TEXT")
                 log.info("tracks: chart_last_checked column added via migration")
+
+            # library_cache tables — ownership index used by Sniffer + Bloodhound
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS library_cache (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    artist_norm TEXT NOT NULL,
+                    title_norm  TEXT NOT NULL,
+                    track_id    TEXT,
+                    source      TEXT,
+                    UNIQUE(artist_norm, title_norm)
+                )
+            """)
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS library_cache_meta (
+                    key   TEXT PRIMARY KEY,
+                    value TEXT
+                )
+            """)
+            await db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_lc_artist ON library_cache(artist_norm)"
+            )
 
             await db.commit()
     except Exception as e:
@@ -4116,72 +4093,43 @@ async def get_results(
     if confidence:
         conditions.append("cd.confidence = ?"); params.append(confidence)
     if genre:
-        # genre param is comma-separated tree leaf keys (e.g. "ccm-rock,sgospel")
-        # Empty / omitted = ALL tracks (no condition added).
-        # "untagged" = special key: match tracks with no genre tag on file.
-        # All other keys: match against genre_1/2/3 using whole-word boundary check
-        # so "christian rock" does NOT match a tag that just says "christian".
+        # genre param is comma-separated genre keys (e.g. "country,rock,ccm")
+        # Filter purely by file genre tags (genre_1/2/3) using keyword sets.
+        # File tag match OR chart_name fallback for untagged tracks.
+        # No active genre filter (ALL) = no condition added = return everything.
         genre_list = [g.strip() for g in genre.split(",") if g.strip()]
         if genre_list:
             genre_clauses = []
             for g in genre_list:
-                # ── Special case: untagged ────────────────────────────────
-                if g == "untagged":
-                    genre_clauses.append(
-                        "(t.genre_1 IS NULL OR t.genre_1 = '') "
-                        "AND (t.genre_2 IS NULL OR t.genre_2 = '') "
-                        "AND (t.genre_3 IS NULL OR t.genre_3 = '')"
+                keywords = _GENRE_FILTER_KEYWORDS.get(g, set()) or set()
+                kw_list  = list(keywords)
+                # Build the file-tag match clause
+                if kw_list:
+                    kw_placeholders = " OR ".join(
+                        ["LOWER(t.genre_1) LIKE ? OR LOWER(t.genre_2) LIKE ? OR LOWER(t.genre_3) LIKE ?"]
+                        * len(kw_list)
                     )
-                    continue
+                    tag_clause = f"({kw_placeholders})"
+                    for kw in kw_list:
+                        params += [f"%{kw}%", f"%{kw}%", f"%{kw}%"]
+                else:
+                    tag_clause = None
 
-                keywords = _GENRE_FILTER_KEYWORDS.get(g)
-
-                # None = broad key (hot100 / ac / uk / adultpop) → no tag filter
-                if keywords is None:
-                    continue
-
-                kw_list = list(keywords)
-                if not kw_list:
-                    continue
-
-                # Build per-keyword whole-word LIKE clauses.
-                # Strategy: pad the genre column with spaces on both sides so
-                # every term (including those at start/end) has a word boundary.
-                # Match pattern: '% keyword %' against ' ' || genre || ' '
-                # This prevents "christian" matching inside "christian rock" etc.
-                col_exprs = [
-                    "(' ' || LOWER(COALESCE(t.genre_1,'')) || ' ')",
-                    "(' ' || LOWER(COALESCE(t.genre_2,'')) || ' ')",
-                    "(' ' || LOWER(COALESCE(t.genre_3,'')) || ' ')",
-                ]
-                per_kw = []
-                for kw in kw_list:
-                    pattern = f"% {kw} %"
-                    col_parts = " OR ".join(f"{col} LIKE ?" for col in col_exprs)
-                    per_kw.append(f"({col_parts})")
-                    params += [pattern, pattern, pattern]
-
-                tag_clause = "(" + " OR ".join(per_kw) + ")"
-
-                # Chart_name fallback for untagged tracks (reliable sources only)
+                # Chart_name fallback — fires when track has no genre tag
+                # Only for clean reliable sources, not tsort/chart2000/LBZ
                 fallback_chart = _CHART_SOURCE_TO_GENRE.get(g)
-                no_tag = ("(t.genre_1 IS NULL OR t.genre_1 = '') "
-                          "AND (t.genre_2 IS NULL OR t.genre_2 = '') "
-                          "AND (t.genre_3 IS NULL OR t.genre_3 = '')")
-
-                # CCM/gospel sub-genres: strict — no chart_name fallback
-                _ccm_keys = {"ccm","ccm-ac","ccm-rock","ccm-country","ccm-folk",
-                             "ccm-pop","ccm-hiphop","ccm-blues","worship",
-                             "gospel","sgospel","ugospel","tgospel"}
-                if g in _ccm_keys:
-                    genre_clauses.append(tag_clause)
-                elif fallback_chart and fallback_chart == g:
+                no_tag = "(t.genre_1 IS NULL OR t.genre_1 = '')"
+                if tag_clause and fallback_chart and fallback_chart == g:
+                    # Match: file tag matches OR (no tag AND chart_name matches)
                     genre_clauses.append(
-                        f"({tag_clause} OR (({no_tag}) AND cd.chart_name = ?))"
+                        f"({tag_clause} OR ({no_tag} AND cd.chart_name = ?))"
                     )
                     params.append(g)
-                else:
+                elif tag_clause:
                     genre_clauses.append(tag_clause)
+                elif fallback_chart == g:
+                    genre_clauses.append(f"({no_tag} AND cd.chart_name = ?)")
+                    params.append(g)
 
             if genre_clauses:
                 conditions.append("(" + " OR ".join(genre_clauses) + ")")
