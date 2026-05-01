@@ -1,11 +1,3 @@
-# Funding configuration for ChartHound
-# Adds the "Sponsor" button to the GitHub repo page once enrolled.
-# Docs: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/displaying-a-sponsor-button-in-your-repository
-#
-# GitHub Sponsors enrollment is in progress. The `github:` line below is
-# commented out until enrollment completes — uncomment once active.
-#
-# github: [CurtisColby]
-
+github: [CurtisColby]
 custom:
   - https://buymeacoffee.com/colbycurtis
