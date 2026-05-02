@@ -4233,6 +4233,7 @@ class PlaylistPushRequest(BaseModel):
     min_weeks:     Optional[int] = None            # e.g. 4 = charted 4+ weeks
     confidence:    Optional[str] = None            # 'high'|'medium'|'low'|None=all
     limit:         int = 5000
+    docker_paths:  bool = False                    # M3U only — emit raw Docker /music paths (for Navidrome)
 
 
 @router.post("/playlist/push")
@@ -4342,7 +4343,20 @@ async def playlist_m3u(req: PlaylistPushRequest, _=Depends(require_auth)):
     for t in tracks:
         artist = t.get("tag_artist", "")
         title  = t.get("title", "")
-        fp     = _translate_path(t.get("file_path", ""))
+        raw_fp = t.get("file_path", "")
+        if req.docker_paths:
+            # Navidrome mode: emit the Docker-internal path (/music/...) as-is,
+            # or normalise any host/desktop path back to the docker prefix.
+            if raw_fp.startswith(docker_prefix):
+                fp = raw_fp
+            elif desktop_prefix and raw_fp.startswith(desktop_prefix):
+                fp = docker_prefix + raw_fp[len(desktop_prefix):]
+            elif server_raw and raw_fp.startswith(server_raw):
+                fp = docker_prefix + raw_fp[len(server_raw):]
+            else:
+                fp = raw_fp  # already unknown format — pass through unchanged
+        else:
+            fp = _translate_path(raw_fp)
         lines.append(f"#EXTINF:-1,{artist} - {title}")
         lines.append(fp)
 

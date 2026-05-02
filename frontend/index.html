@@ -1697,7 +1697,8 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
             <button id="grm-push-plex" onclick="grmPushPlaylist('plex')" disabled title="Scan Plex library first" style="padding:.45rem 1rem;background:#e5a00d;color:#000;border:none;border-radius:5px;font-family:var(--mono);font-size:.65rem;cursor:pointer;opacity:.35;transition:all .2s">↑ PLEX</button>
             <button id="grm-push-emby" onclick="grmPushPlaylist('emby')" disabled title="Scan Emby library first" style="padding:.45rem 1rem;background:#52b54b;color:#000;border:none;border-radius:5px;font-family:var(--mono);font-size:.65rem;cursor:pointer;opacity:.35;transition:all .2s">↑ EMBY</button>
             <button id="grm-push-jf" onclick="grmPushPlaylist('jellyfin')" disabled title="Scan Jellyfin library first" style="padding:.45rem 1rem;background:#00a4dc;color:#000;border:none;border-radius:5px;font-family:var(--mono);font-size:.65rem;cursor:pointer;opacity:.35;transition:all .2s">↑ JELLYFIN</button>
-            <button id="grm-push-m3u" onclick="grmDownloadM3U()" disabled title="Download as M3U file" style="padding:.45rem 1rem;background:var(--surface2);color:var(--teal);border:1px solid var(--teal);border-radius:5px;font-family:var(--mono);font-size:.65rem;cursor:pointer;opacity:.35;transition:all .2s">↓ M3U</button>
+            <button id="grm-push-m3u" onclick="grmDownloadM3U()" disabled title="Download as M3U file (host paths)" style="padding:.45rem 1rem;background:var(--surface2);color:var(--teal);border:1px solid var(--teal);border-radius:5px;font-family:var(--mono);font-size:.65rem;cursor:pointer;opacity:.35;transition:all .2s">↓ M3U</button>
+            <button id="grm-push-m3u-docker" onclick="grmDownloadM3UDocker()" disabled title="Download as M3U with Docker paths — for Navidrome / container music players" style="padding:.45rem 1rem;background:var(--surface2);color:var(--amber);border:1px solid var(--amber);border-radius:5px;font-family:var(--mono);font-size:.65rem;cursor:pointer;opacity:.35;transition:all .2s">↓ M3U (Docker)</button>
           </div>
 
         </div><!-- /grm-results-panel -->
@@ -2524,7 +2525,7 @@ async function loadAllStatuses() {
       }
       if (s.connected) {
         const card = document.getElementById(`connCard-${s.service}`);
-        if (card) card.className = 'conn-card connected' + (card.classList.contains('collapsed') ? ' collapsed' : '');
+        if (card) card.className = 'conn-card connected';
       }
     }
     refreshAllDots();
@@ -4046,6 +4047,7 @@ function refreshAllDots() {
 }
 
 // ── Kennel conn-card rollup ──
+var _connRollupInitDone = {};  // per-service: has user interacted? prevents auto-collapse override on subsequent refreshAllDots() calls within the same page load
 function injectConnRollupButtons() {
   const cards = document.querySelectorAll('.conn-card[id^="connCard-"]');
   cards.forEach(function(card) {
@@ -4053,22 +4055,21 @@ function injectConnRollupButtons() {
     const header = card.querySelector('.conn-card-header');
     if (!header) return;
     let btn = header.querySelector('.conn-collapse-btn');
-    const firstRender = !btn;
     if (!btn) {
       btn = document.createElement('button');
       btn.className = 'conn-collapse-btn';
       btn.onclick = function(e) { e.stopPropagation(); toggleConnCard(service); };
       header.appendChild(btn);
     }
-    // Only apply default collapse logic on first render (button didn't exist yet).
-    // On subsequent calls (heartbeat, status refresh) the button already exists — skip entirely.
-    if (firstRender) {
+    // First render this page-load: check localStorage for saved user choice, else fall back to auto-collapse-if-connected
+    if (!_connRollupInitDone[service]) {
       let saved = null;
       try { saved = localStorage.getItem('ch_connCard_' + service); } catch(e) {}
       if (saved === 'collapsed')      card.classList.add('collapsed');
       else if (saved === 'open')      card.classList.remove('collapsed');
       else if (connState[service])    card.classList.add('collapsed');     // default: connected → collapsed
       else                             card.classList.remove('collapsed'); // default: not connected → open
+      _connRollupInitDone[service] = true;
     }
     // Update button label based on current state
     btn.textContent = card.classList.contains('collapsed') ? '▼ EXPAND' : '▲ COLLAPSE';
@@ -5499,6 +5500,12 @@ function grmSyncBar() {
     m3u.style.opacity = hasResults ? '1' : '.35';
     m3u.style.cursor  = hasResults ? 'pointer' : 'default';
   }
+  const m3uDocker = document.getElementById('grm-push-m3u-docker');
+  if (m3uDocker) {
+    m3uDocker.disabled      = !hasResults;
+    m3uDocker.style.opacity = hasResults ? '1' : '.35';
+    m3uDocker.style.cursor  = hasResults ? 'pointer' : 'default';
+  }
 }
 
 // ── Push to server ────────────────────────────────────────────────
@@ -5510,7 +5517,7 @@ async function grmPushPlaylist(server) {
   const label    = labels[server] || server;
   if (!confirm(`Push "${name}" with ${trackIds.length} tracks to ${label}?\n\nThis replaces any existing playlist with the same name.`)) return;
   grmLog(`Pushing ${trackIds.length} tracks to ${label}…`, 'info');
-  ['grm-push-plex','grm-push-emby','grm-push-jf','grm-push-m3u'].forEach(id => {
+  ['grm-push-plex','grm-push-emby','grm-push-jf','grm-push-m3u','grm-push-m3u-docker'].forEach(id => {
     const b=document.getElementById(id); if(b){b.disabled=true;b.style.opacity='.35';}
   });
   try {
@@ -5567,7 +5574,40 @@ async function grmDownloadM3U() {
   }
 }
 
-// Hook into tab navigation to init Groomer when tab is opened
+// ── M3U Download (Docker paths — Navidrome) ───────────────────────
+async function grmDownloadM3UDocker() {
+  const name     = document.getElementById('grm-playlist-name').value.trim() || 'Chart Hits';
+  const trackIds = grmSelected.size > 0 ? [...grmSelected] : grmResults.map(r=>r.track_id);
+  if (!trackIds.length) { toast('No tracks to export.', 'warn'); return; }
+  grmLog(`Generating Docker M3U for ${trackIds.length} tracks…`, 'info');
+  try {
+    const r = await fetch(`${API}/api/groomer/playlist/m3u`, {
+      method:'POST', headers:authHdrs(),
+      body:JSON.stringify({track_ids:trackIds, playlist_name:name, docker_paths:true}),
+    });
+    if (!r.ok) {
+      const d = await r.json();
+      const msg = typeof d.detail === 'string' ? d.detail
+                : Array.isArray(d.detail) ? d.detail.map(e=>e.msg||JSON.stringify(e)).join('; ')
+                : JSON.stringify(d.detail) || `HTTP ${r.status}`;
+      throw new Error(msg);
+    }
+    const blob = await r.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = name.replace(/\s+/g,'_')+'_docker.m3u';
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
+    grmLog(`✓ Docker M3U downloaded: ${a.download}`, 'ok');
+    toast('✓ Docker M3U downloaded!', 'success');
+  } catch(e) {
+    grmLog(`Docker M3U error: ${e.message}`, 'err');
+    toast('Docker M3U download failed', 'error');
+  }
+}
+
+
 const _origShowTab = typeof showTab === 'function' ? showTab : null;
 
 
