@@ -2524,7 +2524,7 @@ async function loadAllStatuses() {
       }
       if (s.connected) {
         const card = document.getElementById(`connCard-${s.service}`);
-        if (card) card.className = 'conn-card connected';
+        if (card) card.className = 'conn-card connected' + (card.classList.contains('collapsed') ? ' collapsed' : '');
       }
     }
     refreshAllDots();
