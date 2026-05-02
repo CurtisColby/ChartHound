@@ -4046,7 +4046,6 @@ function refreshAllDots() {
 }
 
 // ── Kennel conn-card rollup ──
-var _connRollupInitDone = {};  // per-service: has user interacted? prevents auto-collapse override on subsequent refreshAllDots() calls within the same page load
 function injectConnRollupButtons() {
   const cards = document.querySelectorAll('.conn-card[id^="connCard-"]');
   cards.forEach(function(card) {
@@ -4054,21 +4053,22 @@ function injectConnRollupButtons() {
     const header = card.querySelector('.conn-card-header');
     if (!header) return;
     let btn = header.querySelector('.conn-collapse-btn');
+    const firstRender = !btn;
     if (!btn) {
       btn = document.createElement('button');
       btn.className = 'conn-collapse-btn';
       btn.onclick = function(e) { e.stopPropagation(); toggleConnCard(service); };
       header.appendChild(btn);
     }
-    // First render this page-load: check localStorage for saved user choice, else fall back to auto-collapse-if-connected
-    if (!_connRollupInitDone[service]) {
+    // Only apply default collapse logic on first render (button didn't exist yet).
+    // On subsequent calls (heartbeat, status refresh) the button already exists — skip entirely.
+    if (firstRender) {
       let saved = null;
       try { saved = localStorage.getItem('ch_connCard_' + service); } catch(e) {}
       if (saved === 'collapsed')      card.classList.add('collapsed');
       else if (saved === 'open')      card.classList.remove('collapsed');
       else if (connState[service])    card.classList.add('collapsed');     // default: connected → collapsed
       else                             card.classList.remove('collapsed'); // default: not connected → open
-      _connRollupInitDone[service] = true;
     }
     // Update button label based on current state
     btn.textContent = card.classList.contains('collapsed') ? '▼ EXPAND' : '▲ COLLAPSE';
