@@ -1965,6 +1965,230 @@ async def save_custom_genre(req: dict, user: dict = Depends(require_auth)):
     return {"ok": True, "kind": kind, "action": action, "name": name, "current": current}
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+#  GENRE SCOUT — Physical file scan, no DB dependency
+# ══════════════════════════════════════════════════════════════════════════════
+
+class ScoutStartRequest(BaseModel):
+    scope: str = "library"
+    subfolder: Optional[str] = None
+    chunk_size: int = 500
+
+_scout_state: dict = {
+    "job_id": None, "status": "idle", "scan_path": "",
+    "file_list": [], "total": 0, "processed": 0,
+    "chunk_size": 500, "results": [], "next_offset": 0,
+}
+
+@router.post("/scout/start")
+async def scout_start(req: ScoutStartRequest, background_tasks: BackgroundTasks,
+                      user: dict = Depends(require_auth)):
+    global _scout_state
+    base = settings.docker_music_prefix
+    if req.scope == "subfolder" and req.subfolder:
+        scan_path = req.subfolder.strip()
+        if not scan_path.startswith("/"): scan_path = os.path.join(base, scan_path)
+        scan_path = os.path.normpath(scan_path)
+        if not _is_within_music_prefix(scan_path): raise HTTPException(400, "Subfolder outside music directory")
+        if not os.path.exists(scan_path): raise HTTPException(404, f"Path not found: {scan_path}")
+    else:
+        scan_path = base
+    file_list = index_audio_files(scan_path)
+    total = len(file_list)
+    if total == 0:
+        return {"ok": True, "job_id": None, "total": 0, "status": "done", "message": "No audio files found."}
+    job_id = int(datetime.now(timezone.utc).timestamp() * 1000)
+    _scout_state.update({"job_id": job_id, "status": "running", "scan_path": scan_path,
+                         "file_list": file_list, "total": total, "processed": 0,
+                         "chunk_size": req.chunk_size, "results": [], "next_offset": 0})
+    log.info(f"[Scout {job_id}] Starting — {total} files in {scan_path}")
+    background_tasks.add_task(_scout_scan_chunk, job_id)
+    return {"ok": True, "job_id": job_id, "total": total, "status": "running", "scan_path": scan_path}
+
+@router.get("/scout/status/{job_id}")
+async def scout_status(job_id: int, user: dict = Depends(require_auth)):
+    s = _scout_state
+    if s["job_id"] != job_id: raise HTTPException(404, "Scout job not found")
+    return {"job_id": s["job_id"], "status": s["status"], "total": s["total"],
+            "processed": s["processed"], "found": len(s["results"]),
+            "results": s["results"], "next_offset": s["next_offset"],
+            "has_more": s["next_offset"] < s["total"]}
+
+@router.post("/scout/next/{job_id}")
+async def scout_next(job_id: int, background_tasks: BackgroundTasks,
+                     user: dict = Depends(require_auth)):
+    s = _scout_state
+    if s["job_id"] != job_id: raise HTTPException(404, "Scout job not found")
+    if s["status"] not in ("paused", "done"): raise HTTPException(409, "Scout still running")
+    if s["next_offset"] >= s["total"]: return {"ok": True, "status": "done"}
+    s["status"] = "running"
+    background_tasks.add_task(_scout_scan_chunk, job_id)
+    return {"ok": True, "status": "running", "next_offset": s["next_offset"]}
+
+@router.post("/scout/stop")
+async def scout_stop(user: dict = Depends(require_auth)):
+    _scout_state["status"] = "stopped"
+    return {"ok": True}
+
+
+@router.get("/scout/suggest")
+async def scout_suggest(artist: str, user: dict = Depends(require_auth)):
+    """
+    Genre suggestion for Genre Scout cards.
+    1. Check DB — if we have genres stored for this artist, return them instantly.
+    2. Fall back to Last.fm artist.getTopTags — one API call, no track needed.
+    Returns up to 5 clean genre strings.
+    """
+    artist = artist.strip()
+    if not artist:
+        raise HTTPException(400, "artist required")
+
+    suggestions = []
+
+    # ── Step 1: DB check ────────────────────────────────────────────────────────
+    try:
+        async with aiosqlite.connect(settings.database_url) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                """SELECT genre_1, genre_2, genre_3 FROM tracks
+                   WHERE LOWER(tag_artist) = LOWER(?)
+                     AND (genre_1 IS NOT NULL AND genre_1 != '')
+                   LIMIT 20""",
+                (artist,)
+            )
+            rows = await cursor.fetchall()
+        if rows:
+            vote: dict = {}
+            for row in rows:
+                for g in [row["genre_1"], row["genre_2"], row["genre_3"]]:
+                    if g and g.strip():
+                        norm = g.strip().lower()
+                        if norm not in GENRE_BLACKLIST:
+                            vote[norm] = vote.get(norm, 0) + 1
+            if vote:
+                top = sorted(vote.items(), key=lambda x: -x[1])[:5]
+                suggestions = [g.title() for g, _ in top]
+                log.info(f"[Scout suggest] DB hit for '{artist}': {suggestions}")
+                return {"artist": artist, "suggestions": suggestions, "source": "db"}
+    except Exception as e:
+        log.debug(f"[Scout suggest] DB check failed: {e}")
+
+    # ── Step 2: Last.fm artist.getTopTags ───────────────────────────────────────
+    lastfm_key = ""
+    try:
+        async with aiosqlite.connect(settings.database_url) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                "SELECT token_enc FROM connections WHERE service='lastfm'"
+            )
+            row = await cursor.fetchone()
+            if row and row["token_enc"]:
+                from app.security import decrypt_token
+                lastfm_key = decrypt_token(row["token_enc"])
+    except Exception:
+        pass
+
+    if lastfm_key:
+        try:
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                r = await client.get("https://ws.audioscrobbler.com/2.0/", params={
+                    "method": "artist.getTopTags",
+                    "artist": artist,
+                    "api_key": lastfm_key,
+                    "format": "json",
+                    "autocorrect": "1",
+                })
+            if r.is_success:
+                data = r.json()
+                raw_tags = data.get("toptags", {}).get("tag", [])
+                SKIP = FILTER_TAGS | {
+                    "seen live", "under 2000 listeners", "american", "british",
+                    "female vocalists", "male vocalists", "singer-songwriter",
+                    "90s", "80s", "70s", "60s", "2000s", "2010s",
+                }
+                for tag in raw_tags[:20]:
+                    name = tag.get("name", "").strip()
+                    norm = name.lower()
+                    if not name or len(name) < 2:
+                        continue
+                    if norm in SKIP or norm in GENRE_BLACKLIST or norm in FILTER_TAGS:
+                        continue
+                    suggestions.append(name.title())
+                    if len(suggestions) >= 5:
+                        break
+                log.info(f"[Scout suggest] Last.fm for '{artist}': {suggestions}")
+        except Exception as e:
+            log.debug(f"[Scout suggest] Last.fm failed: {e}")
+
+    return {
+        "artist": artist,
+        "suggestions": suggestions,
+        "source": "lastfm" if suggestions else "none",
+    }
+
+
+async def _scout_scan_chunk(job_id: int):
+    """
+    Scan files in batches of 100 internally, continuing until we have found
+    chunk_size new missing-genre tracks OR we exhaust all remaining files.
+    This means the user never has to click "next" just because a batch of
+    500 files happened to be fully tagged.
+    """
+    s = _scout_state
+    if s["job_id"] != job_id or s["status"] != "running":
+        return
+
+    target_new = s["chunk_size"]   # stop when we've found this many NEW results
+    new_found  = 0
+    INTERNAL_BATCH = 100           # read 100 files at a time to stay responsive
+
+    log.info(f"[Scout {job_id}] Scanning from offset {s['next_offset']} until {target_new} missing-genre tracks found")
+
+    while s["next_offset"] < s["total"]:
+        if s["status"] == "stopped":
+            return
+
+        batch_start = s["next_offset"]
+        batch_end   = min(batch_start + INTERNAL_BATCH, s["total"])
+        batch       = s["file_list"][batch_start:batch_end]
+
+        for filepath in batch:
+            if s["status"] == "stopped":
+                return
+            try:
+                tags  = read_tags_from_file(filepath)
+                genre = (tags.get("genre") or "").strip()
+                if not genre:
+                    s["results"].append({
+                        "file_path":  filepath,
+                        "tag_artist": tags.get("artist") or tags.get("albumartist") or "",
+                        "tag_album":  tags.get("album") or "",
+                        "title":      tags.get("title") or os.path.splitext(os.path.basename(filepath))[0],
+                        "year":       tags.get("year"),
+                    })
+                    new_found += 1
+            except Exception as e:
+                log.debug(f"[Scout] Tag read failed: {filepath} — {e}")
+            s["processed"] += 1
+
+        s["next_offset"] = batch_end
+
+        # Yield to event loop so the status poll endpoint stays responsive
+        await asyncio.sleep(0)
+
+        # Stop this chunk once we've found enough missing-genre tracks
+        if new_found >= target_new:
+            break
+
+    if s["next_offset"] >= s["total"]:
+        s["status"] = "done"
+        log.info(f"[Scout {job_id}] Complete — {len(s['results'])} total missing-genre files found")
+    else:
+        s["status"] = "paused"
+        log.info(f"[Scout {job_id}] Paused after finding {new_found} missing-genre tracks ({s['processed']}/{s['total']} files read)")
+
+
+
 @router.get("/write-log")
 async def get_write_log(limit: int = 50, user: dict = Depends(require_auth)):
     async with aiosqlite.connect(settings.database_url) as db:

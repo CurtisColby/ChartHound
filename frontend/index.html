@@ -375,6 +375,13 @@ input[readonly]{color:var(--muted);cursor:not-allowed;}
 .scope-tabs,.mode-toggle{display:flex;gap:.35rem;margin-bottom:.75rem;}
 .scope-tab,.mode-btn{flex:1;padding:.4rem .5rem;border-radius:5px;font-family:var(--mono);font-size:.57rem;cursor:pointer;border:1px solid var(--border);background:var(--bg);color:var(--muted);text-align:center;transition:all .15s;}
 .scope-tab.active,.mode-btn.active{border-color:var(--teal);background:rgba(45,212,191,.1);color:var(--teal);}
+.scout-group-btn{padding:.25rem .55rem;border-radius:4px;font-family:var(--mono);font-size:.52rem;cursor:pointer;border:1px solid var(--border);background:var(--bg);color:var(--muted);transition:all .15s;}
+.scout-group-btn.active{border-color:var(--teal);background:rgba(45,212,191,.1);color:var(--teal);}
+.scout-card{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem;transition:border-color .2s,opacity .3s;margin-bottom:.75rem;}
+.scout-card:hover{border-color:var(--border2);}
+.scout-chip{display:inline-block;padding:.2rem .55rem;border-radius:12px;font-family:var(--mono);font-size:.52rem;cursor:pointer;border:1px solid rgba(45,212,191,.4);background:rgba(45,212,191,.08);color:var(--teal);margin:.15rem .15rem 0 0;transition:all .15s;}
+.scout-chip:hover{background:rgba(45,212,191,.2);border-color:var(--teal);}
+.scout-chip.used{background:rgba(45,212,191,.25);border-color:var(--teal);opacity:.6;cursor:default;}
 .progress-wrap{margin:.5rem 0;}
 .progress-bar{width:100%;height:5px;background:var(--border);border-radius:3px;overflow:hidden;}
 .progress-fill{height:100%;width:0%;background:var(--teal);border-radius:3px;transition:width .5s;}
@@ -927,10 +934,11 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
               <div class="mode-btn active" onclick="setMode('preview',this)">👁 PREVIEW</div>
               <div class="mode-btn" onclick="setMode('album_tagger',this)">📀 ALBUM TAGGER</div>
               <div class="mode-btn" onclick="setMode('autopilot',this)">⚡ AUTO-PILOT</div>
+              <div class="mode-btn" onclick="setMode('genre_scout',this)">🔍 GENRE SCOUT</div>
             </div>
             <p style="font-family:var(--mono);font-size:.58rem;color:var(--muted);line-height:1.7" id="modeDesc">Preview mode shows proposed vs current metadata. You approve before anything is written to your files.</p>
           </div>
-          <div>
+          <div id="batchSizeSection">
             <div class="section-label sl-teal">BATCH SIZE</div>
             <div class="slider-wrap">
               <div class="slider-header">
@@ -948,6 +956,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
             <div class="section-label sl-teal">CONTROLS</div>
             <div style="display:flex;flex-direction:column;gap:.5rem">
               <button class="btn btn-teal" id="btnStartScan" onclick="startScan()">▶ START SCAN</button>
+              <button class="btn btn-teal" id="btnScoutScan" onclick="scoutStart()" style="display:none">🔍 SCAN FILES FOR MISSING GENRES</button>
               <div style="display:flex;gap:.5rem">
                 <button class="btn btn-outline btn-sm" id="btnPauseScan" onclick="pauseScan()" disabled style="flex:1">⏸ PAUSE</button>
                 <button class="btn btn-red btn-sm" id="btnStopScan" onclick="stopScan()" style="flex:1">⏹ STOP</button>
@@ -1117,10 +1126,18 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
 
             <!-- Results area -->
             <div id="atStep1Results" style="display:none">
-              <!-- Summary bar -->
+              <!-- Summary + sort bar -->
               <div style="display:flex;gap:.5rem;margin-bottom:.6rem;align-items:center;flex-wrap:wrap">
                 <span style="font-family:var(--mono);font-size:.55rem;color:var(--teal)" id="atStatusBadge">0 folders</span>
                 <span style="font-family:var(--mono);font-size:.5rem;color:var(--muted)" id="atPageBadge"></span>
+                <div style="margin-left:auto;display:flex;align-items:center;gap:.35rem;flex-wrap:wrap">
+                  <span style="font-family:var(--mono);font-size:.48rem;color:var(--muted2);letter-spacing:1px">SORT</span>
+                  <button class="scout-group-btn active" id="atSort-folder" onclick="atSortCards('folder',this)" title="Sort by folder name (default)">FOLDER</button>
+                  <button class="scout-group-btn" id="atSort-artist" onclick="atSortCards('artist',this)" title="Sort by primary artist">ARTIST</button>
+                  <button class="scout-group-btn" id="atSort-year" onclick="atSortCards('year',this)" title="Sort by year">YEAR</button>
+                  <input type="text" id="atFilter" placeholder="Filter cards…" oninput="atFilterCards(this.value)"
+                    style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:var(--mono);font-size:.55rem;padding:.25rem .45rem;width:130px">
+                </div>
               </div>
               <!-- Bulk action buttons -->
               <div style="display:flex;gap:.35rem;margin-bottom:.75rem;flex-wrap:wrap;align-items:center">
@@ -1183,6 +1200,83 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
                 </button>
                 <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted);margin-top:.3rem" id="atLoadMoreHint"></div>
               </div>
+            </div>
+          </div>
+
+          <!-- GENRE SCOUT PANEL -->
+          <div id="genreScoutSection" style="display:none">
+            <div class="section-label sl-teal">🔍 GENRE SCOUT — FILES WITH NO GENRE</div>
+            <div style="font-family:var(--mono);font-size:.58rem;color:var(--muted);margin-bottom:.75rem;line-height:1.8;padding:.5rem;background:var(--surface);border-radius:6px;border:1px solid var(--border)">
+              <strong style="color:var(--teal)">📂 PHYSICAL FILES ONLY</strong> — Reads actual file tags via Mutagen. No database. No internet.<br>
+              Scans <strong>500 files per chunk</strong> then pauses. Switch to <strong>BY ARTIST</strong> or <strong>BY ALBUM</strong> for card view — set genres, click <strong style="color:var(--teal)">💡 SUGGEST</strong> for recommendations, then <strong style="color:var(--teal)">✓ WRITE &amp; DISMISS</strong>.
+            </div>
+
+            <!-- Progress bar -->
+            <div id="scoutProgressWrap" style="display:none;margin-bottom:.75rem">
+              <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:.55rem;color:var(--muted);margin-bottom:.3rem">
+                <span id="scoutProgressLabel">Scanning…</span>
+                <span id="scoutProgressPct">0%</span>
+              </div>
+              <div style="background:var(--surface2);border-radius:4px;height:6px;overflow:hidden">
+                <div id="scoutProgressBar" style="height:100%;width:0%;background:var(--teal);transition:width .4s ease;border-radius:4px"></div>
+              </div>
+              <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:.5rem;color:var(--muted2);margin-top:.25rem">
+                <span id="scoutStatFiles">0 / 0 files read</span>
+                <span id="scoutStatFound" style="color:var(--crimson)">0 missing genre</span>
+              </div>
+            </div>
+
+            <!-- Top controls row -->
+            <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin-bottom:.75rem">
+              <button class="btn btn-teal btn-sm" id="btnScoutNextChunk" onclick="scoutNextChunk()" style="display:none">▶ SCAN NEXT 500</button>
+              <button class="btn btn-outline btn-sm" id="btnScoutScanAll" onclick="scoutScanAll()" style="display:none">⚡ SCAN ALL REMAINING</button>
+              <button class="btn btn-red btn-sm" id="btnScoutStop" onclick="scoutStop()" style="display:none">⏹ STOP</button>
+              <div style="display:flex;align-items:center;gap:.35rem;margin-left:auto">
+                <span style="font-family:var(--mono);font-size:.5rem;color:var(--muted);letter-spacing:1px">VIEW</span>
+                <button class="scout-group-btn active" id="sgBtn-flat" onclick="setScoutGroup('flat',this)">FLAT LIST</button>
+                <button class="scout-group-btn" id="sgBtn-artist" onclick="setScoutGroup('artist',this)">BY ARTIST</button>
+                <button class="scout-group-btn" id="sgBtn-album" onclick="setScoutGroup('album',this)">BY ALBUM</button>
+                <button class="scout-group-btn" id="sgBtn-folder" onclick="setScoutGroup('folder',this)">BY FOLDER</button>
+              </div>
+              <span style="font-family:var(--mono);font-size:.6rem;color:var(--muted)" id="scoutCount">—</span>
+            </div>
+
+            <!-- FLAT view -->
+            <div id="scoutFlatWrap" style="display:none">
+              <div style="display:flex;gap:.5rem;margin-bottom:.5rem;flex-wrap:wrap;align-items:center">
+                <input type="text" id="scoutFilter" placeholder="Filter…" oninput="scoutFilterRows(this.value)"
+                  style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:var(--mono);font-size:.58rem;padding:.3rem .5rem;width:150px">
+                <button class="btn btn-outline btn-sm" onclick="scoutFlatSelectAll(true)">SELECT ALL</button>
+                <button class="btn btn-outline btn-sm" onclick="scoutFlatSelectAll(false)">DESELECT ALL</button>
+                <span style="font-family:var(--mono);font-size:.6rem;color:var(--muted)" id="scoutFlatSelectedCount">0 selected</span>
+              </div>
+              <div style="display:flex;gap:.5rem;align-items:center;margin-bottom:.5rem;flex-wrap:wrap">
+                <span style="font-family:var(--mono);font-size:.5rem;color:var(--muted);white-space:nowrap">APPLY TO SELECTED ▶</span>
+                <select id="scoutFlatQuickGenre" style="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:.3rem .5rem;font-family:var(--mono);font-size:.58rem;flex:1;min-width:140px">
+                  <option value="">— select genre —</option>
+                </select>
+                <button class="btn btn-teal btn-sm" onclick="scoutFlatApplyGenre()">✓ APPLY</button>
+                <button class="btn btn-pink btn-sm" onclick="scoutFlatWriteSelected()">⬇ WRITE SELECTED</button>
+              </div>
+              <div class="preview-table-wrap">
+                <table class="preview-table">
+                  <thead><tr>
+                    <th style="width:30px"><input type="checkbox" onchange="scoutFlatSelectAll(this.checked)" style="accent-color:var(--teal)"></th>
+                    <th>ARTIST</th><th>TITLE</th><th>ALBUM</th>
+                    <th style="width:200px">ASSIGN GENRE</th>
+                  </tr></thead>
+                  <tbody id="scoutFlatBody"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- CARD view -->
+            <div id="scoutCardWrap" style="display:none">
+              <div id="scoutCards"></div>
+            </div>
+
+            <div id="scoutEmpty" style="display:none;margin-top:1rem;padding:.75rem 1rem;background:var(--surface2);border:1px solid var(--green);border-radius:6px;font-family:var(--mono);font-size:.65rem;color:var(--green)">
+              ✅ All files scanned — no missing genres found in this location.
             </div>
           </div>
 
@@ -1697,8 +1791,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
             <button id="grm-push-plex" onclick="grmPushPlaylist('plex')" disabled title="Scan Plex library first" style="padding:.45rem 1rem;background:#e5a00d;color:#000;border:none;border-radius:5px;font-family:var(--mono);font-size:.65rem;cursor:pointer;opacity:.35;transition:all .2s">↑ PLEX</button>
             <button id="grm-push-emby" onclick="grmPushPlaylist('emby')" disabled title="Scan Emby library first" style="padding:.45rem 1rem;background:#52b54b;color:#000;border:none;border-radius:5px;font-family:var(--mono);font-size:.65rem;cursor:pointer;opacity:.35;transition:all .2s">↑ EMBY</button>
             <button id="grm-push-jf" onclick="grmPushPlaylist('jellyfin')" disabled title="Scan Jellyfin library first" style="padding:.45rem 1rem;background:#00a4dc;color:#000;border:none;border-radius:5px;font-family:var(--mono);font-size:.65rem;cursor:pointer;opacity:.35;transition:all .2s">↑ JELLYFIN</button>
-            <button id="grm-push-m3u" onclick="grmDownloadM3U()" disabled title="Download as M3U file (host paths)" style="padding:.45rem 1rem;background:var(--surface2);color:var(--teal);border:1px solid var(--teal);border-radius:5px;font-family:var(--mono);font-size:.65rem;cursor:pointer;opacity:.35;transition:all .2s">↓ M3U</button>
-            <button id="grm-push-m3u-docker" onclick="grmDownloadM3UDocker()" disabled title="Download as M3U with Docker paths — for Navidrome / container music players" style="padding:.45rem 1rem;background:var(--surface2);color:var(--amber);border:1px solid var(--amber);border-radius:5px;font-family:var(--mono);font-size:.65rem;cursor:pointer;opacity:.35;transition:all .2s">↓ M3U (Docker)</button>
+            <button id="grm-push-m3u" onclick="grmDownloadM3U()" disabled title="Download as M3U file" style="padding:.45rem 1rem;background:var(--surface2);color:var(--teal);border:1px solid var(--teal);border-radius:5px;font-family:var(--mono);font-size:.65rem;cursor:pointer;opacity:.35;transition:all .2s">↓ M3U</button>
           </div>
 
         </div><!-- /grm-results-panel -->
@@ -2595,19 +2688,26 @@ function setMode(mode, el) {
       'Test on a small subfolder first.\n\n' +
       '⚠️ WARNING: Auto-Pilot can take hours on large libraries and you accept whatever Last.fm tags it assigns. ' +
       'Review results carefully. Album Tagger gives you more control.',
+    genre_scout:
+      '📂 PHYSICAL FILES — Reads actual Mutagen tags from your files. No database, no internet. ' +
+      'Scans 500 files at a time and pauses so you can tag and write before continuing. ' +
+      'Use BY ARTIST or BY ALBUM view for card-based editing with 💡 SUGGEST to get genre recommendations.',
   };
   var descText = desc[mode] || desc.preview;
   var descEl = document.getElementById('modeDesc');
-  // Render warnings in crimson
   descText = descText.replace(/⚠️ WARNING:/g, '<br><br><span style="color:var(--crimson);font-weight:bold">⚠️ WARNING:</span>');
   descText = descText.replace(/⭐ RECOMMENDED/g, '<span style="color:var(--green);font-weight:bold">⭐ RECOMMENDED</span>');
   descEl.innerHTML = descText;
   document.getElementById('albumTaggerSection').style.display = mode === 'album_tagger' ? 'block' : 'none';
   document.getElementById('previewSection').style.display = mode === 'preview' ? 'block' : 'none';
-
-  // Hide START SCAN in Album Tagger — READ TAGS button is the entry point
-  const startBtn = document.getElementById('btnStartScan');
-  if (startBtn) startBtn.style.display = mode === 'album_tagger' ? 'none' : '';
+  document.getElementById('genreScoutSection').style.display = mode === 'genre_scout' ? 'block' : 'none';
+  const startBtn  = document.getElementById('btnStartScan');
+  const scoutBtn  = document.getElementById('btnScoutScan');
+  const batchSect = document.getElementById('batchSizeSection');
+  if (startBtn)  startBtn.style.display  = (mode === 'album_tagger' || mode === 'genre_scout') ? 'none' : '';
+  if (scoutBtn)  scoutBtn.style.display  = mode === 'genre_scout' ? '' : 'none';
+  if (batchSect) batchSect.style.display = mode === 'genre_scout' ? 'none' : '';
+  if (mode === 'genre_scout') _scoutPopulateGenreOpts();
 }
 async function startScan() {
   const body = {scope:currentScope, mode:currentMode, chunk_size:parseInt(document.getElementById('chunkSlider').value)};
@@ -2868,6 +2968,447 @@ function pvwKeepSelected() {
   });
   document.getElementById('selectedCount').textContent = `${selectedTrackIds.size} selected`;
   toast(`Kept ${removed} track(s) as-is — removed from list.`, 'ok');
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  GENRE SCOUT
+// ══════════════════════════════════════════════════════════════════════════════
+let _scoutJobId      = null;
+let _scoutPolling    = null;
+let _scoutViewMode   = 'flat';
+let _scoutAllResults = [];
+const _scoutFlatSel      = new Set();
+const _scoutFlatAssigned = {};
+
+function _scoutGenreOpts(selected) {
+  const allG = [...new Set([...GENRE_LIST.filter(g=>g!=='Custom…'),..._customGenres])].sort((a,b)=>a.localeCompare(b));
+  return '<option value="">— select genre —</option>' + allG.map(g=>`<option value="${esc(g)}"${g===selected?' selected':''}>${esc(g)}</option>`).join('');
+}
+function _scoutMoodOpts(selected) {
+  const allM = [...new Set([...MOOD_LIST.filter(m=>m!=='Custom…'),..._customMoods])].sort((a,b)=>a.localeCompare(b));
+  return '<option value="">— optional —</option>' + allM.map(m=>`<option value="${esc(m)}"${m===selected?' selected':''}>${esc(m)}</option>`).join('');
+}
+function _scoutPopulateGenreOpts() {
+  const opts = _scoutGenreOpts('');
+  const s = document.getElementById('scoutFlatQuickGenre');
+  if (s) s.innerHTML = opts;
+}
+
+async function scoutStart() {
+  _scoutJobId = null; _scoutAllResults = []; _scoutPollBusy = false;
+  _scoutFlatSel.clear();
+  Object.keys(_scoutFlatAssigned).forEach(k=>delete _scoutFlatAssigned[k]);
+  ['scoutFlatBody','scoutCards'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML='';});
+  document.getElementById('scoutFlatWrap').style.display='none';
+  document.getElementById('scoutCardWrap').style.display='none';
+  document.getElementById('scoutEmpty').style.display='none';
+  document.getElementById('scoutProgressWrap').style.display='block';
+  document.getElementById('scoutProgressBar').style.width='0%';
+  document.getElementById('scoutProgressPct').textContent='0%';
+  document.getElementById('scoutProgressLabel').textContent='Indexing files…';
+  document.getElementById('scoutStatFiles').textContent='0 / 0 files read';
+  document.getElementById('scoutStatFound').textContent='0 missing genre';
+  document.getElementById('scoutCount').textContent='—';
+  document.getElementById('btnScoutNextChunk').style.display='none';
+  document.getElementById('btnScoutScanAll').style.display='none';
+  document.getElementById('btnScoutStop').style.display='inline-flex';
+  document.getElementById('btnScoutScan').disabled=true;
+  _scoutPopulateGenreOpts();
+
+  const subfolder=(()=>{const sel=document.getElementById('subfolderPath');if(currentScope==='subfolder'&&sel&&sel.value&&sel.value!=='__up__')return sel.value;return '';})();
+  try {
+    const body={scope:subfolder?'subfolder':'library',subfolder:subfolder||undefined,chunk_size:500};
+    const r=await fetch(`${API}/api/retriever/scout/start`,{method:'POST',headers:authHdrs(),body:JSON.stringify(body)});
+    const d=await r.json();
+    if(!r.ok) throw new Error(d.detail||'Failed to start scout');
+    if(d.total===0){addLog('🔍 Genre Scout: No audio files found.','warn');_scoutResetButtons();return;}
+    _scoutJobId=d.job_id;
+    document.getElementById('scoutProgressLabel').textContent=`Scanning ${d.total.toLocaleString()} files…`;
+    addLog(`🔍 Genre Scout started — ${d.total.toLocaleString()} files to scan`,'info');
+    _scoutStartPolling();
+  } catch(e){addLog(`✗ Genre Scout: ${e.message}`,'err');_scoutResetButtons();}
+}
+
+function _scoutStartPolling(){if(_scoutPolling)clearInterval(_scoutPolling);_scoutPolling=setInterval(_scoutPoll,800);}
+
+let _scoutPollBusy = false;
+async function _scoutPoll(){
+  if(!_scoutJobId||_scoutPollBusy)return;
+  try{
+    const r=await fetch(`${API}/api/retriever/scout/status/${_scoutJobId}`,{headers:authHdrs()});
+    if(!r.ok)return;
+    const d=await r.json();
+    const pct=d.total>0?Math.round((d.processed/d.total)*100):0;
+    document.getElementById('scoutProgressBar').style.width=pct+'%';
+    document.getElementById('scoutProgressPct').textContent=pct+'%';
+    document.getElementById('scoutStatFiles').textContent=`${d.processed.toLocaleString()} / ${d.total.toLocaleString()} files read`;
+    document.getElementById('scoutStatFound').textContent=`${d.found} missing genre`;
+    if(d.status==='paused'||d.status==='done'){
+      _scoutPollBusy=true;
+      clearInterval(_scoutPolling);_scoutPolling=null;
+      const known=new Set(_scoutAllResults.map(t=>t.file_path));
+      _scoutAllResults=_scoutAllResults.concat(d.results.filter(t=>!known.has(t.file_path)));
+      document.getElementById('scoutCount').textContent=`${_scoutAllResults.length} track(s) with no genre`;
+      _scoutRender();
+      if(d.status==='paused'){
+        const rem=d.total-d.processed;
+        document.getElementById('scoutProgressLabel').textContent=`Chunk done — ${rem.toLocaleString()} files remaining`;
+        document.getElementById('btnScoutNextChunk').style.display='inline-flex';
+        document.getElementById('btnScoutScanAll').style.display='inline-flex';
+        addLog(`🔍 Chunk done — ${d.found} missing genres found, ${rem.toLocaleString()} files left`,'ok');
+      } else {
+        document.getElementById('scoutProgressLabel').textContent=`Scan complete — ${d.found} files with no genre`;
+        document.getElementById('btnScoutNextChunk').style.display='none';
+        document.getElementById('btnScoutScanAll').style.display='none';
+        if(d.found===0)document.getElementById('scoutEmpty').style.display='block';
+        addLog(`🔍 Genre Scout complete — ${d.found} / ${d.total.toLocaleString()} files had no genre`,'ok');
+      }
+      document.getElementById('btnScoutStop').style.display='none';
+      document.getElementById('btnScoutScan').disabled=false;
+    }
+  }catch(e){}
+}
+
+async function scoutNextChunk(){
+  if(!_scoutJobId)return;
+  document.getElementById('btnScoutNextChunk').style.display='none';
+  document.getElementById('btnScoutScanAll').style.display='none';
+  document.getElementById('btnScoutStop').style.display='inline-flex';
+  document.getElementById('scoutProgressLabel').textContent='Scanning next chunk…';
+  const r=await fetch(`${API}/api/retriever/scout/next/${_scoutJobId}`,{method:'POST',headers:authHdrs()});
+  if(r.ok)_scoutStartPolling();
+}
+
+async function scoutScanAll(){
+  if(!_scoutJobId)return;
+  addLog('⚡ Genre Scout — scanning all remaining files…','info');
+  document.getElementById('btnScoutNextChunk').style.display='none';
+  document.getElementById('btnScoutScanAll').style.display='none';
+  document.getElementById('btnScoutStop').style.display='inline-flex';
+
+  // With the new backend (scans until 500 found), "paused" = found a batch for review.
+  // So scoutScanAll just kicks off one chunk and lets normal polling handle the rest.
+  // It does NOT loop — the user decides whether to continue after reviewing results.
+  try {
+    const r=await fetch(`${API}/api/retriever/scout/next/${_scoutJobId}`,{method:'POST',headers:authHdrs()});
+    if(!r.ok){ _scoutResetButtons(); return; }
+    _scoutStartPolling();
+  } catch(e){ addLog(`Scout error: ${e.message}`,'err'); _scoutResetButtons(); }
+}
+
+async function scoutStop(){
+  if(_scoutJobId)await fetch(`${API}/api/retriever/scout/stop`,{method:'POST',headers:authHdrs()});
+  if(_scoutPolling){clearInterval(_scoutPolling);_scoutPolling=null;}
+  _scoutResetButtons();
+  addLog('🔍 Genre Scout stopped.','warn');
+}
+function _scoutResetButtons(){
+  document.getElementById('btnScoutScan').disabled=false;
+  document.getElementById('btnScoutStop').style.display='none';
+  document.getElementById('btnScoutNextChunk').style.display='none';
+  document.getElementById('btnScoutScanAll').style.display='none';
+}
+
+function setScoutGroup(mode,el){
+  _scoutViewMode=mode;
+  document.querySelectorAll('.scout-group-btn').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+  _scoutRender();
+}
+
+function _scoutRender(){
+  if(_scoutViewMode==='flat'){
+    document.getElementById('scoutFlatWrap').style.display=_scoutAllResults.length?'block':'none';
+    document.getElementById('scoutCardWrap').style.display='none';
+    _scoutRenderFlat();
+  } else {
+    document.getElementById('scoutFlatWrap').style.display='none';
+    document.getElementById('scoutCardWrap').style.display=_scoutAllResults.length?'block':'none';
+    _scoutRenderCards();
+  }
+}
+
+// ── FLAT VIEW ─────────────────────────────────────────────────────────────────
+function _scoutRenderFlat(){
+  const tbody=document.getElementById('scoutFlatBody');
+  tbody.innerHTML='';
+  _scoutFlatSel.clear();
+  document.getElementById('scoutFlatSelectedCount').textContent='0 selected';
+  _scoutAllResults.forEach(t=>{
+    const assigned=_scoutFlatAssigned[t.file_path]||'';
+    const tr=document.createElement('tr');
+    tr.dataset.fp=t.file_path;
+    tr.dataset.text=`${(t.tag_artist||'').toLowerCase()} ${(t.title||'').toLowerCase()} ${(t.tag_album||'').toLowerCase()}`;
+    tr.innerHTML=`
+      <td><input type="checkbox" onchange="_scoutFlatCheck('${escJs(t.file_path)}',this.checked)" style="accent-color:var(--teal)"></td>
+      <td style="color:var(--muted)">${esc(t.tag_artist||'')}</td>
+      <td style="color:var(--muted)">${esc(t.title||'')}</td>
+      <td style="color:var(--muted2);font-size:.58rem">${esc(t.tag_album||'—')}</td>
+      <td><select class="scout-row-genre" data-fp="${esc(t.file_path)}" onchange="_scoutFlatAssign('${escJs(t.file_path)}',this.value)"
+        style="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:.2rem .4rem;font-family:var(--mono);font-size:.55rem;width:100%">
+        ${_scoutGenreOpts(assigned)}</select></td>`;
+    tbody.appendChild(tr);
+  });
+}
+function scoutFilterRows(q){const lq=q.toLowerCase();document.querySelectorAll('#scoutFlatBody tr').forEach(tr=>{tr.style.display=(tr.dataset.text||'').includes(lq)?'':'none';});}
+function _scoutFlatAssign(fp,genre){_scoutFlatAssigned[fp]=genre;}
+function _scoutFlatCheck(fp,checked){if(checked)_scoutFlatSel.add(fp);else _scoutFlatSel.delete(fp);document.getElementById('scoutFlatSelectedCount').textContent=`${_scoutFlatSel.size} selected`;}
+function scoutFlatSelectAll(checked){document.querySelectorAll('#scoutFlatBody tr[data-fp]').forEach(tr=>{if(tr.style.display==='none')return;const cb=tr.querySelector('input[type="checkbox"]');if(cb){cb.checked=checked;_scoutFlatCheck(tr.dataset.fp,checked);}});}
+function scoutFlatApplyGenre(){
+  const genre=document.getElementById('scoutFlatQuickGenre').value;
+  if(!genre){toast('Select a genre first.','warn');return;}
+  let count=0;
+  document.querySelectorAll('#scoutFlatBody tr[data-fp]').forEach(tr=>{
+    const cb=tr.querySelector('input[type="checkbox"]');
+    if(cb&&cb.checked){_scoutFlatAssigned[tr.dataset.fp]=genre;const sel=tr.querySelector('.scout-row-genre');if(sel)sel.value=genre;count++;}
+  });
+  toast(`Genre "${genre}" applied to ${count} track(s).`,'ok');
+}
+async function scoutFlatWriteSelected(){
+  if(!_scoutFlatSel.size){toast('Select tracks and assign genres first.','warn');return;}
+  for(const fp of _scoutFlatSel){if(!_scoutFlatAssigned[fp]){toast('Some selected tracks have no genre assigned.','warn');return;}}
+  let ok=0,fail=0;
+  for(const fp of _scoutFlatSel){
+    try{const r=await fetch(`${API}/api/retriever/override`,{method:'POST',headers:authHdrs(),body:JSON.stringify({track_ids:[],file_paths:[fp],genres:[_scoutFlatAssigned[fp]],moods:[]})});const d=await r.json();ok+=d.success||0;fail+=d.failed||0;}catch{fail++;}
+  }
+  toast(`Genre Scout: ${ok} written, ${fail} failed.`,ok>0?'ok':'error');
+  addLog(`🔍 Genre Scout wrote ${ok} tracks, ${fail} failed.`,ok>0?'ok':'err');
+  if(ok>0){
+    const written=new Set([..._scoutFlatSel].filter(fp=>_scoutFlatAssigned[fp]));
+    _scoutAllResults=_scoutAllResults.filter(t=>!written.has(t.file_path));
+    written.forEach(fp=>delete _scoutFlatAssigned[fp]);
+    _scoutFlatSel.clear();
+    _scoutRenderFlat();
+    document.getElementById('scoutCount').textContent=`${_scoutAllResults.length} track(s) with no genre`;
+    document.getElementById('scoutStatFound').textContent=`${_scoutAllResults.length} missing genre`;
+  }
+}
+
+// ── CARD VIEW ─────────────────────────────────────────────────────────────────
+function _scoutRenderCards(){
+  const container=document.getElementById('scoutCards');
+  const groupKey=_scoutViewMode==='artist'?'tag_artist':_scoutViewMode==='folder'?null:'tag_album';
+  const groups={};
+  _scoutAllResults.forEach(t=>{
+    let gk;
+    if(_scoutViewMode==='folder'){
+      const parts=t.file_path.split('/');parts.pop();
+      gk=parts.join('/')||'(Unknown)';
+    } else {
+      gk=(t[groupKey]||'(Unknown)').trim();
+    }
+    if(!groups[gk])groups[gk]=[];groups[gk].push(t);
+  });
+  document.querySelectorAll('#scoutCards .scout-card').forEach(card=>{if(!groups[card.dataset.group])card.remove();});
+  Object.keys(groups).sort().forEach(groupName=>{
+    const safeId='sc-'+groupName.replace(/[^a-z0-9]/gi,'_');
+    if(document.getElementById(safeId))return;
+    container.appendChild(_scoutBuildCard(groupName,groups[groupName],safeId));
+  });
+}
+
+function _scoutBuildCard(groupName,tracks,safeId){
+  const icon=_scoutViewMode==='artist'?'🎤':_scoutViewMode==='folder'?'📁':'💿';
+  const repArtist = tracks[0]?.tag_artist || groupName;
+
+  // Derive common parent folder path from track file paths
+  // Useful when groupName is '(Unknown)' — shows the actual folder on disk
+  const folderPath = (() => {
+    if (!tracks.length) return '';
+    const parts = tracks[0].file_path.split('/');
+    parts.pop(); // remove filename
+    const folder = parts.join('/');
+    // Check if all tracks share the same folder
+    const allSame = tracks.every(t => t.file_path.startsWith(folder + '/'));
+    if (allSame) return folder;
+    // Multiple folders — show common prefix
+    const commonParts = parts.slice();
+    tracks.forEach(t => {
+      const tp = t.file_path.split('/');
+      tp.pop();
+      while (commonParts.length > 0 && commonParts.join('/') !== tp.slice(0, commonParts.length).join('/')) {
+        commonParts.pop();
+      }
+    });
+    return commonParts.length > 2 ? commonParts.join('/') : '';
+  })();
+  const folderLabel = folderPath && _scoutViewMode !== 'folder'
+    ? `<div style="font-family:var(--mono);font-size:.50rem;color:var(--text);margin-top:.15rem;word-break:break-all;user-select:all;cursor:text;opacity:.85" title="Click to select path for copying">📁 ${esc(atTranslatePath(folderPath))}</div>`
+    : '';
+
+  const trackRows=tracks.map((t,i)=>
+    `<div style="display:flex;align-items:center;gap:.4rem;padding:.2rem 0;border-bottom:1px solid var(--border)">
+      <input type="checkbox" id="${safeId}-tr-${i}" checked style="accent-color:var(--teal)">
+      <span style="font-family:var(--mono);font-size:.5rem;flex:1;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(t.file_path)}">${esc(t.title||t.file_path.split('/').pop())}</span>
+      <span style="font-family:var(--mono);font-size:.46rem;color:var(--muted2);flex-shrink:0">${esc(t.tag_artist||'')}</span>
+    </div>`
+  ).join('');
+
+  const genreDrops=[1,2,3].map(n=>`
+    <select id="${safeId}-g${n}" style="flex:1;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:.25rem;font-family:var(--mono);font-size:.5rem">
+      ${_scoutGenreOpts('')}
+    </select>`).join('');
+  const moodDrops=[1,2,3].map(n=>`
+    <select id="${safeId}-m${n}" style="flex:1;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:.25rem;font-family:var(--mono);font-size:.5rem">
+      ${_scoutMoodOpts('')}
+    </select>`).join('');
+
+  const card=document.createElement('div');
+  card.className='scout-card';
+  card.id=safeId;
+  card.dataset.group=groupName;
+  card.innerHTML=`
+    <div style="display:flex;align-items:flex-start;gap:.75rem;flex-wrap:wrap">
+      <div style="flex:1;min-width:200px">
+        <div style="font-family:var(--mono);font-size:.65rem;color:var(--text);font-weight:bold">
+          ${icon} ${esc(groupName)}
+          <span style="display:inline-block;background:var(--surface);border:1px solid var(--border);color:var(--muted);font-size:.48rem;padding:.1rem .35rem;border-radius:10px;margin-left:.35rem">${tracks.length} track${tracks.length!==1?'s':''}</span>
+        </div>
+        ${folderLabel}
+        <!-- Suggest chips row — hidden until suggest is clicked -->
+        <div id="${safeId}-chips" style="display:none;margin-top:.4rem">
+          <span style="font-family:var(--mono);font-size:.46rem;color:var(--muted2);letter-spacing:1px">SUGGESTED ▶ </span>
+          <span id="${safeId}-chips-inner"></span>
+        </div>
+      </div>
+      <div style="display:flex;gap:.35rem;flex-wrap:wrap;align-items:center">
+        <button class="btn btn-outline btn-sm" id="${safeId}-suggest-btn" onclick="_scoutSuggest('${escJs(groupName)}','${escJs(repArtist)}','${safeId}')" title="Get genre suggestions from DB or Last.fm">💡 SUGGEST</button>
+        <button class="btn btn-teal btn-sm" onclick="_scoutCardWrite('${escJs(groupName)}','${safeId}')">✓ WRITE &amp; DISMISS</button>
+        <button class="btn btn-outline btn-sm" onclick="_scoutCardKeep('${safeId}')">✓ KEEP (skip)</button>
+      </div>
+    </div>
+
+    <div style="margin-top:.6rem;padding:.6rem;background:var(--surface);border-radius:6px;border:1px solid var(--border)">
+      <div style="font-family:var(--mono);font-size:.48rem;color:var(--muted2);letter-spacing:1px;margin-bottom:.25rem">GENRES (up to 3)</div>
+      <div style="display:flex;gap:.3rem;margin-bottom:.4rem">${genreDrops}</div>
+      <div style="font-family:var(--mono);font-size:.48rem;color:var(--muted2);letter-spacing:1px;margin-bottom:.25rem">MOODS (up to 3, optional)</div>
+      <div style="display:flex;gap:.3rem">${moodDrops}</div>
+    </div>
+
+    <div style="margin-top:.5rem">
+      <div style="font-family:var(--mono);font-size:.48rem;color:var(--muted2);letter-spacing:1px;margin-bottom:.2rem">
+        TRACKS — uncheck any to exclude
+        <button onclick="_scoutCardSelAll('${safeId}',${tracks.length},true)" style="background:none;border:none;color:var(--teal);font-family:var(--mono);font-size:.46rem;cursor:pointer">all</button>
+        <button onclick="_scoutCardSelAll('${safeId}',${tracks.length},false)" style="background:none;border:none;color:var(--muted);font-family:var(--mono);font-size:.46rem;cursor:pointer">none</button>
+      </div>
+      <div style="max-height:140px;overflow-y:auto;background:var(--surface2);border-radius:4px;border:1px solid var(--border);padding:.25rem .4rem">
+        ${trackRows}
+      </div>
+    </div>`;
+  return card;
+}
+
+// ── Suggest button handler ────────────────────────────────────────────────────
+async function _scoutSuggest(groupName, artist, safeId) {
+  const btn = document.getElementById(`${safeId}-suggest-btn`);
+  if (btn) { btn.disabled=true; btn.textContent='⟳ …'; }
+  try {
+    const r = await fetch(`${API}/api/retriever/scout/suggest?artist=${encodeURIComponent(artist)}`, {headers:authHdrs()});
+    const d = await r.json();
+    const chipsInner = document.getElementById(`${safeId}-chips-inner`);
+    const chipsWrap  = document.getElementById(`${safeId}-chips`);
+    if (!chipsInner || !chipsWrap) return;
+
+    if (!d.suggestions || !d.suggestions.length) {
+      chipsInner.innerHTML = '<span style="font-family:var(--mono);font-size:.5rem;color:var(--muted2)">No suggestions found</span>';
+      chipsWrap.style.display = 'block';
+      if (btn) { btn.disabled=false; btn.textContent='💡 SUGGEST'; }
+      return;
+    }
+
+    // Build clickable chips
+    chipsInner.innerHTML = d.suggestions.map(g =>
+      `<span class="scout-chip" onclick="_scoutChipClick('${safeId}','${escJs(g)}')" title="Click to fill next empty genre slot">${esc(g)}</span>`
+    ).join('');
+
+    // Source badge
+    const src = d.source === 'db'
+      ? '<span style="font-family:var(--mono);font-size:.44rem;color:var(--green);margin-left:.4rem">● from library</span>'
+      : '<span style="font-family:var(--mono);font-size:.44rem;color:var(--gold);margin-left:.4rem">● Last.fm</span>';
+    chipsInner.insertAdjacentHTML('beforeend', src);
+
+    chipsWrap.style.display = 'block';
+    if (btn) { btn.disabled=false; btn.textContent='💡 SUGGEST'; }
+    addLog(`💡 Suggestions for "${artist}": ${d.suggestions.join(', ')} (${d.source})`,'info');
+  } catch(e) {
+    if (btn) { btn.disabled=false; btn.textContent='💡 SUGGEST'; }
+    addLog(`✗ Suggest failed: ${e.message}`,'err');
+  }
+}
+
+// Chip click — fills next empty genre slot, auto-saves to custom genres if not in list
+function _scoutChipClick(safeId, genre) {
+  // Fill first empty genre dropdown
+  for (let n=1; n<=3; n++) {
+    const sel = document.getElementById(`${safeId}-g${n}`);
+    if (sel && !sel.value) {
+      // If genre not in GENRE_LIST or _customGenres, save it
+      if (!GENRE_LIST.includes(genre) && !_customGenres.includes(genre)) {
+        saveCustomTag('genre', genre);
+        // Add to dropdown so it appears selected
+        const opt = document.createElement('option');
+        opt.value = genre; opt.textContent = genre;
+        sel.appendChild(opt);
+      }
+      sel.value = genre;
+      // Visual feedback — briefly highlight chip as used
+      document.querySelectorAll(`#${safeId}-chips-inner .scout-chip`).forEach(c=>{
+        if(c.textContent===genre){c.style.background='rgba(45,212,191,.35)';c.style.borderColor='var(--teal)';}
+      });
+      return;
+    }
+  }
+  toast('All 3 genre slots are filled. Clear one first.','warn');
+}
+
+function _scoutCardSelAll(safeId,count,checked){for(let i=0;i<count;i++){const cb=document.getElementById(`${safeId}-tr-${i}`);if(cb)cb.checked=checked;}}
+
+function _scoutCardKeep(safeId){
+  const card=document.getElementById(safeId);
+  if(!card)return;
+  const groupName=card.dataset.group;
+  _scoutAllResults=_scoutAllResults.filter(t=>{
+    let gk;
+    if(_scoutViewMode==='folder'){const parts=t.file_path.split('/');parts.pop();gk=parts.join('/')||'(Unknown)';}
+    else{gk=(_scoutViewMode==='artist'?t.tag_artist:t.tag_album)||'(Unknown)';}
+    return gk.trim()!==groupName;
+  });
+  card.style.opacity='0';setTimeout(()=>card.remove(),250);
+  document.getElementById('scoutCount').textContent=`${_scoutAllResults.length} track(s) with no genre`;
+  document.getElementById('scoutStatFound').textContent=`${_scoutAllResults.length} missing genre`;
+}
+
+async function _scoutCardWrite(groupName,safeId){
+  const card=document.getElementById(safeId);
+  if(!card)return;
+  const genres=[1,2,3].map(n=>document.getElementById(`${safeId}-g${n}`)?.value||'').filter(Boolean);
+  const moods =[1,2,3].map(n=>document.getElementById(`${safeId}-m${n}`)?.value||'').filter(Boolean);
+  if(!genres.length){toast('Select at least one genre before writing.','warn');return;}
+  const groupKey=_scoutViewMode==='artist'?'tag_artist':_scoutViewMode==='folder'?null:'tag_album';
+  const groupTracks=_scoutAllResults.filter(t=>{
+    if(_scoutViewMode==='folder'){const parts=t.file_path.split('/');parts.pop();return (parts.join('/')||'(Unknown)')===groupName;}
+    return (t[groupKey]||'(Unknown)').trim()===groupName;
+  });
+  const selectedPaths=[];
+  groupTracks.forEach((t,i)=>{const cb=document.getElementById(`${safeId}-tr-${i}`);if(!cb||cb.checked)selectedPaths.push(t.file_path);});
+  if(!selectedPaths.length){toast('No tracks selected.','warn');return;}
+  addLog(`🔍 Scout writing ${selectedPaths.length} tracks for "${groupName}"…`,'info');
+  try{
+    const r=await fetch(`${API}/api/retriever/override`,{method:'POST',headers:authHdrs(),body:JSON.stringify({track_ids:[],file_paths:selectedPaths,genres,moods})});
+    const d=await r.json();
+    if(d.success>0){
+      toast(`✓ ${d.success} track${d.success!==1?'s':''} written`,'ok');
+      addLog(`🔍 Scout: ${d.success} tracks written for "${groupName}"`,'ok');
+      const writtenSet=new Set(selectedPaths);
+      _scoutAllResults=_scoutAllResults.filter(t=>!writtenSet.has(t.file_path));
+      card.style.opacity='0';setTimeout(()=>card.remove(),300);
+      document.getElementById('scoutCount').textContent=`${_scoutAllResults.length} track(s) with no genre`;
+      document.getElementById('scoutStatFound').textContent=`${_scoutAllResults.length} missing genre`;
+    } else {
+      toast(`Write failed: ${d.message||'unknown error'}`,'error');
+      addLog(`❌ Scout write failed for "${groupName}": ${d.message||''}`,'err');
+    }
+  }catch(e){toast(`Write error: ${e.message}`,'error');}
 }
 
 // ── Multi-folder queue ────────────────────────────────────────────────────────
@@ -3372,6 +3913,11 @@ function atBuildCard(key, alb) {
         <div style="margin-top:.2rem">
           <span style="font-family:var(--mono);font-size:.48rem;color:var(--muted2);letter-spacing:1px">MOODS: </span>${moodDisplay}
         </div>
+        <!-- Suggest chips row -->
+        <div id="at-chips-${safeKey}" style="display:none;margin-top:.4rem">
+          <span style="font-family:var(--mono);font-size:.46rem;color:var(--muted2);letter-spacing:1px">SUGGESTED ▶ </span>
+          <span id="at-chips-inner-${safeKey}"></span>
+        </div>
         <div id="at-proposed-${safeKey}" style="margin-top:.35rem;display:none"></div>
       </div>
       <div style="display:flex;flex-direction:column;gap:.3rem;align-items:flex-end">
@@ -3380,6 +3926,11 @@ function atBuildCard(key, alb) {
             id="at-lookup-btn-${safeKey}"
             title="${alb.isCompilation ? 'Various Artists — Lookup may not work well. Consider Override instead.' : 'Get genre recommendation from MusicBrainz'}">
             ${alb.isCompilation ? '⚠️ LOOKUP' : '🔍 LOOKUP'}
+          </button>
+          <button class="btn btn-outline btn-sm" onclick="atSuggest('${escJs(key)}')"
+            id="at-suggest-btn-${safeKey}"
+            title="Get genre suggestions from your library DB or Last.fm artist tags">
+            💡 SUGGEST
           </button>
           <button class="btn btn-pink btn-sm" onclick="atToggleOverride('${escJs(key)}')" title="Manually set all tags for this folder">✏️ OVERRIDE</button>
           <button class="btn btn-outline btn-sm" onclick="atKeep('${escJs(key)}')" title="Tags are fine — leave them alone">✓ KEEP</button>
@@ -3520,6 +4071,129 @@ async function atLookup(key) {
     if (btn) { btn.disabled = false; btn.textContent = alb.isCompilation ? '⚠️ LOOKUP' : '🔍 LOOKUP'; }
   }
 }
+
+
+// ── 💡 Suggest — DB-first, Last.fm fallback, chip UI ─────────────────────────
+async function atSuggest(key) {
+  const safeKey = key.replace(/[^a-z0-9]/gi,'_');
+  const alb = _atAlbums[key];
+  if (!alb) return;
+  const btn        = document.getElementById(`at-suggest-btn-${safeKey}`);
+  const chipsWrap  = document.getElementById(`at-chips-${safeKey}`);
+  const chipsInner = document.getElementById(`at-chips-inner-${safeKey}`);
+  if (!chipsWrap || !chipsInner) return;
+  if (btn) { btn.disabled = true; btn.textContent = '⟳'; }
+  const artist = alb.isCompilation ? '' : (alb.artists[0] || alb.folderName);
+  if (!artist) {
+    chipsInner.innerHTML = '<span style="font-family:var(--mono);font-size:.5rem;color:var(--muted2)">Compilation — no single artist to suggest from.</span>';
+    chipsWrap.style.display = 'block';
+    if (btn) { btn.disabled = false; btn.textContent = '💡 SUGGEST'; }
+    return;
+  }
+  addLog(`💡 Suggest: fetching for "${artist}"…`, 'info');
+  try {
+    const r = await fetch(`${API}/api/retriever/scout/suggest?artist=${encodeURIComponent(artist)}`, { headers: authHdrs() });
+    const d = await r.json();
+    if (!d.suggestions || !d.suggestions.length) {
+      chipsInner.innerHTML = '<span style="font-family:var(--mono);font-size:.5rem;color:var(--muted2)">No suggestions found — try LOOKUP or OVERRIDE.</span>';
+      addLog(`💡 No suggestions for "${artist}"`, 'warn');
+    } else {
+      const src = d.source === 'db'
+        ? '<span style="font-family:var(--mono);font-size:.44rem;color:var(--green);margin-left:.4rem">● from library</span>'
+        : '<span style="font-family:var(--mono);font-size:.44rem;color:var(--gold);margin-left:.4rem">● Last.fm</span>';
+      chipsInner.innerHTML = d.suggestions.map(g =>
+        `<span class="scout-chip" id="at-chip-${safeKey}-${g.replace(/[^a-z0-9]/gi,'_')}" onclick="atSuggestChipClick('${escJs(key)}','${escJs(g)}')" title="Click to fill next empty genre slot in Override">${esc(g)}</span>`
+      ).join('') + src;
+      addLog(`💡 Suggestions for "${artist}": ${d.suggestions.join(', ')} (${d.source})`, 'ok');
+      // Auto-open Override panel so chips fill directly into the dropdowns
+      const overridePanel = document.getElementById(`at-override-${safeKey}`);
+      if (overridePanel && overridePanel.style.display === 'none') atToggleOverride(key);
+    }
+    chipsWrap.style.display = 'block';
+  } catch(e) {
+    chipsInner.innerHTML = `<span style="font-family:var(--mono);font-size:.5rem;color:var(--pink)">Error: ${e.message}</span>`;
+    chipsWrap.style.display = 'block';
+    addLog(`✗ Suggest failed: ${e.message}`, 'err');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '💡 SUGGEST'; }
+  }
+}
+
+function atSuggestChipClick(key, genre) {
+  const safeKey = key.replace(/[^a-z0-9]/gi,'_');
+  const alb = _atAlbums[key];
+  if (!alb) return;
+  const overridePanel = document.getElementById(`at-override-${safeKey}`);
+  if (overridePanel && overridePanel.style.display === 'none') atToggleOverride(key);
+  for (let n = 1; n <= 3; n++) {
+    const sel = document.getElementById(`at-g${n}-${safeKey}`);
+    if (sel && !sel.value) {
+      if (!GENRE_LIST.includes(genre) && !_customGenres.includes(genre)) {
+        saveCustomTag('genre', genre);
+        const opt = document.createElement('option');
+        opt.value = genre; opt.textContent = genre;
+        sel.appendChild(opt);
+      }
+      sel.value = genre;
+      const chip = document.getElementById(`at-chip-${safeKey}-${genre.replace(/[^a-z0-9]/gi,'_')}`);
+      if (chip) { chip.classList.add('used'); chip.onclick = null; }
+      return;
+    }
+  }
+  toast('All 3 genre slots are filled. Clear one first.', 'warn');
+}
+
+// ── Card sort ─────────────────────────────────────────────────────────────────
+let _atSortKey = 'folder';
+let _atSortAsc = true;
+
+function atSortCards(key, el) {
+  if (_atSortKey === key) { _atSortAsc = !_atSortAsc; }
+  else { _atSortKey = key; _atSortAsc = key !== 'year'; }
+  document.querySelectorAll('[id^="atSort-"]').forEach(b => b.classList.remove('active'));
+  if (el) el.classList.add('active');
+  const container = document.getElementById('albumTaggerCards');
+  const loadMore  = document.getElementById('atLoadMoreWrap');
+  const cards     = [...container.querySelectorAll('[id^="at-card-"]')];
+  const safeToEntry = {};
+  Object.entries(_atAlbums).forEach(([k, a]) => { safeToEntry[k.replace(/[^a-z0-9]/gi,'_')] = [k, a]; });
+  cards.sort((a, b) => {
+    const eA = safeToEntry[a.id.replace('at-card-','')];
+    const eB = safeToEntry[b.id.replace('at-card-','')];
+    if (!eA || !eB) return 0;
+    let vA, vB;
+    if (_atSortKey === 'artist') {
+      vA = (eA[1].artists[0] || eA[1].folderName).toLowerCase();
+      vB = (eB[1].artists[0] || eB[1].folderName).toLowerCase();
+    } else if (_atSortKey === 'year') {
+      vA = eA[1].year || 9999;
+      vB = eB[1].year || 9999;
+    } else {
+      vA = eA[1].folderName.toLowerCase();
+      vB = eB[1].folderName.toLowerCase();
+    }
+    if (vA < vB) return _atSortAsc ? -1 : 1;
+    if (vA > vB) return _atSortAsc ? 1 : -1;
+    return 0;
+  });
+  if (loadMore) container.removeChild(loadMore);
+  cards.forEach(c => container.appendChild(c));
+  if (loadMore) container.appendChild(loadMore);
+}
+
+// ── Card filter ───────────────────────────────────────────────────────────────
+function atFilterCards(q) {
+  const lq = q.toLowerCase();
+  const safeToEntry = {};
+  Object.entries(_atAlbums).forEach(([k, a]) => { safeToEntry[k.replace(/[^a-z0-9]/gi,'_')] = a; });
+  document.querySelectorAll('[id^="at-card-"]').forEach(card => {
+    const a = safeToEntry[card.id.replace('at-card-','')];
+    if (!a) return;
+    const text = [a.folderName, ...(a.artists||[]), ...(a.currentGenres||[]), String(a.year||'')].join(' ').toLowerCase();
+    card.style.display = text.includes(lq) ? '' : 'none';
+  });
+}
+
 
 // ── Toggle override panel open/close ─────────────────────────────────────────
 function atToggleOverride(key) {
@@ -5500,12 +6174,6 @@ function grmSyncBar() {
     m3u.style.opacity = hasResults ? '1' : '.35';
     m3u.style.cursor  = hasResults ? 'pointer' : 'default';
   }
-  const m3uDocker = document.getElementById('grm-push-m3u-docker');
-  if (m3uDocker) {
-    m3uDocker.disabled      = !hasResults;
-    m3uDocker.style.opacity = hasResults ? '1' : '.35';
-    m3uDocker.style.cursor  = hasResults ? 'pointer' : 'default';
-  }
 }
 
 // ── Push to server ────────────────────────────────────────────────
@@ -5517,7 +6185,7 @@ async function grmPushPlaylist(server) {
   const label    = labels[server] || server;
   if (!confirm(`Push "${name}" with ${trackIds.length} tracks to ${label}?\n\nThis replaces any existing playlist with the same name.`)) return;
   grmLog(`Pushing ${trackIds.length} tracks to ${label}…`, 'info');
-  ['grm-push-plex','grm-push-emby','grm-push-jf','grm-push-m3u','grm-push-m3u-docker'].forEach(id => {
+  ['grm-push-plex','grm-push-emby','grm-push-jf','grm-push-m3u'].forEach(id => {
     const b=document.getElementById(id); if(b){b.disabled=true;b.style.opacity='.35';}
   });
   try {
@@ -5574,40 +6242,7 @@ async function grmDownloadM3U() {
   }
 }
 
-// ── M3U Download (Docker paths — Navidrome) ───────────────────────
-async function grmDownloadM3UDocker() {
-  const name     = document.getElementById('grm-playlist-name').value.trim() || 'Chart Hits';
-  const trackIds = grmSelected.size > 0 ? [...grmSelected] : grmResults.map(r=>r.track_id);
-  if (!trackIds.length) { toast('No tracks to export.', 'warn'); return; }
-  grmLog(`Generating Docker M3U for ${trackIds.length} tracks…`, 'info');
-  try {
-    const r = await fetch(`${API}/api/groomer/playlist/m3u`, {
-      method:'POST', headers:authHdrs(),
-      body:JSON.stringify({track_ids:trackIds, playlist_name:name, docker_paths:true}),
-    });
-    if (!r.ok) {
-      const d = await r.json();
-      const msg = typeof d.detail === 'string' ? d.detail
-                : Array.isArray(d.detail) ? d.detail.map(e=>e.msg||JSON.stringify(e)).join('; ')
-                : JSON.stringify(d.detail) || `HTTP ${r.status}`;
-      throw new Error(msg);
-    }
-    const blob = await r.blob();
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href     = url;
-    a.download = name.replace(/\s+/g,'_')+'_docker.m3u';
-    document.body.appendChild(a); a.click();
-    document.body.removeChild(a); URL.revokeObjectURL(url);
-    grmLog(`✓ Docker M3U downloaded: ${a.download}`, 'ok');
-    toast('✓ Docker M3U downloaded!', 'success');
-  } catch(e) {
-    grmLog(`Docker M3U error: ${e.message}`, 'err');
-    toast('Docker M3U download failed', 'error');
-  }
-}
-
-
+// Hook into tab navigation to init Groomer when tab is opened
 const _origShowTab = typeof showTab === 'function' ? showTab : null;
 
 
