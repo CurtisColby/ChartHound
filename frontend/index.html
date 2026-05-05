@@ -3071,6 +3071,7 @@ async function _scoutPoll(){
 
 async function scoutNextChunk(){
   if(!_scoutJobId)return;
+  _scoutPollBusy=false;
   document.getElementById('btnScoutNextChunk').style.display='none';
   document.getElementById('btnScoutScanAll').style.display='none';
   document.getElementById('btnScoutStop').style.display='inline-flex';
@@ -3081,6 +3082,7 @@ async function scoutNextChunk(){
 
 async function scoutScanAll(){
   if(!_scoutJobId)return;
+  _scoutPollBusy=false;
   addLog('⚡ Genre Scout — scanning all remaining files…','info');
   document.getElementById('btnScoutNextChunk').style.display='none';
   document.getElementById('btnScoutScanAll').style.display='none';
