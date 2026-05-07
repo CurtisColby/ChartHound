@@ -181,7 +181,7 @@ async def artist_releases(req: ArtistReleasesRequest, _=Depends(require_auth)):
     releases.sort(key=lambda x: x.get("first_release", "") or "9999")
 
     # Check library ownership
-    lib = await _build_library_index()
+    lib, _ = await _build_library_index()
     artist_name = req.artist_name or ""
     for rel in releases:
         owned, tid = _check_library(artist_name, rel["title"], lib)
@@ -235,7 +235,7 @@ async def album_search(req: AlbumSearchRequest, _=Depends(require_auth)):
         })
 
     # Check library ownership
-    lib = await _build_library_index()
+    lib, _ = await _build_library_index()
     for rel in results:
         owned, tid = _check_library(rel.get("artist", ""), rel["title"], lib)
         rel["in_library"] = owned
@@ -388,12 +388,26 @@ async def grab(req: BHGrabRequest, _=Depends(require_auth)):
     pwd = conn["token"]
     extra = conn["extra"]
 
+    # Read configured download path from app_settings (Kennel → ChartHound Download Path)
+    save_path = ""
+    try:
+        async with aiosqlite.connect(_DYNAMIC_DB) as db:
+            async with db.execute(
+                "SELECT value FROM app_settings WHERE key='sniffer_download_path'"
+            ) as cur:
+                row = await cur.fetchone()
+                if row:
+                    save_path = row[0] or ""
+    except Exception:
+        pass
+
     async with httpx.AsyncClient(timeout=30.0, verify=False) as client:
         sid = await _qbt_login(client, base, extra, pwd)
         cookies = {"SID": sid}
 
         r = await client.post(f"{base}/api/v2/torrents/add",
-            data={"urls": req.download_url, "category": "charthound-music"},
+            data={"urls": req.download_url, "category": "charthound-music",
+                  "savepath": save_path},
             cookies=cookies)
         if not r.is_success:
             raise HTTPException(502, f"qBittorrent add failed: {r.status_code}")

@@ -1490,12 +1490,26 @@ async def grab(req: GrabRequest, _=Depends(require_auth)):
     pwd = conn["token"]
     extra = conn["extra"]
 
+    # Read configured download path from app_settings (Kennel → ChartHound Download Path)
+    save_path = ""
+    try:
+        async with aiosqlite.connect(_DYNAMIC_DB) as db:
+            async with db.execute(
+                "SELECT value FROM app_settings WHERE key='sniffer_download_path'"
+            ) as cur:
+                row = await cur.fetchone()
+                if row:
+                    save_path = row[0] or ""
+    except Exception:
+        pass
+
     async with httpx.AsyncClient(timeout=30.0, verify=False) as client:
         sid = await _qbt_login(client, base, extra, pwd)
         cookies = {"SID": sid}
 
         r = await client.post(f"{base}/api/v2/torrents/add",
-            data={"urls": req.download_url, "category": "charthound-music"},
+            data={"urls": req.download_url, "category": "charthound-music",
+                  "savepath": save_path},
             cookies=cookies)
         if not r.is_success:
             raise HTTPException(502, f"qBittorrent add failed: {r.status_code}")
