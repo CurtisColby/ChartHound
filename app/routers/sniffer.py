@@ -30,6 +30,7 @@ import sqlite3
 import xml.etree.ElementTree as ET
 
 from datetime import datetime, timezone, timedelta
+from email.utils import parsedate_to_datetime
 
 import aiosqlite
 import httpx
@@ -93,6 +94,11 @@ class GrabRequest(BaseModel):
     download_url:    str
     title:           str
     indexer:         str = ""
+
+class GrabNzbRequest(BaseModel):
+    download_url:    str
+    title:           str
+    indexer_id:      int = 0
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1354,106 +1360,313 @@ async def trending(req: TrendingRequest, _=Depends(require_auth)):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  SEARCH — Prowlarr via Torznab (album-first)
+#  SHARED PROWLARR HELPERS — Torznab + Newznab
+# ══════════════════════════════════════════════════════════════════════════════
+
+async def _fetch_indexers_by_protocol(base: str, token: str) -> tuple:
+    """
+    Fetch Prowlarr indexer list and split into torrent vs usenet ID lists.
+    Returns: (torrent_ids: list[int], usenet_ids: list[dict])
+    Usenet returns dicts with {id, name} so we can label results.
+    """
+    torrent_ids, usenet_ids = [], []
+    try:
+        async with httpx.AsyncClient(timeout=10.0, verify=False) as client:
+            r = await client.get(f"{base}/api/v1/indexer",
+                                 headers={"X-Api-Key": token})
+            if r.is_success and isinstance(r.json(), list):
+                for ix in r.json():
+                    if not ix.get("enable"):
+                        continue
+                    proto = (ix.get("protocol") or "").lower()
+                    if proto == "usenet":
+                        usenet_ids.append({"id": ix["id"],
+                                           "name": ix.get("name", f"Usenet #{ix['id']}")})
+                    else:
+                        torrent_ids.append(ix["id"])
+    except Exception as e:
+        log.warning(f"Failed to fetch indexers: {e}")
+    return torrent_ids, usenet_ids
+
+
+async def _torznab_search(query: str, base: str, token: str,
+                           indexer_ids: list) -> list:
+    """Search torrent indexers via Torznab per-indexer endpoints."""
+    all_items = []
+
+    async def _query_one(idx_id: int, cl: httpx.AsyncClient) -> list:
+        try:
+            r = await cl.get(f"{base}/{idx_id}/api", params={
+                "t": "search", "q": query, "apikey": token,
+                "cat": _AUDIO_CATS, "limit": "50",
+            })
+            if not r.is_success:
+                return []
+            items = []
+            root = ET.fromstring(r.text)
+            ns = {"torznab": "http://torznab.com/schemas/2015/feed"}
+            for el in root.iter("item"):
+                title = el.findtext("title", "")
+                size = int(el.findtext("size", "0") or "0")
+                link = el.findtext("link", "")
+                guid = el.findtext("guid", "")
+                seeders, leechers = 0, 0
+                for a in el.findall("torznab:attr", ns):
+                    n, v = a.get("name", ""), a.get("value", "0")
+                    if n == "seeders": seeders = int(v or "0")
+                    elif n == "peers": leechers = int(v or "0") - seeders
+                    elif n == "leechers": leechers = int(v or "0")
+                enc = el.find("enclosure")
+                dl_url = enc.get("url", link) if enc is not None and enc.get("url") else link
+                info_url = guid if guid and guid.startswith("http") else ""
+                items.append({"title": title, "size": size, "seeders": seeders,
+                              "leechers": leechers, "dl_url": dl_url,
+                              "info_url": info_url, "indexer_id": idx_id})
+            return items
+        except Exception:
+            return []
+
+    async with httpx.AsyncClient(timeout=25.0, verify=False) as cl:
+        results = await asyncio.gather(*[_query_one(i, cl) for i in indexer_ids],
+                                       return_exceptions=True)
+    for r in results:
+        if isinstance(r, list):
+            all_items.extend(r)
+    log.info(f"Torznab '{query}': {len(all_items)} items from {len(indexer_ids)} indexers")
+    return all_items
+
+
+async def _newznab_search(query: str, base: str, token: str,
+                           usenet_indexers: list) -> list:
+    """Search usenet indexers via Newznab per-indexer endpoints."""
+    all_items = []
+
+    async def _query_one(idx: dict, cl: httpx.AsyncClient) -> list:
+        try:
+            r = await cl.get(f"{base}/{idx['id']}/api", params={
+                "t": "search", "q": query, "apikey": token,
+                "cat": _AUDIO_CATS, "limit": "100",
+            })
+            if not r.is_success:
+                return []
+            items = []
+            root = ET.fromstring(r.text)
+            ns = {"newznab": "http://www.newznab.com/DTD/2010/feeds/attributes/"}
+            for el in root.iter("item"):
+                title = el.findtext("title", "")
+                link = el.findtext("link", "")
+                guid = el.findtext("guid", "")
+                pub_date = el.findtext("pubDate", "")
+
+                # Size: check newznab:attr first, then <size>, then <enclosure>
+                size = 0
+                for a in el.findall("newznab:attr", ns):
+                    if a.get("name") == "size":
+                        try: size = int(a.get("value", "0") or "0")
+                        except (TypeError, ValueError): pass
+                if not size:
+                    try: size = int(el.findtext("size", "0") or "0")
+                    except (TypeError, ValueError): pass
+                if not size:
+                    enc = el.find("enclosure")
+                    if enc is not None:
+                        try: size = int(enc.get("length", "0") or "0")
+                        except (TypeError, ValueError): pass
+
+                enc = el.find("enclosure")
+                dl_url = enc.get("url", link) if enc is not None and enc.get("url") else link
+                info_url = guid if guid and guid.startswith("http") else ""
+
+                # Calculate age in days from pubDate
+                age_days = 0
+                if pub_date:
+                    try:
+                        pub_dt = parsedate_to_datetime(pub_date)
+                        age_days = max(0, (datetime.now(timezone.utc) - pub_dt).days)
+                    except Exception:
+                        pass
+
+                items.append({"title": title, "size": size, "dl_url": dl_url,
+                              "info_url": info_url, "indexer_id": idx["id"],
+                              "indexer_name": idx["name"], "age_days": age_days})
+            return items
+        except Exception:
+            return []
+
+    async with httpx.AsyncClient(timeout=25.0, verify=False) as cl:
+        results = await asyncio.gather(*[_query_one(i, cl) for i in usenet_indexers],
+                                       return_exceptions=True)
+    for r in results:
+        if isinstance(r, list):
+            all_items.extend(r)
+    log.info(f"Newznab '{query}': {len(all_items)} items from {len(usenet_indexers)} indexers")
+    return all_items
+
+
+def _parse_torrent_results(raw: list) -> list:
+    """Parse and sort torrent results (by seeders desc)."""
+    parsed = []
+    for item in raw:
+        s = item.get("seeders", 0) or 0
+        if s < 1:
+            continue
+        sz = item.get("size", 0) or 0
+        parsed.append({
+            "title": item["title"], "indexer": f"Indexer #{item.get('indexer_id','?')}",
+            "size_mb": round(sz / (1024*1024), 1) if sz else 0,
+            "seeders": s, "leechers": item.get("leechers", 0) or 0,
+            "download_url": item.get("dl_url", ""),
+            "info_url": item.get("info_url", ""),
+            "protocol": "torrent",
+        })
+    parsed.sort(key=lambda x: x["seeders"], reverse=True)
+    return parsed[:25]
+
+
+def _parse_usenet_results(raw: list) -> list:
+    """Parse and sort usenet results (by age asc — newest first)."""
+    parsed = []
+    for item in raw:
+        sz = item.get("size", 0) or 0
+        parsed.append({
+            "title": item["title"],
+            "indexer": item.get("indexer_name", f"Usenet #{item.get('indexer_id','?')}"),
+            "size_mb": round(sz / (1024*1024), 1) if sz else 0,
+            "age_days": item.get("age_days", 0),
+            "download_url": item.get("dl_url", ""),
+            "info_url": item.get("info_url", ""),
+            "indexer_id": item.get("indexer_id"),
+            "protocol": "usenet",
+        })
+    parsed.sort(key=lambda x: x["age_days"])
+    return parsed[:25]
+
+
+async def _grab_nzb_direct(download_url: str, title: str):
+    """
+    Grab an NZB by sending the URL directly to the user's NZB client
+    (SABnzbd or NZBGet) using credentials from the Kennel connections table.
+    """
+    # Read NZB client connection from DB — try sabnzbd first, then nzbget
+    nzb_conn = None
+    nzb_client_type = ""
+    for svc in ("sabnzbd", "nzbget"):
+        try:
+            async with aiosqlite.connect(_DYNAMIC_DB) as db:
+                db.row_factory = aiosqlite.Row
+                async with db.execute(
+                    "SELECT base_url, token_enc, extra_json FROM connections WHERE service=?",
+                    (svc,)
+                ) as cur:
+                    row = await cur.fetchone()
+                    if row and row["base_url"]:
+                        nzb_conn = {
+                            "base_url": row["base_url"],
+                            "token": decrypt_token(row["token_enc"]) if row["token_enc"] else "",
+                            "extra": json.loads(row["extra_json"] or "{}") if row["extra_json"] else {},
+                        }
+                        nzb_client_type = svc
+                        break
+        except Exception:
+            continue
+
+    if not nzb_conn:
+        raise HTTPException(502, "No NZB download client configured. "
+                                 "Add SABnzbd or NZBGet in The Kennel → Usenet Client.")
+
+    sab_base = nzb_conn["base_url"].rstrip("/")
+    apikey = nzb_conn["token"]
+
+    if nzb_client_type == "sabnzbd":
+        async with httpx.AsyncClient(timeout=30.0, verify=False) as client:
+            r = await client.get(f"{sab_base}/api", params={
+                "mode": "addurl",
+                "name": download_url,
+                "cat": "charthound-music",
+                "apikey": apikey,
+                "output": "json",
+            })
+            if not r.is_success:
+                raise HTTPException(502, f"SABnzbd rejected the NZB: HTTP {r.status_code}")
+            data = r.json() if r.text.strip().startswith("{") else {}
+            if data.get("status") is False:
+                err = data.get("error", "Unknown error")
+                raise HTTPException(502, f"SABnzbd error: {err}")
+        log.info(f"NZB sent to SABnzbd: {title}")
+    elif nzb_client_type == "nzbget":
+        # NZBGet uses JSON-RPC — apikey is the ControlPassword
+        async with httpx.AsyncClient(timeout=30.0, verify=False) as client:
+            r = await client.post(f"{sab_base}/jsonrpc",
+                json={
+                    "method": "append",
+                    "params": [title, download_url, "charthound-music",
+                               0, False, False, "", 0, "SCORE"],
+                },
+                auth=("nzbget", apikey))
+            if not r.is_success:
+                raise HTTPException(502, f"NZBGet rejected the NZB: HTTP {r.status_code}")
+        log.info(f"NZB sent to NZBGet: {title}")
+    else:
+        raise HTTPException(502, f"Unsupported NZB client type: {nzb_client_type}")
+
+    return {"ok": True, "title": title, "client": nzb_client_type,
+            "message": f"NZB sent to {nzb_client_type} — {title}"}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  SEARCH — Prowlarr via Torznab + Newznab (album-first, unified)
 # ══════════════════════════════════════════════════════════════════════════════
 
 @router.post("/search")
 async def search_prowlarr(req: SearchRequest, _=Depends(require_auth)):
-    """Album-first search via Torznab per-indexer endpoints."""
+    """Album-first search via per-indexer endpoints. Queries both torrent and usenet."""
     conn = await _get_connection("prowlarr")
     base = conn["base_url"].rstrip("/")
     token = conn["token"]
 
-    # Fetch enabled indexer IDs
-    indexer_ids = []
-    try:
-        async with httpx.AsyncClient(timeout=10.0, verify=False) as client:
-            r = await client.get(f"{base}/api/v1/indexer", headers={"X-Api-Key": token})
-            if r.is_success and isinstance(r.json(), list):
-                indexer_ids = [ix["id"] for ix in r.json() if ix.get("enable")]
-    except Exception as e:
-        log.warning(f"Failed to fetch indexers: {e}")
-    if not indexer_ids:
+    torrent_ids, usenet_ids = await _fetch_indexers_by_protocol(base, token)
+    if not torrent_ids and not usenet_ids:
         raise HTTPException(502, "No enabled indexers in Prowlarr.")
 
-    async def _torznab_search(query: str) -> list:
-        all_items = []
-        async def _query_one(idx_id: int, cl: httpx.AsyncClient) -> list:
-            try:
-                r = await cl.get(f"{base}/{idx_id}/api", params={
-                    "t": "search", "q": query, "apikey": token,
-                    "cat": _AUDIO_CATS, "limit": "50",
-                })
-                if not r.is_success:
-                    return []
-                items = []
-                root = ET.fromstring(r.text)
-                ns = {"torznab": "http://torznab.com/schemas/2015/feed"}
-                for el in root.iter("item"):
-                    title = el.findtext("title", "")
-                    size = int(el.findtext("size", "0") or "0")
-                    link = el.findtext("link", "")
-                    guid = el.findtext("guid", "")
-                    seeders, leechers = 0, 0
-                    for a in el.findall("torznab:attr", ns):
-                        n, v = a.get("name", ""), a.get("value", "0")
-                        if n == "seeders": seeders = int(v or "0")
-                        elif n == "peers": leechers = int(v or "0") - seeders
-                        elif n == "leechers": leechers = int(v or "0")
-                    enc = el.find("enclosure")
-                    dl_url = enc.get("url", link) if enc is not None and enc.get("url") else link
-                    info_url = guid if guid and guid.startswith("http") else ""
-                    items.append({"title": title, "size": size, "seeders": seeders,
-                                  "leechers": leechers, "dl_url": dl_url,
-                                  "info_url": info_url, "indexer_id": idx_id})
-                return items
-            except Exception:
-                return []
+    # ── Torrent search ────────────────────────────────────────────────────────
+    torrent_parsed = []
+    if torrent_ids:
+        results = await _torznab_search(req.artist, base, token, torrent_ids)
+        torrent_parsed = _parse_torrent_results(results)
+        if req.album:
+            more = await _torznab_search(f"{req.artist} {req.album}", base, token, torrent_ids)
+            more_parsed = _parse_torrent_results(more)
+            seen = {r["title"].lower().strip() for r in torrent_parsed}
+            for r in more_parsed:
+                if r["title"].lower().strip() not in seen:
+                    torrent_parsed.append(r)
+                    seen.add(r["title"].lower().strip())
+            torrent_parsed.sort(key=lambda x: x["seeders"], reverse=True)
+            torrent_parsed = torrent_parsed[:25]
 
-        async with httpx.AsyncClient(timeout=25.0, verify=False) as cl:
-            results = await asyncio.gather(*[_query_one(i, cl) for i in indexer_ids],
-                                           return_exceptions=True)
-        for r in results:
-            if isinstance(r, list):
-                all_items.extend(r)
-        log.info(f"Torznab '{query}': {len(all_items)} items from {len(indexer_ids)} indexers")
-        return all_items
+    # ── Usenet search ─────────────────────────────────────────────────────────
+    usenet_parsed = []
+    if usenet_ids:
+        nzb_results = await _newznab_search(req.artist, base, token, usenet_ids)
+        usenet_parsed = _parse_usenet_results(nzb_results)
+        if req.album:
+            more_nzb = await _newznab_search(f"{req.artist} {req.album}", base, token, usenet_ids)
+            more_nzb_parsed = _parse_usenet_results(more_nzb)
+            seen = {r["title"].lower().strip() for r in usenet_parsed}
+            for r in more_nzb_parsed:
+                if r["title"].lower().strip() not in seen:
+                    usenet_parsed.append(r)
+                    seen.add(r["title"].lower().strip())
+            usenet_parsed.sort(key=lambda x: x["age_days"])
+            usenet_parsed = usenet_parsed[:25]
 
-    def _parse(raw: list) -> list:
-        parsed = []
-        for item in raw:
-            s = item.get("seeders", 0) or 0
-            if s < 1:
-                continue
-            sz = item.get("size", 0) or 0
-            parsed.append({
-                "title": item["title"], "indexer": f"Indexer #{item.get('indexer_id','?')}",
-                "size_mb": round(sz / (1024*1024), 1) if sz else 0,
-                "seeders": s, "leechers": item.get("leechers", 0) or 0,
-                "download_url": item.get("dl_url", ""),
-                "info_url": item.get("info_url", ""),
-            })
-        parsed.sort(key=lambda x: x["seeders"], reverse=True)
-        return parsed[:25]
-
-    # Album-first: search by artist name (gets albums with best seeds)
-    results = await _torznab_search(req.artist)
-    parsed = _parse(results)
-
-    # If album provided, also search artist+album
-    if req.album:
-        more = await _torznab_search(f"{req.artist} {req.album}")
-        parsed_more = _parse(more)
-        # Merge deduplicated
-        seen = {r["title"].lower().strip() for r in parsed}
-        for r in parsed_more:
-            if r["title"].lower().strip() not in seen:
-                parsed.append(r)
-                seen.add(r["title"].lower().strip())
-        parsed.sort(key=lambda x: x["seeders"], reverse=True)
-        parsed = parsed[:25]
-
-    return {"results": parsed, "total": len(parsed), "artist_query": req.artist}
+    return {
+        "results": torrent_parsed,           # backward compat for existing frontend
+        "usenet_results": usenet_parsed,
+        "total": len(torrent_parsed),
+        "usenet_total": len(usenet_parsed),
+        "artist_query": req.artist,
+    }
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1530,6 +1743,94 @@ async def grab(req: GrabRequest, _=Depends(require_auth)):
     return {"ok": True, "client": "qbittorrent", "title": req.title,
             "category": "charthound-music",
             "message": "Torrent added to qBittorrent — files will start downloading shortly"}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  GRAB NZB — Send to NZB client via Prowlarr
+# ══════════════════════════════════════════════════════════════════════════════
+
+@router.post("/grab-nzb")
+async def grab_nzb(req: GrabNzbRequest, _=Depends(require_auth)):
+    """Send NZB to download client via Prowlarr's download routing."""
+    if not req.download_url:
+        raise HTTPException(400, "No download URL provided.")
+    try:
+        result = await _grab_nzb_direct(req.download_url, req.title)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.error(f"NZB grab failed: {e}")
+        raise HTTPException(502, f"NZB grab failed: {e}")
+
+
+@router.post("/test-nzb-client")
+async def test_nzb_client(_=Depends(require_auth)):
+    """Test the NZB client connection configured in the Kennel."""
+    nzb_conn = None
+    nzb_client_type = ""
+    for svc in ("sabnzbd", "nzbget"):
+        try:
+            async with aiosqlite.connect(_DYNAMIC_DB) as db:
+                db.row_factory = aiosqlite.Row
+                async with db.execute(
+                    "SELECT base_url, token_enc FROM connections WHERE service=?",
+                    (svc,)
+                ) as cur:
+                    row = await cur.fetchone()
+                    if row and row["base_url"]:
+                        nzb_conn = {
+                            "base_url": row["base_url"],
+                            "token": decrypt_token(row["token_enc"]) if row["token_enc"] else "",
+                        }
+                        nzb_client_type = svc
+                        break
+        except Exception:
+            continue
+
+    if not nzb_conn:
+        raise HTTPException(400, "No NZB client configured. Save your connection first.")
+
+    sab_base = nzb_conn["base_url"].rstrip("/")
+    apikey = nzb_conn["token"]
+
+    try:
+        if nzb_client_type == "sabnzbd":
+            async with httpx.AsyncClient(timeout=10.0, verify=False) as client:
+                r = await client.get(f"{sab_base}/api", params={
+                    "mode": "version", "apikey": apikey, "output": "json",
+                })
+                if not r.is_success:
+                    return {"ok": False, "error": f"SABnzbd returned HTTP {r.status_code}"}
+                data = r.json() if r.text.strip().startswith("{") else {}
+                version = data.get("version", "unknown")
+                now = datetime.now(timezone.utc).isoformat()
+                async with aiosqlite.connect(_DYNAMIC_DB) as db:
+                    await db.execute(
+                        "UPDATE connections SET verified_at = ? WHERE service = ?",
+                        (now, nzb_client_type))
+                    await db.commit()
+                return {"ok": True, "detail": f"SABnzbd v{version} connected",
+                        "verified_at": now}
+        elif nzb_client_type == "nzbget":
+            async with httpx.AsyncClient(timeout=10.0, verify=False) as client:
+                r = await client.post(f"{sab_base}/jsonrpc",
+                    json={"method": "version", "params": []},
+                    auth=("nzbget", apikey))
+                if not r.is_success:
+                    return {"ok": False, "error": f"NZBGet returned HTTP {r.status_code}"}
+                data = r.json()
+                version = data.get("result", "unknown")
+                now = datetime.now(timezone.utc).isoformat()
+                async with aiosqlite.connect(_DYNAMIC_DB) as db:
+                    await db.execute(
+                        "UPDATE connections SET verified_at = ? WHERE service = ?",
+                        (now, nzb_client_type))
+                    await db.commit()
+                return {"ok": True, "detail": f"NZBGet v{version} connected",
+                        "verified_at": now}
+    except Exception as e:
+        return {"ok": False, "error": f"Connection failed: {e}"}
 
 
 async def _background_checkmark(base: str, password: str, extra: dict,

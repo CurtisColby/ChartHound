@@ -875,6 +875,36 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
             </div>
           </div>
 
+          <!-- USENET CLIENT -->
+          <div class="conn-card" id="connCard-sabnzbd">
+            <div class="conn-card-header">
+              <div class="conn-card-title"><div class="conn-card-dot" id="cDot-sabnzbd"></div>📦 USENET CLIENT</div>
+              <div class="conn-verified" id="cVerified-sabnzbd">NOT VERIFIED</div>
+            </div>
+            <p style="font-family:var(--mono);font-size:.57rem;color:var(--muted);line-height:1.7;margin-bottom:.65rem">
+              Optional — only needed if you have Usenet indexers (e.g. NZBGeek) in Prowlarr.
+              NZB grabs are tagged with <strong style="color:var(--amber)">charthound-music</strong> category.
+              Create this category in your NZB client pointing to your music folder.
+            </p>
+            <div class="label-row"><label>Client Type</label></div>
+            <select id="cNzbClientType" style="margin-bottom:.6rem" onchange="updateNzbClientURL()">
+              <option value="sabnzbd">SABnzbd</option>
+              <option value="nzbget">NZBGet</option>
+            </select>
+            <div class="label-row"><label>Server URL</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">SABnzbd default: :8080 · NZBGet: :6789. Use your server's LAN IP, not localhost.</div></div></div>
+            <input type="url" id="cURL-sabnzbd" placeholder="http://YOUR-SERVER-IP:8080">
+            <div class="field-hint">SABnzbd: :8080 · NZBGet: :6789</div>
+            <div class="label-row"><label>API Key</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">SABnzbd: use the NZB Key from Config → General → Security (not the regular API Key). NZBGet: use the ControlPassword from Settings → Security.</div></div></div>
+            <input type="password" id="cToken-sabnzbd" placeholder="Stored encrypted · never logged">
+            <div class="field-hint">SABnzbd: NZB Key (Config → General) · NZBGet: ControlPassword</div>
+            <div class="conn-btn-row">
+              <button class="btn btn-outline btn-sm" onclick="saveNzbClient()">💾 SAVE</button>
+              <button class="btn btn-purple btn-sm" id="testBtn-sabnzbd" onclick="testNzbClient()">⚡ TEST</button>
+              <button class="btn btn-red btn-sm" onclick="disconnectConn('sabnzbd')">✕ DISCONNECT</button>
+            </div>
+            <div class="conn-feedback" id="cFeedback-sabnzbd"></div>
+          </div>
+
           <!-- DISCOGS -->
           <div class="conn-card" id="connCard-discogs">
             <div class="conn-card-header">
@@ -2327,7 +2357,7 @@ let selectedTrackIds = new Set();
 let scanPaused = false;
 let browseCurrentPath = '';
 
-const SERVICES = ['plex','emby','jellyfin','lastfm','prowlarr','radarr','sonarr','qbittorrent','discogs'];
+const SERVICES = ['plex','emby','jellyfin','lastfm','prowlarr','radarr','sonarr','qbittorrent','sabnzbd','discogs'];
 const connState = Object.fromEntries(SERVICES.map(s => [s, false]));
 
 const OS_COMMANDS = {
@@ -2596,6 +2626,65 @@ function updateClientURL() {
   const port = CLIENT_PORTS[type] || '8080';
   const el = document.getElementById('cURL-qbittorrent');
   if (el) el.placeholder = `http://YOUR-SERVER-IP:${port}`;
+}
+
+const NZB_PORTS = {sabnzbd:'8080', nzbget:'6789'};
+
+function updateNzbClientURL() {
+  const type = document.getElementById('cNzbClientType').value;
+  const port = NZB_PORTS[type] || '8080';
+  const el = document.getElementById('cURL-sabnzbd');
+  if (el) el.placeholder = `http://YOUR-SERVER-IP:${port}`;
+}
+
+async function saveNzbClient() {
+  const clientType = document.getElementById('cNzbClientType').value;
+  const url = (document.getElementById('cURL-sabnzbd')?.value || '').trim();
+  const token = (document.getElementById('cToken-sabnzbd')?.value || '').trim();
+  if (!url && !token) { setFeedback('sabnzbd', 'Enter your URL and API key before saving.', 'error'); return; }
+  setFeedback('sabnzbd', 'Saving…', '');
+  try {
+    const body = { service: clientType, base_url: url };
+    if (token) body.token = token;
+    const r = await fetch(`${API}/api/kennel/save`, { method:'POST', headers:authHdrs(), body:JSON.stringify(body) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || 'Save failed');
+    setFeedback('sabnzbd', '✓ Saved and encrypted. Click TEST to verify.', 'ok');
+    const tokenEl = document.getElementById('cToken-sabnzbd');
+    if (tokenEl && token) { tokenEl.value = ''; tokenEl.placeholder = '●●●●●●●● (stored encrypted)'; }
+    toast(`${clientType} credentials saved.`, 'ok');
+  } catch(e) { setFeedback('sabnzbd', `✗ ${e.message}`, 'error'); }
+}
+
+async function testNzbClient() {
+  const btn = document.getElementById('testBtn-sabnzbd');
+  btn.disabled = true;
+  setCardDot('sabnzbd', 'spin');
+  setFeedback('sabnzbd', 'Testing connection…', '');
+  try {
+    const r = await fetch(`${API}/api/sniffer/test-nzb-client`, { method:'POST', headers:authHdrs() });
+    const d = await r.json();
+    if (r.ok && d.ok) {
+      setCardDot('sabnzbd', 'ok');
+      setFeedback('sabnzbd', `✓ ${d.detail}`, 'ok');
+      setVerified('sabnzbd', d.verified_at, true);
+      connState['sabnzbd'] = true;
+      const card = document.getElementById('connCard-sabnzbd');
+      if (card) card.className = 'conn-card connected';
+      toast('NZB client connected!', 'ok');
+    } else {
+      throw new Error(d.error || d.detail || 'Connection failed');
+    }
+  } catch(e) {
+    setCardDot('sabnzbd', 'error');
+    setFeedback('sabnzbd', `✗ ${e.message}`, 'error');
+    setVerified('sabnzbd', null, false);
+    connState['sabnzbd'] = false;
+    const card = document.getElementById('connCard-sabnzbd');
+    if (card) card.className = 'conn-card failed';
+  }
+  btn.disabled = false;
+  refreshAllDots();
 }
 
 async function loadAllStatuses() {
@@ -6621,7 +6710,7 @@ async function snfSearchTrack(idx) {
 
   _snfCardCounter++;
   var cardId = 'snf-card-' + _snfCardCounter;
-  _snfCards[cardId] = { artist: artistKey, results: [] };
+  _snfCards[cardId] = { artist: artistKey, results: [], usenet_results: [] };
 
   var card = document.createElement('div');
   card.id = cardId;
@@ -6654,36 +6743,81 @@ async function snfSearchTrack(idx) {
     var d = await r.json();
     if (!r.ok) throw new Error(d.detail || 'HTTP ' + r.status);
     var results = d.results || [];
+    var usenetResults = d.usenet_results || [];
     _snfCards[cardId].results = results;
+    _snfCards[cardId].usenet_results = usenetResults;
     var bodyEl = card.querySelector('.snf-card-body');
     var subEl = document.getElementById(cardId + '-sub');
 
-    if (!results.length) {
-      bodyEl.innerHTML = '<div style="text-align:center;padding:1rem;color:var(--muted2);font-family:var(--mono);font-size:.6rem">No results with seeds found for ' + esc(track.artist) + '.</div>';
+    if (!results.length && !usenetResults.length) {
+      bodyEl.innerHTML = '<div style="text-align:center;padding:1rem;color:var(--muted2);font-family:var(--mono);font-size:.6rem">No results found for ' + esc(track.artist) + '.</div>';
       snfLog('\u2717 No results for ' + track.artist, 'warn');
       return;
     }
-    snfLog('\u2713 Found ' + results.length + ' result(s)', 'ok');
-    subEl.textContent = results.length + ' result(s) for: ' + track.artist;
-    bodyEl.innerHTML = results.map(function(r, i) {
-      var sizeMB = r.size_mb || 0;
-      var sizeStr = sizeMB > 1024 ? (sizeMB/1024).toFixed(1) + ' GB' : sizeMB + ' MB';
-      return '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:.65rem .85rem;display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">'
-        + '<div style="flex:1;min-width:200px">'
-        + '<div style="font-size:.68rem;color:var(--text);margin-bottom:.25rem;word-break:break-all">' + esc(r.title||'') + '</div>'
-        + '<div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">'
-        + '<span style="font-size:.52rem;color:var(--muted)">' + esc(r.indexer||'') + '</span>'
-        + '<span style="font-size:.52rem;color:var(--muted)">' + sizeStr + '</span>'
-        + '</div></div>'
-        + '<div style="text-align:center;min-width:50px">'
-        + '<div style="font-family:var(--display);font-size:1.1rem;color:var(--green)">' + (r.seeders||0) + '</div>'
-        + '<div style="font-size:.45rem;color:var(--muted);letter-spacing:.5px">SEEDS</div></div>'
-        + '<div style="display:flex;gap:.35rem;flex-wrap:wrap">'
-        + '<button onclick="snfGrabGet(\'' + cardId + '\',' + i + ')" style="padding:.3rem .6rem;background:var(--gold);color:#000;border:none;border-radius:4px;font-family:var(--mono);font-size:.58rem;cursor:pointer" title="Send to qBittorrent">\u2b07 GET</button>'
-        + (r.info_url ? '<a href="' + esc(r.info_url) + '" target="_blank" rel="noopener" style="display:inline-block;padding:.3rem .6rem;background:var(--surface3);color:var(--teal);border:1px solid var(--teal);border-radius:4px;font-family:var(--mono);font-size:.58rem;cursor:pointer;text-decoration:none" title="Open source page">\u2197 OPEN</a>' : '')
-        + '<button onclick="snfCopyMagnet(\'' + cardId + '\',' + i + ')" style="padding:.3rem .6rem;background:var(--surface3);color:var(--purple);border:1px solid var(--purple);border-radius:4px;font-family:var(--mono);font-size:.58rem;cursor:pointer" title="Copy download URL">\ud83d\udd17 MAGNET</button>'
-        + '</div></div>';
-    }).join('');
+
+    var totalCount = results.length + usenetResults.length;
+    snfLog('\u2713 Found ' + totalCount + ' result(s) (' + results.length + ' torrent, ' + usenetResults.length + ' usenet)', 'ok');
+    subEl.textContent = totalCount + ' result(s) for: ' + track.artist;
+
+    var html = '';
+
+    // ── Torrent results section ──
+    if (results.length) {
+      html += '<div style="font-family:var(--mono);font-size:.52rem;letter-spacing:2px;color:var(--gold);margin-top:.25rem;display:flex;align-items:center;gap:.5rem">\ud83e\uddf2 TORRENT RESULTS (' + results.length + ')<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>';
+      html += results.map(function(r, i) {
+        var sizeMB = r.size_mb || 0;
+        var sizeStr = sizeMB > 1024 ? (sizeMB/1024).toFixed(1) + ' GB' : sizeMB + ' MB';
+        return '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:.65rem .85rem;display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">'
+          + '<div style="flex:1;min-width:200px">'
+          + '<div style="font-size:.68rem;color:var(--text);margin-bottom:.25rem;word-break:break-all">' + esc(r.title||'') + '</div>'
+          + '<div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">'
+          + '<span style="font-size:.52rem;color:var(--muted)">' + esc(r.indexer||'') + '</span>'
+          + '<span style="font-size:.52rem;color:var(--muted)">' + sizeStr + '</span>'
+          + '</div></div>'
+          + '<div style="text-align:center;min-width:50px">'
+          + '<div style="font-family:var(--display);font-size:1.1rem;color:var(--green)">' + (r.seeders||0) + '</div>'
+          + '<div style="font-size:.45rem;color:var(--muted);letter-spacing:.5px">SEEDS</div></div>'
+          + '<div style="display:flex;gap:.35rem;flex-wrap:wrap">'
+          + '<button onclick="snfGrabGet(\'' + cardId + '\',' + i + ')" style="padding:.3rem .6rem;background:var(--gold);color:#000;border:none;border-radius:4px;font-family:var(--mono);font-size:.58rem;cursor:pointer" title="Send to qBittorrent">\u2b07 GET</button>'
+          + (r.info_url ? '<a href="' + esc(r.info_url) + '" target="_blank" rel="noopener" style="display:inline-block;padding:.3rem .6rem;background:var(--surface3);color:var(--teal);border:1px solid var(--teal);border-radius:4px;font-family:var(--mono);font-size:.58rem;cursor:pointer;text-decoration:none" title="Open source page">\u2197 OPEN</a>' : '')
+          + '<button onclick="snfCopyMagnet(\'' + cardId + '\',' + i + ')" style="padding:.3rem .6rem;background:var(--surface3);color:var(--purple);border:1px solid var(--purple);border-radius:4px;font-family:var(--mono);font-size:.58rem;cursor:pointer" title="Copy download URL">\ud83d\udd17 MAGNET</button>'
+          + '</div></div>';
+      }).join('');
+    }
+
+    // ── Usenet results section ──
+    if (usenetResults.length) {
+      html += '<div style="font-family:var(--mono);font-size:.52rem;letter-spacing:2px;color:var(--amber);margin-top:.75rem;display:flex;align-items:center;gap:.5rem">\ud83d\udce6 USENET RESULTS (' + usenetResults.length + ')<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>';
+      html += usenetResults.map(function(r, i) {
+        var sizeMB = r.size_mb || 0;
+        var sizeStr = sizeMB > 1024 ? (sizeMB/1024).toFixed(1) + ' GB' : sizeMB + ' MB';
+        var ageStr = (r.age_days === 0) ? 'Today' : r.age_days + 'd ago';
+        return '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:.65rem .85rem;display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">'
+          + '<div style="flex:1;min-width:200px">'
+          + '<div style="font-size:.68rem;color:var(--text);margin-bottom:.25rem;word-break:break-all">' + esc(r.title||'') + '</div>'
+          + '<div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">'
+          + '<span style="font-size:.52rem;color:var(--muted)">' + esc(r.indexer||'') + '</span>'
+          + '<span style="font-size:.52rem;color:var(--muted)">' + sizeStr + '</span>'
+          + '</div></div>'
+          + '<div style="text-align:center;min-width:50px">'
+          + '<div style="font-family:var(--display);font-size:.9rem;color:var(--amber)">' + ageStr + '</div>'
+          + '<div style="font-size:.45rem;color:var(--muted);letter-spacing:.5px">AGE</div></div>'
+          + '<div style="display:flex;gap:.35rem;flex-wrap:wrap">'
+          + '<button onclick="snfGrabNzb(\'' + cardId + '\',' + i + ')" style="padding:.3rem .6rem;background:var(--amber);color:#000;border:none;border-radius:4px;font-family:var(--mono);font-size:.58rem;cursor:pointer" title="Send NZB to download client via Prowlarr">\u2b07 GET NZB</button>'
+          + (r.info_url ? '<a href="' + esc(r.info_url) + '" target="_blank" rel="noopener" style="display:inline-block;padding:.3rem .6rem;background:var(--surface3);color:var(--teal);border:1px solid var(--teal);border-radius:4px;font-family:var(--mono);font-size:.58rem;cursor:pointer;text-decoration:none" title="Open source page">\u2197 OPEN</a>' : '')
+          + '</div></div>';
+      }).join('');
+    }
+
+    // ── Usenet setup hint (only if zero usenet results AND zero usenet indexers) ──
+    if (!usenetResults.length && d.usenet_total === 0 && typeof d.usenet_total !== 'undefined') {
+      html += '<div style="margin-top:.5rem;padding:.5rem .7rem;background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.2);border-radius:6px;font-family:var(--mono);font-size:.48rem;color:var(--muted)">'
+        + '\u2139\ufe0f No Usenet indexers detected in Prowlarr. Add a Newznab indexer (e.g. NZBGeek) to enable NZB search. '
+        + 'Your NZB client also needs a <strong style="color:var(--amber)">charthound-music</strong> category pointing to your music folder.'
+        + '</div>';
+    }
+
+    bodyEl.innerHTML = html;
   } catch(e) {
     var bodyEl2 = card.querySelector('.snf-card-body');
     bodyEl2.innerHTML = '<div style="text-align:center;padding:1rem;color:var(--red);font-family:var(--mono);font-size:.6rem">\u2717 ' + esc(e.message) + '</div>';
@@ -6755,6 +6889,27 @@ function snfCopyMagnet(cardId, resultIdx) {
     toast('URL copied to clipboard', 'ok');
   } catch(e) {
     snfLog('\u2717 Copy failed: ' + e.message, 'err');
+  }
+}
+
+async function snfGrabNzb(cardId, resultIdx) {
+  var cardData = _snfCards[cardId];
+  if (!cardData) return;
+  var result = (cardData.usenet_results || [])[resultIdx];
+  if (!result) return;
+  snfLog('\u2b07 Sending NZB to download client: ' + result.title, 'info');
+  try {
+    var r = await fetch(API + '/api/sniffer/grab-nzb', {
+      method:'POST', headers:authHdrs(),
+      body: JSON.stringify({ download_url: result.download_url, title: result.title, indexer_id: result.indexer_id || 0 }),
+    });
+    var d = await r.json();
+    if (!r.ok) throw new Error(d.detail || 'HTTP ' + r.status);
+    snfLog('\u2713 ' + d.message, 'ok');
+    toast(d.message, 'ok');
+  } catch(e) {
+    snfLog('\u2717 NZB grab failed: ' + e.message, 'err');
+    toast('NZB grab failed: ' + e.message, 'error');
   }
 }
 
@@ -7232,7 +7387,7 @@ async function bhSearchProwlarr(idx) {
 
   _bhCardCounter++;
   var cardId = 'bh-card-' + _bhCardCounter;
-  _bhCards[cardId] = { key: cardKey, results: [] };
+  _bhCards[cardId] = { key: cardKey, results: [], usenet_results: [] };
 
   var card = document.createElement('div');
   card.id = cardId;
@@ -7255,7 +7410,7 @@ async function bhSearchProwlarr(idx) {
 
   container.appendChild(card);
   card.scrollIntoView({behavior:'smooth'});
-  bhLog('🔍 Searching Prowlarr for: ' + searchQuery, 'info');
+  bhLog('\ud83d\udd0d Searching Prowlarr for: ' + searchQuery, 'info');
 
   try {
     var r = await fetch(API + '/api/bloodhound/search-prowlarr', {
@@ -7265,39 +7420,83 @@ async function bhSearchProwlarr(idx) {
     var d = await r.json();
     if (!r.ok) throw new Error(d.detail || 'HTTP ' + r.status);
     var results = d.results || [];
+    var usenetResults = d.usenet_results || [];
     _bhCards[cardId].results = results;
+    _bhCards[cardId].usenet_results = usenetResults;
     var bodyEl = card.querySelector('.bh-card-body');
     var subEl = document.getElementById(cardId + '-sub');
 
-    if (!results.length) {
-      bodyEl.innerHTML = '<div style="text-align:center;padding:1rem;color:var(--muted2);font-family:var(--mono);font-size:.6rem">No results with seeds found.</div>';
-      bhLog('✗ No results for: ' + searchQuery, 'warn');
+    if (!results.length && !usenetResults.length) {
+      bodyEl.innerHTML = '<div style="text-align:center;padding:1rem;color:var(--muted2);font-family:var(--mono);font-size:.6rem">No results found.</div>';
+      bhLog('\u2717 No results for: ' + searchQuery, 'warn');
       return;
     }
-    bhLog('✓ Found ' + results.length + ' result(s)', 'ok');
-    subEl.textContent = results.length + ' result(s) for: ' + searchQuery;
-    bodyEl.innerHTML = results.map(function(r, i) {
-      var sizeMB = r.size_mb || 0;
-      var sizeStr = sizeMB > 1024 ? (sizeMB/1024).toFixed(1) + ' GB' : sizeMB + ' MB';
-      return '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:.65rem .85rem;display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">'
-        + '<div style="flex:1;min-width:200px">'
-        + '<div style="font-size:.68rem;color:var(--text);margin-bottom:.25rem;word-break:break-all">' + esc(r.title||'') + '</div>'
-        + '<div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">'
-        + '<span style="font-size:.52rem;color:var(--muted)">' + esc(r.indexer||'') + '</span>'
-        + '<span style="font-size:.52rem;color:var(--muted)">' + sizeStr + '</span>'
-        + '</div></div>'
-        + '<div style="text-align:center;min-width:50px">'
-        + '<div style="font-family:var(--display);font-size:1.1rem;color:var(--green)">' + (r.seeders||0) + '</div>'
-        + '<div style="font-size:.45rem;color:var(--muted);letter-spacing:.5px">SEEDS</div></div>'
-        + '<div style="display:flex;gap:.35rem;flex-wrap:wrap">'
-        + '<button onclick="bhGrabGet(\'' + cardId + '\',' + i + ')" style="padding:.3rem .6rem;background:var(--orange);color:#000;border:none;border-radius:4px;font-family:var(--mono);font-size:.58rem;cursor:pointer" title="Send to qBittorrent">\u2b07 GET</button>'
-        + (r.info_url ? '<a href="' + esc(r.info_url) + '" target="_blank" rel="noopener" style="display:inline-block;padding:.3rem .6rem;background:var(--surface3);color:var(--teal);border:1px solid var(--teal);border-radius:4px;font-family:var(--mono);font-size:.58rem;cursor:pointer;text-decoration:none" title="Open source page">\u2197 OPEN</a>' : '')
-        + '<button onclick="bhCopyMagnet(\'' + cardId + '\',' + i + ')" style="padding:.3rem .6rem;background:var(--surface3);color:var(--purple);border:1px solid var(--purple);border-radius:4px;font-family:var(--mono);font-size:.58rem;cursor:pointer" title="Copy download URL">\ud83d\udd17 MAGNET</button>'
-        + '</div></div>';
-    }).join('');
+
+    var totalCount = results.length + usenetResults.length;
+    bhLog('\u2713 Found ' + totalCount + ' result(s) (' + results.length + ' torrent, ' + usenetResults.length + ' usenet)', 'ok');
+    subEl.textContent = totalCount + ' result(s) for: ' + searchQuery;
+
+    var html = '';
+
+    // ── Torrent results section ──
+    if (results.length) {
+      html += '<div style="font-family:var(--mono);font-size:.52rem;letter-spacing:2px;color:var(--orange);margin-top:.25rem;display:flex;align-items:center;gap:.5rem">\ud83e\uddf2 TORRENT RESULTS (' + results.length + ')<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>';
+      html += results.map(function(r, i) {
+        var sizeMB = r.size_mb || 0;
+        var sizeStr = sizeMB > 1024 ? (sizeMB/1024).toFixed(1) + ' GB' : sizeMB + ' MB';
+        return '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:.65rem .85rem;display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">'
+          + '<div style="flex:1;min-width:200px">'
+          + '<div style="font-size:.68rem;color:var(--text);margin-bottom:.25rem;word-break:break-all">' + esc(r.title||'') + '</div>'
+          + '<div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">'
+          + '<span style="font-size:.52rem;color:var(--muted)">' + esc(r.indexer||'') + '</span>'
+          + '<span style="font-size:.52rem;color:var(--muted)">' + sizeStr + '</span>'
+          + '</div></div>'
+          + '<div style="text-align:center;min-width:50px">'
+          + '<div style="font-family:var(--display);font-size:1.1rem;color:var(--green)">' + (r.seeders||0) + '</div>'
+          + '<div style="font-size:.45rem;color:var(--muted);letter-spacing:.5px">SEEDS</div></div>'
+          + '<div style="display:flex;gap:.35rem;flex-wrap:wrap">'
+          + '<button onclick="bhGrabGet(\'' + cardId + '\',' + i + ')" style="padding:.3rem .6rem;background:var(--orange);color:#000;border:none;border-radius:4px;font-family:var(--mono);font-size:.58rem;cursor:pointer" title="Send to qBittorrent">\u2b07 GET</button>'
+          + (r.info_url ? '<a href="' + esc(r.info_url) + '" target="_blank" rel="noopener" style="display:inline-block;padding:.3rem .6rem;background:var(--surface3);color:var(--teal);border:1px solid var(--teal);border-radius:4px;font-family:var(--mono);font-size:.58rem;cursor:pointer;text-decoration:none" title="Open source page">\u2197 OPEN</a>' : '')
+          + '<button onclick="bhCopyMagnet(\'' + cardId + '\',' + i + ')" style="padding:.3rem .6rem;background:var(--surface3);color:var(--purple);border:1px solid var(--purple);border-radius:4px;font-family:var(--mono);font-size:.58rem;cursor:pointer" title="Copy download URL">\ud83d\udd17 MAGNET</button>'
+          + '</div></div>';
+      }).join('');
+    }
+
+    // ── Usenet results section ──
+    if (usenetResults.length) {
+      html += '<div style="font-family:var(--mono);font-size:.52rem;letter-spacing:2px;color:var(--amber);margin-top:.75rem;display:flex;align-items:center;gap:.5rem">\ud83d\udce6 USENET RESULTS (' + usenetResults.length + ')<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>';
+      html += usenetResults.map(function(r, i) {
+        var sizeMB = r.size_mb || 0;
+        var sizeStr = sizeMB > 1024 ? (sizeMB/1024).toFixed(1) + ' GB' : sizeMB + ' MB';
+        var ageStr = (r.age_days === 0) ? 'Today' : r.age_days + 'd ago';
+        return '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:.65rem .85rem;display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">'
+          + '<div style="flex:1;min-width:200px">'
+          + '<div style="font-size:.68rem;color:var(--text);margin-bottom:.25rem;word-break:break-all">' + esc(r.title||'') + '</div>'
+          + '<div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">'
+          + '<span style="font-size:.52rem;color:var(--muted)">' + esc(r.indexer||'') + '</span>'
+          + '<span style="font-size:.52rem;color:var(--muted)">' + sizeStr + '</span>'
+          + '</div></div>'
+          + '<div style="text-align:center;min-width:50px">'
+          + '<div style="font-family:var(--display);font-size:.9rem;color:var(--amber)">' + ageStr + '</div>'
+          + '<div style="font-size:.45rem;color:var(--muted);letter-spacing:.5px">AGE</div></div>'
+          + '<div style="display:flex;gap:.35rem;flex-wrap:wrap">'
+          + '<button onclick="bhGrabNzb(\'' + cardId + '\',' + i + ')" style="padding:.3rem .6rem;background:var(--amber);color:#000;border:none;border-radius:4px;font-family:var(--mono);font-size:.58rem;cursor:pointer" title="Send NZB to download client via Prowlarr">\u2b07 GET NZB</button>'
+          + (r.info_url ? '<a href="' + esc(r.info_url) + '" target="_blank" rel="noopener" style="display:inline-block;padding:.3rem .6rem;background:var(--surface3);color:var(--teal);border:1px solid var(--teal);border-radius:4px;font-family:var(--mono);font-size:.58rem;cursor:pointer;text-decoration:none" title="Open source page">\u2197 OPEN</a>' : '')
+          + '</div></div>';
+      }).join('');
+    }
+
+    if (!usenetResults.length && d.usenet_total === 0 && typeof d.usenet_total !== 'undefined') {
+      html += '<div style="margin-top:.5rem;padding:.5rem .7rem;background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.2);border-radius:6px;font-family:var(--mono);font-size:.48rem;color:var(--muted)">'
+        + '\u2139\ufe0f No Usenet indexers detected in Prowlarr. Add a Newznab indexer (e.g. NZBGeek) to enable NZB search. '
+        + 'Your NZB client also needs a <strong style="color:var(--amber)">charthound-music</strong> category pointing to your music folder.'
+        + '</div>';
+    }
+
+    bodyEl.innerHTML = html;
   } catch(e) {
     card.querySelector('.bh-card-body').innerHTML = '<div style="text-align:center;padding:1rem;color:var(--red);font-family:var(--mono);font-size:.6rem">\u2717 ' + esc(e.message) + '</div>';
-    bhLog('✗ Search failed: ' + e.message, 'err');
+    bhLog('\u2717 Search failed: ' + e.message, 'err');
   }
 }
 
@@ -7363,6 +7562,28 @@ function bhCopyMagnet(cardId, resultIdx) {
     bhLog('✗ Copy failed: ' + e.message, 'err');
   }
 }
+
+async function bhGrabNzb(cardId, resultIdx) {
+  var cardData = _bhCards[cardId];
+  if (!cardData) return;
+  var result = (cardData.usenet_results || [])[resultIdx];
+  if (!result) return;
+  bhLog('⬇ Sending NZB to download client: ' + result.title, 'info');
+  try {
+    var r = await fetch(API + '/api/bloodhound/grab-nzb', {
+      method:'POST', headers:authHdrs(),
+      body: JSON.stringify({ download_url: result.download_url, title: result.title, indexer_id: result.indexer_id || 0 }),
+    });
+    var d = await r.json();
+    if (!r.ok) throw new Error(d.detail || 'HTTP ' + r.status);
+    bhLog('✓ ' + d.message, 'ok');
+    toast(d.message, 'ok');
+  } catch(e) {
+    bhLog('✗ NZB grab failed: ' + e.message, 'err');
+    toast('NZB grab failed: ' + e.message, 'error');
+  }
+}
+
 function bhInjectScrollNav() {
   if (document.getElementById("bh-scroll-nav")) return;
   const bhScroller = document.querySelector(".content-area") || document.documentElement;

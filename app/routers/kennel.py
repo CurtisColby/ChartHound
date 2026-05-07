@@ -32,7 +32,7 @@ settings = get_settings()
 VALID_SERVICES = {
     "plex", "emby", "jellyfin", "lastfm", "prowlarr",
     "radarr", "sonarr", "qbittorrent", "deluge", "transmission",
-    "youtube", "discogs"
+    "youtube", "discogs", "sabnzbd", "nzbget"
 }
 
 # Default URLs per service
