@@ -6727,6 +6727,7 @@ function snfRenderResults() {
   const empty = document.getElementById('snf-empty');
   tbody.innerHTML = '';
   let data = snfResults.slice();
+  data.forEach(function(r, i) { r._origIdx = i; });
   const sortFns = { artist: function(r){return (r.artist||'').toLowerCase()}, title: function(r){return (r.title||'').toLowerCase()}, year: function(r){return r.chart_year||0}, peak: function(r){return r.peak_position||999}, status: function(r){return r.in_library?1:0} };
   const fn = sortFns[_snfSortKey] || sortFns.peak;
   data.sort(function(a,b) { const av=fn(a), bv=fn(b); if(av<bv)return _snfSortAsc?-1:1; if(av>bv)return _snfSortAsc?1:-1; return 0; });
@@ -6748,7 +6749,7 @@ function snfRenderResults() {
     const srcTitle  = srcList.length ? ' title="Sources: ' + esc(srcList.join(', ')) + '"' : '';
     const chartBadge = badgeText ? '<span'+srcTitle+' style="font-size:.5rem;padding:.1rem .35rem;border-radius:8px;background:rgba(245,166,35,.1);border:1px solid rgba(245,166,35,.25);color:var(--gold);white-space:nowrap;cursor:'+(srcList.length?'help':'default')+'">'+esc(badgeText)+srcSuffix+'</span>' : '\u2014';
     const listenersHTML = r.listeners ? '<span style="font-size:.55rem;color:var(--muted2);margin-left:.35rem">('+(r.listeners/1000).toFixed(0)+'k)</span>' : '';
-    const actionHTML = r.in_library ? '' : '<button onclick="snfSearchTrack('+idx+')" style="padding:.25rem .6rem;background:var(--surface2);color:var(--gold);border:1px solid var(--gold);border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer;letter-spacing:.5px;white-space:nowrap">\ud83d\udd0d SEARCH</button>';
+    const actionHTML = r.in_library ? '' : '<button onclick="snfSearchTrack('+r._origIdx+')" style="padding:.25rem .6rem;background:var(--surface2);color:var(--gold);border:1px solid var(--gold);border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer;letter-spacing:.5px;white-space:nowrap">\ud83d\udd0d SEARCH</button>';
     tr.innerHTML = '<td style="padding:.45rem .75rem;color:var(--muted)">'+esc(r.artist||'')+'</td><td style="padding:.45rem .75rem;color:var(--text)">'+esc(r.title||'')+listenersHTML+'</td><td style="padding:.45rem .75rem;color:var(--muted)">'+(r.chart_year||'\u2014')+'</td><td style="padding:.45rem .75rem">'+peakHTML+'</td><td style="padding:.45rem .75rem">'+chartBadge+'</td><td style="padding:.45rem .75rem">'+statusHTML+'</td><td style="padding:.45rem .75rem">'+actionHTML+'</td>';
     tbody.appendChild(tr);
   });
