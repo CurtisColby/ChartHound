@@ -860,9 +860,9 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
             <div class="label-row"><label>Password</label></div>
             <input type="password" id="cToken-qbittorrent" placeholder="Stored encrypted · never logged">
             <div class="conn-btn-row">
-              <button class="btn btn-outline btn-sm" onclick="saveConn('qbittorrent')">💾 SAVE</button>
-              <button class="btn btn-purple btn-sm" id="testBtn-qbittorrent" onclick="testConn('qbittorrent')">⚡ TEST</button>
-              <button class="btn btn-red btn-sm" onclick="disconnectConn('qbittorrent')">✕ DISCONNECT</button>
+              <button class="btn btn-outline btn-sm" onclick="saveDLClient()">💾 SAVE</button>
+              <button class="btn btn-purple btn-sm" id="testBtn-qbittorrent" onclick="testDLClient()">⚡ TEST</button>
+              <button class="btn btn-red btn-sm" onclick="disconnectDLClient()">✕ DISCONNECT</button>
             </div>
             <div class="conn-feedback" id="cFeedback-qbittorrent"></div>
             <!-- SNIFFER DOWNLOAD PATH -->
@@ -2626,6 +2626,88 @@ function updateClientURL() {
   const port = CLIENT_PORTS[type] || '8080';
   const el = document.getElementById('cURL-qbittorrent');
   if (el) el.placeholder = `http://YOUR-SERVER-IP:${port}`;
+}
+
+function _getDLClientType() {
+  return document.getElementById('cClientType').value;
+}
+
+async function saveDLClient() {
+  const svc = _getDLClientType();
+  const url = (document.getElementById('cURL-qbittorrent')?.value || '').trim();
+  const token = (document.getElementById('cToken-qbittorrent')?.value || '').trim();
+  const username = (document.getElementById('cUser-qbittorrent')?.value || '').trim();
+  if (!token && !url) { setFeedback('qbittorrent', 'Enter your credentials before saving.', 'error'); return; }
+  setFeedback('qbittorrent', 'Saving…', '');
+  try {
+    const body = {service: svc};
+    if (url) body.base_url = url;
+    if (token) body.token = token;
+    if (username) body.username = username;
+    const r = await fetch(`${API}/api/kennel/save`, {method:'POST', headers:authHdrs(), body:JSON.stringify(body)});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || 'Save failed');
+    setFeedback('qbittorrent', `✓ Saved as ${svc}. Click TEST to verify.`, 'ok');
+    const tokenEl = document.getElementById('cToken-qbittorrent');
+    if (tokenEl && token) { tokenEl.value = ''; tokenEl.placeholder = '●●●●●●●● (stored encrypted)'; }
+    toast(`${svc} credentials saved.`, 'ok');
+  } catch(e) { setFeedback('qbittorrent', `✗ ${e.message}`, 'error'); }
+}
+
+async function testDLClient() {
+  const svc = _getDLClientType();
+  const btn = document.getElementById('testBtn-qbittorrent');
+  btn.disabled = true;
+  setCardDot('qbittorrent', 'spin');
+  setFeedback('qbittorrent', `Testing ${svc} connection…`, '');
+  try {
+    const r = await fetch(`${API}/api/kennel/test/${svc}`, {method:'POST', headers:authHdrs()});
+    const d = await r.json();
+    if (r.ok && d.ok) {
+      setCardDot('qbittorrent', 'ok');
+      setFeedback('qbittorrent', `✓ ${d.detail}`, 'ok');
+      setVerified('qbittorrent', d.verified_at, true);
+      connState['qbittorrent'] = true;
+      const card = document.getElementById('connCard-qbittorrent');
+      if (card) card.className = 'conn-card connected';
+      toast(`${svc} connected!`, 'ok');
+    } else {
+      const errMsg = d.error || d.detail || 'Connection failed';
+      throw new Error(errMsg);
+    }
+  } catch(e) {
+    setCardDot('qbittorrent', 'error');
+    setFeedback('qbittorrent', `✗ ${e.message}`, 'error');
+    setVerified('qbittorrent', null, false);
+    connState['qbittorrent'] = false;
+    const card = document.getElementById('connCard-qbittorrent');
+    if (card) card.className = 'conn-card failed';
+  }
+  btn.disabled = false;
+  refreshAllDots();
+}
+
+async function disconnectDLClient() {
+  const svc = _getDLClientType();
+  if (!confirm(`Remove saved ${svc} credentials?`)) return;
+  try {
+    const r = await fetch(`${API}/api/kennel/disconnect/${svc}`, {method:'DELETE', headers:authHdrs()});
+    const d = await r.json();
+    if (r.ok) {
+      connState['qbittorrent'] = false;
+      setCardDot('qbittorrent', '');
+      setVerified('qbittorrent', null, false);
+      setFeedback('qbittorrent', `✓ ${svc} disconnected. Credentials removed.`, 'ok');
+      const card = document.getElementById('connCard-qbittorrent');
+      if (card) card.className = 'conn-card';
+      const tokenEl = document.getElementById('cToken-qbittorrent');
+      if (tokenEl) { tokenEl.value = ''; tokenEl.placeholder = 'Stored encrypted · never logged'; }
+      const urlEl = document.getElementById('cURL-qbittorrent');
+      if (urlEl) { urlEl.value = ''; }
+      refreshAllDots();
+      toast(`${svc} disconnected.`, 'warn');
+    }
+  } catch(e) { setFeedback('qbittorrent', `✗ ${e.message}`, 'error'); }
 }
 
 const NZB_PORTS = {sabnzbd:'8080', nzbget:'6789'};
