@@ -2775,8 +2775,33 @@ async function loadAllStatuses() {
     if (r.status === 401 && authToken) { handleSessionExpired(); return; }
     if (!r.ok) return;
     const statuses = await r.json();
+    const DL_CLIENTS = ['qbittorrent', 'deluge', 'transmission'];
     for (const s of statuses) {
       connState[s.service] = s.connected;
+      // Download clients share one card — map onto qbittorrent DOM IDs
+      if (DL_CLIENTS.includes(s.service) && s.service !== 'qbittorrent') {
+        if (s.connected || s.has_token) {
+          // Set the dropdown to match the connected client
+          const dd = document.getElementById('cClientType');
+          if (dd) dd.value = s.service;
+          updateClientURL();
+          setCardDot('qbittorrent', s.connected ? 'ok' : (s.has_token ? 'warn' : ''));
+          setVerified('qbittorrent', s.verified_at, s.connected);
+          if (s.base_url) {
+            const el = document.getElementById('cURL-qbittorrent');
+            if (el) el.value = s.base_url;
+          }
+          if (s.has_token) {
+            const el = document.getElementById('cToken-qbittorrent');
+            if (el) el.placeholder = '●●●●●●●● (stored encrypted)';
+          }
+          if (s.connected) {
+            const card = document.getElementById('connCard-qbittorrent');
+            if (card) card.className = 'conn-card connected';
+          }
+        }
+        continue;
+      }
       setCardDot(s.service, s.connected ? 'ok' : (s.has_token ? 'warn' : ''));
       setVerified(s.service, s.verified_at, s.connected);
       if (s.base_url) {
@@ -4883,9 +4908,13 @@ function refreshAllDots() {
     const dot = document.getElementById(`vDot${key}`);
     const status = document.getElementById(`vStatus${key}`);
     if (!dot||!status) continue;
-    dot.className = connState[svc] ? 'dot ok' : 'dot';
-    status.className = connState[svc] ? 'vault-row-status ok' : 'vault-row-status warn';
-    status.textContent = connState[svc] ? 'CONNECTED' : 'NOT VERIFIED';
+    // Download client: check all three types
+    const isConn = svc === 'qbittorrent'
+      ? (connState.qbittorrent || connState.deluge || connState.transmission)
+      : connState[svc];
+    dot.className = isConn ? 'dot ok' : 'dot';
+    status.className = isConn ? 'vault-row-status ok' : 'vault-row-status warn';
+    status.textContent = isConn ? 'CONNECTED' : 'NOT VERIFIED';
   }
   const navDot = document.getElementById('navDotKennel');
   if (navDot) navDot.className = `nav-conn-dot${(connState.plex||connState.emby||connState.jellyfin)?' ok':''}`;
@@ -6860,7 +6889,7 @@ async function snfSearchTrack(idx) {
           + '<div style="font-family:var(--display);font-size:1.1rem;color:var(--green)">' + (r.seeders||0) + '</div>'
           + '<div style="font-size:.45rem;color:var(--muted);letter-spacing:.5px">SEEDS</div></div>'
           + '<div style="display:flex;gap:.35rem;flex-wrap:wrap">'
-          + '<button onclick="snfGrabGet(\'' + cardId + '\',' + i + ')" style="padding:.3rem .6rem;background:var(--gold);color:#000;border:none;border-radius:4px;font-family:var(--mono);font-size:.58rem;cursor:pointer" title="Send to qBittorrent">\u2b07 GET</button>'
+          + '<button onclick="snfGrabGet(\'' + cardId + '\',' + i + ')" style="padding:.3rem .6rem;background:var(--gold);color:#000;border:none;border-radius:4px;font-family:var(--mono);font-size:.58rem;cursor:pointer" title="Send to download client">\u2b07 GET</button>'
           + (r.info_url ? '<a href="' + esc(r.info_url) + '" target="_blank" rel="noopener" style="display:inline-block;padding:.3rem .6rem;background:var(--surface3);color:var(--teal);border:1px solid var(--teal);border-radius:4px;font-family:var(--mono);font-size:.58rem;cursor:pointer;text-decoration:none" title="Open source page">\u2197 OPEN</a>' : '')
           + '<button onclick="snfCopyMagnet(\'' + cardId + '\',' + i + ')" style="padding:.3rem .6rem;background:var(--surface3);color:var(--purple);border:1px solid var(--purple);border-radius:4px;font-family:var(--mono);font-size:.58rem;cursor:pointer" title="Copy download URL">\ud83d\udd17 MAGNET</button>'
           + '</div></div>';
@@ -6935,7 +6964,7 @@ async function snfGrabGet(cardId, resultIdx) {
   if (!cardData) return;
   var result = cardData.results[resultIdx];
   if (!result) return;
-  snfLog('\u2b07 Sending to qBittorrent: ' + result.title, 'info');
+  snfLog('\u2b07 Sending to download client: ' + result.title, 'info');
   try {
     var r = await fetch(API + '/api/sniffer/grab', {
       method:'POST', headers:authHdrs(),
@@ -7537,7 +7566,7 @@ async function bhSearchProwlarr(idx) {
           + '<div style="font-family:var(--display);font-size:1.1rem;color:var(--green)">' + (r.seeders||0) + '</div>'
           + '<div style="font-size:.45rem;color:var(--muted);letter-spacing:.5px">SEEDS</div></div>'
           + '<div style="display:flex;gap:.35rem;flex-wrap:wrap">'
-          + '<button onclick="bhGrabGet(\'' + cardId + '\',' + i + ')" style="padding:.3rem .6rem;background:var(--orange);color:#000;border:none;border-radius:4px;font-family:var(--mono);font-size:.58rem;cursor:pointer" title="Send to qBittorrent">\u2b07 GET</button>'
+          + '<button onclick="bhGrabGet(\'' + cardId + '\',' + i + ')" style="padding:.3rem .6rem;background:var(--orange);color:#000;border:none;border-radius:4px;font-family:var(--mono);font-size:.58rem;cursor:pointer" title="Send to download client">\u2b07 GET</button>'
           + (r.info_url ? '<a href="' + esc(r.info_url) + '" target="_blank" rel="noopener" style="display:inline-block;padding:.3rem .6rem;background:var(--surface3);color:var(--teal);border:1px solid var(--teal);border-radius:4px;font-family:var(--mono);font-size:.58rem;cursor:pointer;text-decoration:none" title="Open source page">\u2197 OPEN</a>' : '')
           + '<button onclick="bhCopyMagnet(\'' + cardId + '\',' + i + ')" style="padding:.3rem .6rem;background:var(--surface3);color:var(--purple);border:1px solid var(--purple);border-radius:4px;font-family:var(--mono);font-size:.58rem;cursor:pointer" title="Copy download URL">\ud83d\udd17 MAGNET</button>'
           + '</div></div>';
@@ -7606,7 +7635,7 @@ async function bhGrabGet(cardId, resultIdx) {
   if (!cardData) return;
   var result = cardData.results[resultIdx];
   if (!result) return;
-  bhLog('⬇ Sending to qBittorrent: ' + result.title, 'info');
+  bhLog('⬇ Sending to download client: ' + result.title, 'info');
   try {
     var r = await fetch(API + '/api/bloodhound/grab', {
       method:'POST', headers:authHdrs(),

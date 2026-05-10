@@ -21,6 +21,7 @@ Endpoints:
 # © 2026 Colby R. Curtis | ChartHound: The New World — All Rights Reserved.
 
 import asyncio
+import base64
 import hashlib
 import json
 import logging
@@ -1924,7 +1925,7 @@ async def _qbt_login(client: httpx.AsyncClient, base: str, extra: dict, password
 
 
 async def _deluge_add_torrent(base: str, password: str, download_url: str, save_path: str = "") -> str:
-    """Add a torrent to Deluge via JSON-RPC. Returns status message."""
+    """Add a torrent to Deluge via JSON-RPC. Handles magnets, .torrent URLs, and Prowlarr API links."""
     rpc_url = f"{base.rstrip('/')}/json"
     async with httpx.AsyncClient(timeout=30.0, verify=False) as client:
         # Step 1: Authenticate
@@ -1937,17 +1938,61 @@ async def _deluge_add_torrent(base: str, password: str, download_url: str, save_
         if not data.get("result"):
             raise HTTPException(502, "Deluge login rejected. Check WebUI password in The Kennel.")
 
-        # Step 2: Add torrent URL
         add_opts = {}
         if save_path:
             add_opts["download_location"] = save_path
-        r2 = await client.post(rpc_url, json={
-            "method": "core.add_torrent_url",
-            "params": [download_url, add_opts],
-            "id": 2
-        }, headers={"Content-Type": "application/json"})
+
+        url_clean = download_url.strip()
+
+        if url_clean.lower().startswith("magnet:"):
+            # Direct magnet link
+            r2 = await client.post(rpc_url, json={
+                "method": "core.add_torrent_magnet",
+                "params": [url_clean, add_opts],
+                "id": 2
+            }, headers={"Content-Type": "application/json"})
+        elif url_clean.lower().startswith("http"):
+            # HTTP URL — could be a .torrent file OR a Prowlarr redirect to magnet
+            # First request without following redirects to check where it goes
+            probe = await client.get(url_clean, follow_redirects=False)
+
+            if probe.status_code in (301, 302, 303, 307, 308):
+                location = probe.headers.get("location", "")
+                if location.lower().startswith("magnet:"):
+                    # Prowlarr redirected to a magnet URI
+                    r2 = await client.post(rpc_url, json={
+                        "method": "core.add_torrent_magnet",
+                        "params": [location, add_opts],
+                        "id": 2
+                    }, headers={"Content-Type": "application/json"})
+                else:
+                    # Redirect to another HTTP URL — follow it and grab the .torrent
+                    tr = await client.get(url_clean, follow_redirects=True)
+                    if not tr.is_success:
+                        raise HTTPException(502, f"Failed to download .torrent file: HTTP {tr.status_code}")
+                    torrent_b64 = base64.b64encode(tr.content).decode("ascii")
+                    filename = url_clean.split("/")[-1].split("?")[0] or "charthound.torrent"
+                    r2 = await client.post(rpc_url, json={
+                        "method": "core.add_torrent_file",
+                        "params": [filename, torrent_b64, add_opts],
+                        "id": 2
+                    }, headers={"Content-Type": "application/json"})
+            elif probe.is_success:
+                # Direct .torrent file download (no redirect)
+                torrent_b64 = base64.b64encode(probe.content).decode("ascii")
+                filename = url_clean.split("/")[-1].split("?")[0] or "charthound.torrent"
+                r2 = await client.post(rpc_url, json={
+                    "method": "core.add_torrent_file",
+                    "params": [filename, torrent_b64, add_opts],
+                    "id": 2
+                }, headers={"Content-Type": "application/json"})
+            else:
+                raise HTTPException(502, f"Failed to fetch torrent: HTTP {probe.status_code}")
+        else:
+            raise HTTPException(400, f"Unsupported download URL scheme: {url_clean[:30]}")
+
         if r2.status_code != 200:
-            raise HTTPException(502, f"Deluge add_torrent_url failed: HTTP {r2.status_code}")
+            raise HTTPException(502, f"Deluge add torrent failed: HTTP {r2.status_code}")
         data2 = r2.json()
         if data2.get("error"):
             err = data2["error"].get("message", "Unknown error")
