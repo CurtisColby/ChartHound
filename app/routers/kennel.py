@@ -504,3 +504,39 @@ async def secret_key_status(user: dict = Depends(require_auth)):
     """
     is_placeholder = settings.secret_key == "CHANGE_ME_GENERATE_A_STRONG_RANDOM_KEY"
     return {"placeholder": is_placeholder}
+
+
+# ── LEGAL DISCLAIMER ─────────────────────────────────────────────────────────
+
+@router.get("/disclaimer-status")
+async def disclaimer_status(user: dict = Depends(require_auth)):
+    """Check if the current user has accepted the legal disclaimer."""
+    username = user["sub"]
+    key = f"disclaimer_accepted_{username}"
+    try:
+        async with aiosqlite.connect(settings.database_url) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                "SELECT value FROM app_settings WHERE key = ?", (key,)
+            )
+            row = await cursor.fetchone()
+        return {"accepted": bool(row), "accepted_at": row["value"] if row else None}
+    except Exception:
+        return {"accepted": False, "accepted_at": None}
+
+
+@router.post("/disclaimer-accept")
+async def disclaimer_accept(user: dict = Depends(require_auth)):
+    """Record that the current user accepted the legal disclaimer."""
+    username = user["sub"]
+    key = f"disclaimer_accepted_{username}"
+    now = datetime.now(timezone.utc).isoformat()
+    async with aiosqlite.connect(settings.database_url) as db:
+        await db.execute(
+            "INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
+            (key, now, now),
+        )
+        await db.commit()
+    log.info(f"Disclaimer accepted by {username} at {now}")
+    return {"ok": True, "accepted_at": now}
