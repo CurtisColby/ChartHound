@@ -1694,11 +1694,7 @@ async def grab(req: GrabRequest, _=Depends(require_auth)):
     except Exception:
         pass
 
-    if client_type != "qbittorrent":
-        return {"ok": True, "client": client_type,
-                "message": f"Use OPEN or MAGNET for {client_type} — direct grab only supports qBittorrent."}
-
-    conn = await _get_connection("qbittorrent")
+    conn = await _get_connection(client_type)
     base = conn["base_url"].rstrip("/")
     pwd = conn["token"]
     extra = conn["extra"]
@@ -1716,33 +1712,44 @@ async def grab(req: GrabRequest, _=Depends(require_auth)):
     except Exception:
         pass
 
-    async with httpx.AsyncClient(timeout=30.0, verify=False) as client:
-        sid = await _qbt_login(client, base, extra, pwd)
-        cookies = {"SID": sid}
+    if client_type == "qbittorrent":
+        async with httpx.AsyncClient(timeout=30.0, verify=False) as client:
+            sid = await _qbt_login(client, base, extra, pwd)
+            cookies = {"SID": sid}
 
-        r = await client.post(f"{base}/api/v2/torrents/add",
-            data={"urls": req.download_url, "category": "charthound-music",
-                  "savepath": save_path},
-            cookies=cookies)
-        if not r.is_success:
-            raise HTTPException(502, f"qBittorrent add failed: {r.status_code}")
+            r = await client.post(f"{base}/api/v2/torrents/add",
+                data={"urls": req.download_url, "category": "charthound-music",
+                      "savepath": save_path},
+                cookies=cookies)
+            if not r.is_success:
+                raise HTTPException(502, f"qBittorrent add failed: {r.status_code}")
 
-        # Grab the hash of the torrent we just added
-        await asyncio.sleep(1)  # give qBit a moment to register it
-        tr = await client.get(f"{base}/api/v2/torrents/info",
-            params={"category": "charthound-music", "sort": "added_on",
-                    "reverse": "true", "limit": "1"},
-            cookies=cookies)
-        t_hash = ""
-        if tr.is_success and tr.json():
-            t_hash = tr.json()[0].get("hash", "")
+            # Grab the hash of the torrent we just added
+            await asyncio.sleep(1)  # give qBit a moment to register it
+            tr = await client.get(f"{base}/api/v2/torrents/info",
+                params={"category": "charthound-music", "sort": "added_on",
+                        "reverse": "true", "limit": "1"},
+                cookies=cookies)
+            t_hash = ""
+            if tr.is_success and tr.json():
+                t_hash = tr.json()[0].get("hash", "")
 
-    # Fire-and-forget background task with specific hash
-    asyncio.create_task(_background_checkmark(base, pwd, extra, t_hash, req.title or ""))
+        # Fire-and-forget background task with specific hash
+        asyncio.create_task(_background_checkmark(base, pwd, extra, t_hash, req.title or ""))
 
-    return {"ok": True, "client": "qbittorrent", "title": req.title,
-            "category": "charthound-music",
-            "message": "Torrent added to qBittorrent — files will start downloading shortly"}
+        return {"ok": True, "client": "qbittorrent", "title": req.title,
+                "category": "charthound-music",
+                "message": "Torrent added to qBittorrent — files will start downloading shortly"}
+
+    elif client_type == "deluge":
+        await _deluge_add_torrent(base, pwd, req.download_url, save_path)
+        return {"ok": True, "client": "deluge", "title": req.title,
+                "message": "Torrent added to Deluge — files will start downloading shortly"}
+
+    elif client_type == "transmission":
+        await _transmission_add_torrent(base, pwd, extra, req.download_url, save_path)
+        return {"ok": True, "client": "transmission", "title": req.title,
+                "message": "Torrent added to Transmission — files will start downloading shortly"}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1914,6 +1921,82 @@ async def _qbt_login(client: httpx.AsyncClient, base: str, extra: dict, password
     if r.text.strip() != "Ok.":
         raise HTTPException(502, "qBittorrent login failed.")
     return r.cookies.get("SID", "")
+
+
+async def _deluge_add_torrent(base: str, password: str, download_url: str, save_path: str = "") -> str:
+    """Add a torrent to Deluge via JSON-RPC. Returns status message."""
+    rpc_url = f"{base.rstrip('/')}/json"
+    async with httpx.AsyncClient(timeout=30.0, verify=False) as client:
+        # Step 1: Authenticate
+        r = await client.post(rpc_url, json={
+            "method": "auth.login", "params": [password], "id": 1
+        }, headers={"Content-Type": "application/json"})
+        if r.status_code != 200:
+            raise HTTPException(502, f"Deluge auth failed: HTTP {r.status_code}")
+        data = r.json()
+        if not data.get("result"):
+            raise HTTPException(502, "Deluge login rejected. Check WebUI password in The Kennel.")
+
+        # Step 2: Add torrent URL
+        add_opts = {}
+        if save_path:
+            add_opts["download_location"] = save_path
+        r2 = await client.post(rpc_url, json={
+            "method": "core.add_torrent_url",
+            "params": [download_url, add_opts],
+            "id": 2
+        }, headers={"Content-Type": "application/json"})
+        if r2.status_code != 200:
+            raise HTTPException(502, f"Deluge add_torrent_url failed: HTTP {r2.status_code}")
+        data2 = r2.json()
+        if data2.get("error"):
+            err = data2["error"].get("message", "Unknown error")
+            raise HTTPException(502, f"Deluge error: {err}")
+        t_hash = data2.get("result", "")
+        log.info(f"Torrent added to Deluge: {t_hash}")
+    return t_hash or "added"
+
+
+async def _transmission_add_torrent(base: str, password: str, extra: dict,
+                                     download_url: str, save_path: str = "") -> str:
+    """Add a torrent to Transmission via RPC. Returns status message."""
+    rpc_url = f"{base.rstrip('/')}/transmission/rpc"
+    username = extra.get("username", "")
+    auth = (username, password) if username else None
+
+    async with httpx.AsyncClient(timeout=30.0, verify=False) as client:
+        # Step 1: Get session ID (Transmission returns 409 with the header)
+        r = await client.get(rpc_url, auth=auth)
+        session_id = r.headers.get("X-Transmission-Session-Id", "")
+        if not session_id and r.status_code == 401:
+            raise HTTPException(502, "Transmission auth failed. Check username/password in The Kennel.")
+        if not session_id:
+            raise HTTPException(502, f"Transmission did not return session ID (HTTP {r.status_code}).")
+
+        # Step 2: Add torrent
+        add_args = {"filename": download_url}
+        if save_path:
+            add_args["download-dir"] = save_path
+        r2 = await client.post(rpc_url, json={
+            "method": "torrent-add",
+            "arguments": add_args
+        }, headers={"X-Transmission-Session-Id": session_id}, auth=auth)
+        if r2.status_code == 409:
+            # Session ID expired mid-request, retry with new one
+            session_id = r2.headers.get("X-Transmission-Session-Id", session_id)
+            r2 = await client.post(rpc_url, json={
+                "method": "torrent-add",
+                "arguments": add_args
+            }, headers={"X-Transmission-Session-Id": session_id}, auth=auth)
+        if not r2.is_success:
+            raise HTTPException(502, f"Transmission add failed: HTTP {r2.status_code}")
+        data = r2.json()
+        if data.get("result") != "success":
+            raise HTTPException(502, f"Transmission error: {data.get('result', 'unknown')}")
+        added = data.get("arguments", {}).get("torrent-added") or data.get("arguments", {}).get("torrent-duplicate")
+        t_hash = added.get("hashString", "") if added else ""
+        log.info(f"Torrent added to Transmission: {t_hash}")
+    return t_hash or "added"
 
 
 # ══════════════════════════════════════════════════════════════════════════════
