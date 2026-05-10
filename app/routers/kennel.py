@@ -332,11 +332,23 @@ async def _run_test(service: str, base_url: str, token: str, extra: dict = {}) -
     elif service == "deluge":
         if not base_url:
             raise ValueError("No Deluge URL configured.")
+        if not token:
+            raise ValueError("No Deluge password configured.")
+        rpc_url = f"{base_url.rstrip('/')}/json"
         async with httpx.AsyncClient(timeout=timeout, verify=False) as client:
-            r = await client.get(base_url.rstrip('/'))
-        if r.status_code < 500:
-            return "Deluge reachable"
-        raise ValueError(f"Deluge returned error {r.status_code}")
+            r = await client.post(rpc_url, json={
+                "method": "auth.login",
+                "params": [token],
+                "id": 1
+            }, headers={"Content-Type": "application/json"})
+        if r.status_code != 200:
+            raise ValueError(f"Deluge returned HTTP {r.status_code}. Check URL and ensure WebUI is enabled.")
+        data = r.json()
+        if data.get("error"):
+            raise ValueError(f"Deluge RPC error: {data['error'].get('message', 'Unknown')}")
+        if data.get("result") is True:
+            return "Deluge connected"
+        raise ValueError("Deluge password rejected. Check your WebUI password.")
 
     elif service == "transmission":
         if not base_url:
