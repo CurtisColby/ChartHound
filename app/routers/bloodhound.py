@@ -41,6 +41,7 @@ from app.routers.sniffer import (
     _build_library_index, _check_library,
     _fetch_indexers_by_protocol, _torznab_search, _newznab_search,
     _parse_torrent_results, _parse_usenet_results, _grab_nzb_direct,
+    _deluge_add_torrent, _transmission_add_torrent,
 )
 
 log      = logging.getLogger("charthound.bloodhound")
@@ -317,7 +318,7 @@ async def search_prowlarr(req: ProwlarrSearchRequest, _=Depends(require_auth)):
 
 @router.post("/grab")
 async def grab(req: BHGrabRequest, _=Depends(require_auth)):
-    """Send torrent to qBittorrent with charthound-music category."""
+    """Send torrent to configured download client (qBit, Deluge, or Transmission)."""
     if not req.download_url:
         raise HTTPException(400, "No download URL provided.")
 
@@ -337,11 +338,7 @@ async def grab(req: BHGrabRequest, _=Depends(require_auth)):
     except Exception:
         pass
 
-    if client_type != "qbittorrent":
-        return {"ok": True, "client": client_type,
-                "message": f"Use OPEN or MAGNET for {client_type} — direct grab only supports qBittorrent."}
-
-    conn = await _get_connection("qbittorrent")
+    conn = await _get_connection(client_type)
     base = conn["base_url"].rstrip("/")
     pwd = conn["token"]
     extra = conn["extra"]
@@ -359,33 +356,44 @@ async def grab(req: BHGrabRequest, _=Depends(require_auth)):
     except Exception:
         pass
 
-    async with httpx.AsyncClient(timeout=30.0, verify=False) as client:
-        sid = await _qbt_login(client, base, extra, pwd)
-        cookies = {"SID": sid}
+    if client_type == "qbittorrent":
+        async with httpx.AsyncClient(timeout=30.0, verify=False) as client:
+            sid = await _qbt_login(client, base, extra, pwd)
+            cookies = {"SID": sid}
 
-        r = await client.post(f"{base}/api/v2/torrents/add",
-            data={"urls": req.download_url, "category": "charthound-music",
-                  "savepath": save_path},
-            cookies=cookies)
-        if not r.is_success:
-            raise HTTPException(502, f"qBittorrent add failed: {r.status_code}")
+            r = await client.post(f"{base}/api/v2/torrents/add",
+                data={"urls": req.download_url, "category": "charthound-music",
+                      "savepath": save_path},
+                cookies=cookies)
+            if not r.is_success:
+                raise HTTPException(502, f"qBittorrent add failed: {r.status_code}")
 
-        # Grab hash of the torrent we just added
-        await asyncio.sleep(1)
-        tr = await client.get(f"{base}/api/v2/torrents/info",
-            params={"category": "charthound-music", "sort": "added_on",
-                    "reverse": "true", "limit": "1"},
-            cookies=cookies)
-        t_hash = ""
-        if tr.is_success and tr.json():
-            t_hash = tr.json()[0].get("hash", "")
+            # Grab hash of the torrent we just added
+            await asyncio.sleep(1)
+            tr = await client.get(f"{base}/api/v2/torrents/info",
+                params={"category": "charthound-music", "sort": "added_on",
+                        "reverse": "true", "limit": "1"},
+                cookies=cookies)
+            t_hash = ""
+            if tr.is_success and tr.json():
+                t_hash = tr.json()[0].get("hash", "")
 
-    # Fire-and-forget background task with specific hash
-    asyncio.create_task(_background_checkmark(base, pwd, extra, t_hash, req.title or ""))
+        # Fire-and-forget background task with specific hash
+        asyncio.create_task(_background_checkmark(base, pwd, extra, t_hash, req.title or ""))
 
-    return {"ok": True, "client": "qbittorrent", "title": req.title,
-            "category": "charthound-music",
-            "message": "Torrent added to qBittorrent — files will start downloading shortly"}
+        return {"ok": True, "client": "qbittorrent", "title": req.title,
+                "category": "charthound-music",
+                "message": "Torrent added to qBittorrent — files will start downloading shortly"}
+
+    elif client_type == "deluge":
+        await _deluge_add_torrent(base, pwd, req.download_url, save_path)
+        return {"ok": True, "client": "deluge", "title": req.title,
+                "message": "Torrent added to Deluge — files will start downloading shortly"}
+
+    elif client_type == "transmission":
+        await _transmission_add_torrent(base, pwd, extra, req.download_url, save_path)
+        return {"ok": True, "client": "transmission", "title": req.title,
+                "message": "Torrent added to Transmission — files will start downloading shortly"}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
