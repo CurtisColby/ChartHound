@@ -233,7 +233,8 @@ async def test_connection(service: str, user: dict = Depends(require_auth)):
     return {"ok": False, "service": service, "error": last_error}
 
 
-async def _run_test(service: str, base_url: str, token: str, extra: dict = {}) -> str:
+async def _run_test(service: str, base_url: str, token: str, extra: dict | None = None) -> str:
+    extra = extra or {}
     timeout = httpx.Timeout(12.0)
 
     if service == "plex":
@@ -332,23 +333,11 @@ async def _run_test(service: str, base_url: str, token: str, extra: dict = {}) -
     elif service == "deluge":
         if not base_url:
             raise ValueError("No Deluge URL configured.")
-        if not token:
-            raise ValueError("No Deluge password configured.")
-        rpc_url = f"{base_url.rstrip('/')}/json"
         async with httpx.AsyncClient(timeout=timeout, verify=False) as client:
-            r = await client.post(rpc_url, json={
-                "method": "auth.login",
-                "params": [token],
-                "id": 1
-            }, headers={"Content-Type": "application/json"})
-        if r.status_code != 200:
-            raise ValueError(f"Deluge returned HTTP {r.status_code}. Check URL and ensure WebUI is enabled.")
-        data = r.json()
-        if data.get("error"):
-            raise ValueError(f"Deluge RPC error: {data['error'].get('message', 'Unknown')}")
-        if data.get("result") is True:
-            return "Deluge connected"
-        raise ValueError("Deluge password rejected. Check your WebUI password.")
+            r = await client.get(base_url.rstrip('/'))
+        if r.status_code < 500:
+            return "Deluge reachable"
+        raise ValueError(f"Deluge returned error {r.status_code}")
 
     elif service == "transmission":
         if not base_url:
@@ -504,39 +493,3 @@ async def secret_key_status(user: dict = Depends(require_auth)):
     """
     is_placeholder = settings.secret_key == "CHANGE_ME_GENERATE_A_STRONG_RANDOM_KEY"
     return {"placeholder": is_placeholder}
-
-
-# ── LEGAL DISCLAIMER ─────────────────────────────────────────────────────────
-
-@router.get("/disclaimer-status")
-async def disclaimer_status(user: dict = Depends(require_auth)):
-    """Check if the current user has accepted the legal disclaimer."""
-    username = user["sub"]
-    key = f"disclaimer_accepted_{username}"
-    try:
-        async with aiosqlite.connect(settings.database_url) as db:
-            db.row_factory = aiosqlite.Row
-            cursor = await db.execute(
-                "SELECT value FROM app_settings WHERE key = ?", (key,)
-            )
-            row = await cursor.fetchone()
-        return {"accepted": bool(row), "accepted_at": row["value"] if row else None}
-    except Exception:
-        return {"accepted": False, "accepted_at": None}
-
-
-@router.post("/disclaimer-accept")
-async def disclaimer_accept(user: dict = Depends(require_auth)):
-    """Record that the current user accepted the legal disclaimer."""
-    username = user["sub"]
-    key = f"disclaimer_accepted_{username}"
-    now = datetime.now(timezone.utc).isoformat()
-    async with aiosqlite.connect(settings.database_url) as db:
-        await db.execute(
-            "INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?) "
-            "ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
-            (key, now, now),
-        )
-        await db.commit()
-    log.info(f"Disclaimer accepted by {username} at {now}")
-    return {"ok": True, "accepted_at": now}

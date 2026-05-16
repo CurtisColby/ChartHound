@@ -455,25 +455,6 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
   </div>
 </div>
 
-<!-- LEGAL DISCLAIMER MODAL -->
-<div id="disclaimerModal" style="display:none;position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.85);align-items:center;justify-content:center">
-  <div style="background:var(--surface);border:1px solid var(--amber);border-radius:12px;max-width:520px;width:90%;padding:2rem;font-family:var(--mono);color:var(--text)">
-    <div style="font-family:var(--display);font-size:1.1rem;color:var(--amber);letter-spacing:2px;margin-bottom:1rem;text-align:center">⚖ LEGAL DISCLAIMER</div>
-    <p style="font-size:.65rem;line-height:1.8;color:var(--muted);margin-bottom:1rem">
-      ChartHound is a music metadata management tool. Any download functionality relies on third-party indexers and download clients configured entirely by you, the user.
-    </p>
-    <p style="font-size:.65rem;line-height:1.8;color:var(--muted);margin-bottom:1rem">
-      You are solely responsible for ensuring that your use of this software complies with all applicable laws in your jurisdiction, including copyright and intellectual property laws. The developer assumes no liability for how this software is used.
-    </p>
-    <p style="font-size:.65rem;line-height:1.8;color:var(--text);margin-bottom:1.5rem">
-      By clicking <strong style="color:var(--amber)">I AGREE</strong> below, you acknowledge that you will only download content you are legally authorized to obtain.
-    </p>
-    <div style="text-align:center">
-      <button onclick="acceptDisclaimer()" style="padding:.6rem 2rem;background:var(--amber);color:#000;border:none;border-radius:6px;font-family:var(--display);font-size:.75rem;letter-spacing:2px;cursor:pointer">I AGREE</button>
-    </div>
-  </div>
-</div>
-
 <!-- LOGIN -->
 <div id="loginScreen">
   <div class="login-card">
@@ -2510,44 +2491,15 @@ function doLogout() {
 }
 async function showApp(isPlaceholderKey = false) {
   document.getElementById('loginScreen').classList.add('hidden');
-
-  // Check legal disclaimer acceptance before showing the app
-  try {
-    const dr = await fetch(`${API}/api/kennel/disclaimer-status`, {headers: authHdrs()});
-    if (dr.ok) {
-      const dd = await dr.json();
-      if (!dd.accepted) {
-        document.getElementById('disclaimerModal').style.display = 'flex';
-        document.getElementById('appHeader').style.display = 'none';
-        document.getElementById('appShell').style.display = 'none';
-        window._pendingPlaceholderKey = isPlaceholderKey;
-        return;
-      }
-    }
-  } catch {}
-
-  _finishShowApp(isPlaceholderKey);
-}
-
-function _finishShowApp(isPlaceholderKey) {
   document.getElementById('appHeader').style.display = 'flex';
   document.getElementById('appShell').style.display = 'flex';
   document.getElementById('userBadge').textContent = `${currentUser.toUpperCase()} · LOGOUT`;
   if (isPlaceholderKey) document.getElementById('secretKeyBanner').classList.add('show');
-  loadAllStatuses();
-  loadPathSettings();
+  await loadAllStatuses();
+  await loadPathSettings();
   startHeartbeat();
   toast(`Welcome back, ${currentUser}. Head to The Kennel to connect your services.`, 'ok');
   checkForUpdate();
-}
-
-async function acceptDisclaimer() {
-  try {
-    const r = await fetch(`${API}/api/kennel/disclaimer-accept`, {method:'POST', headers:authHdrs()});
-    if (!r.ok) { toast('Failed to save disclaimer acceptance.', 'error'); return; }
-  } catch { toast('Server error.', 'error'); return; }
-  document.getElementById('disclaimerModal').style.display = 'none';
-  _finishShowApp(window._pendingPlaceholderKey || false);
 }
 
 async function checkForUpdate() {
@@ -4311,7 +4263,7 @@ async function atLookup(key) {
       addLog(`⚠️ No result for: ${alb.folderName}`, 'warn');
     }
   } catch(e) {
-    if (propEl) propEl.innerHTML = `<span style="color:var(--pink);font-size:.52rem">Lookup failed: ${e.message}</span>`;
+    if (propEl) propEl.innerHTML = `<span style="color:var(--pink);font-size:.52rem">Lookup failed: ${esc(e.message)}</span>`;
     addLog(`❌ Lookup error: ${e.message}`, 'err');
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = alb.isCompilation ? '⚠️ LOOKUP' : '🔍 LOOKUP'; }
@@ -4357,7 +4309,7 @@ async function atSuggest(key) {
     }
     chipsWrap.style.display = 'block';
   } catch(e) {
-    chipsInner.innerHTML = `<span style="font-family:var(--mono);font-size:.5rem;color:var(--pink)">Error: ${e.message}</span>`;
+    chipsInner.innerHTML = `<span style="font-family:var(--mono);font-size:.5rem;color:var(--pink)">Error: ${esc(e.message)}</span>`;
     chipsWrap.style.display = 'block';
     addLog(`✗ Suggest failed: ${e.message}`, 'err');
   } finally {
@@ -6613,7 +6565,10 @@ function snfLog(msg, type='') {
   const el = document.getElementById('snf-log');
   if (!el) return;
   const color = type==='ok'?'var(--green)':type==='err'?'var(--red)':type==='warn'?'var(--amber)':'var(--muted)';
-  el.innerHTML += '<div style="color:'+color+'">'+msg+'</div>';
+  const div = document.createElement('div');
+  div.style.color = color;
+  div.textContent = msg;
+  el.appendChild(div);
   el.scrollTop = el.scrollHeight;
 }
 

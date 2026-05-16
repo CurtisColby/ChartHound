@@ -1062,6 +1062,7 @@ def write_tags(filepath: str, genres: List[str], moods: List[str],
             for m in (moods or []):    cmd += [f"--set-tag=MOOD={m}"]
             if year:    cmd += [f"--set-tag=DATE={year}"]
             if comment: cmd += [f"--set-tag=COMMENT={comment}"]
+            cmd += ["--"]  # end-of-options sentinel — prevents tag values being parsed as flags
             cmd += [real_path]
             result = subprocess.run(cmd, capture_output=True, text=True)
             if result.returncode != 0:
@@ -1191,6 +1192,7 @@ def write_tags_extended(filepath: str, genres: List[str], moods: List[str],
             if album_name:   cmd += [f"--set-tag=ALBUM={album_name}"]
             if album_artist: cmd += [f"--set-tag=ALBUMARTIST={album_artist}"]
             if is_compilation: cmd += ["--set-tag=COMPILATION=1"]
+            cmd += ["--"]  # end-of-options sentinel — prevents tag values being parsed as flags
             cmd += [real_path]
             result = subprocess.run(cmd, capture_output=True, text=True)
             if result.returncode != 0:
