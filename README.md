@@ -21,7 +21,7 @@ At some point I looked up and realized "just a playlist creator" wasn't going to
 
 I'm a solo developer. ChartHound exists because I wanted it to exist. I write the code with Claude (Anthropic's AI) as my code support partner — Claude helps me think through architecture, catches my bugs in code review, and writes the boilerplate I'd otherwise have to type by hand. Every architectural decision, every feature, and every line of business logic is mine. I actively review every change, question every approach, and push back when something isn't right. The result is code I actually understand, written faster than I could write alone.
 
-Months of work later, I did a full security audit and hardening pass on April 24, 2026 — auditing the auth flow, encrypting credentials, locking down the registration endpoint, reviewing every endpoint for token exposure — before deciding to share ChartHound with the community. If you're a Plex, Emby, or Jellyfin user who cares about your music library the way I care about mine, I think you'll find a lot to like here.
+Months of work later, I did a full security audit and hardening pass on April 24, 2026 — auditing the auth flow, encrypting credentials, locking down the registration endpoint, reviewing every endpoint for token exposure — before deciding to share ChartHound with the community. Additional security patches and hardening have been applied since. If you're a Plex, Emby, or Jellyfin user who cares about your music library the way I care about mine, I think you'll find a lot to like here.
 
 If ChartHound saves you time, [a coffee](https://buymeacoffee.com/colbycurtis) is appreciated but never expected. The tool is yours — go make your music library beautiful.
 
@@ -58,7 +58,7 @@ ChartHound knows which songs in your library were Billboard #1 hits, which album
 
 ## Security Model
 
-ChartHound was designed from the ground up with security as a hard requirement — not an afterthought. A full security audit and hardening pass was completed on April 24, 2026, before the project was shared publicly.
+ChartHound was designed from the ground up with security as a hard requirement — not an afterthought. A full security audit and hardening pass was completed on April 24, 2026, before the project was shared publicly. Additional security patches have been applied since initial release.
 
 ### Encrypted Vault (The Kennel)
 
@@ -96,7 +96,10 @@ ChartHound connects to your existing media stack. You don't need all of these �
 
 **For music discovery (Sniffer & Bloodhound):**
 - Prowlarr (indexer manager)
-- qBittorrent (download client)
+- A download client — **one** of the following:
+  - qBittorrent, Deluge, or Transmission (for torrents)
+  - SABnzbd (for Usenet/NZB downloads)
+- You can connect both a torrent client and SABnzbd simultaneously — ChartHound supports grabbing via either protocol depending on the indexer result.
 
 **For movie/TV hunting (Tracker):**
 - Radarr (movie management)
@@ -182,7 +185,7 @@ Navigate to `http://YOUR-SERVER-IP:8585` in your browser. Create your admin acco
 
 When you first open ChartHound, you'll see a login screen. Since no users exist yet, click **"Create Account"** to register your admin account. After registration, the signup option is permanently hidden (auto-lockdown — see [Security Model](#security-model) for details).
 
-Once logged in, head straight to **The Kennel** to connect your services. Each service card has a URL field, a token/API key field, a **Save** button, and a **Test** button. Always test after saving to verify the connection works. The [Getting API Keys](#getting-api-keys) section below walks you through how to obtain each one.
+Once logged in, head straight to **The Kennel** to connect your services. Each service card has fields for the server URL and API key/token. When you click Save, the credentials are encrypted and stored. When you click Test, ChartHound verifies the connection actually works. The [Getting API Keys](#getting-api-keys) section below walks you through how to obtain each one.
 
 > 📖 **A full User Guide is built into ChartHound.** Once logged in, find the **OPEN USER GUIDE** button in The Kennel's left panel under "HELP & DOCS". It covers every tab — what it does, what needs to be connected, and best practices — including step-by-step first-time setup instructions.
 
@@ -244,9 +247,19 @@ For all three, paste the token (and the server URL — usually something like `h
 
 For all three, the API key is in **Settings → General → API Key**. Copy it from the Arr app's UI and paste it into the matching ChartHound Kennel card along with the server URL.
 
-### qBittorrent
+### Download Clients
 
-qBittorrent uses username/password authentication, not an API key. Open the qBittorrent Web UI settings and confirm Web UI is enabled, then put the URL (`http://your-server:8080`), username (default `admin`), and password into ChartHound's qBittorrent card. ChartHound logs in once per session and uses the cookie.
+ChartHound supports four download clients. You only need the ones relevant to your setup — a torrent client, a Usenet client, or both.
+
+**qBittorrent** — uses username/password authentication, not an API key. Open the qBittorrent Web UI settings and confirm Web UI is enabled, then put the URL (`http://your-server:8080`), username (default `admin`), and password into ChartHound's qBittorrent card. ChartHound logs in once per session and uses the cookie.
+
+**Deluge** — uses the Deluge WebUI password. Make sure the WebUI plugin is enabled in Deluge preferences. Enter the WebUI URL (`http://your-server:8112`) and the WebUI password into ChartHound's Deluge card. ChartHound authenticates via Deluge's JSON-RPC interface.
+
+**Transmission** — uses username/password authentication. Make sure Transmission's web interface is enabled with a username and password configured. Enter the URL (`http://your-server:9091`), username, and password into ChartHound's Transmission card. ChartHound handles the session ID handshake automatically.
+
+**SABnzbd** — uses an API key. In SABnzbd, go to **Config → General** and copy the API Key. Enter the SABnzbd URL (`http://your-server:8080`) and API key into ChartHound's SABnzbd card. ChartHound sends NZB downloads to SABnzbd with a `charthound-music` category tag.
+
+> **Tip:** You can have one torrent client *and* SABnzbd connected at the same time. When grabbing a release, ChartHound automatically routes torrents to your torrent client and NZBs to SABnzbd based on the indexer type.
 
 ### A note on Spotify
 
@@ -259,31 +272,41 @@ ChartHound has no Spotify integration — and that's deliberate. Spotify changed
 ### The Kennel — Connection Vault
 🔑 *Connections & Encrypted API Vault*
 
+![The Kennel](screenshots/Kennel.png)
+
 This is where you connect ChartHound to your media stack. Each service gets a card with fields for the server URL and API key/token. When you click Save, the credentials are encrypted with your SECRET_KEY and stored in the database. When you click Test, ChartHound decrypts the key server-side, makes a test API call, and reports back whether the connection succeeded.
 
-**Supported services:** Plex, Emby, Jellyfin, Last.fm, Prowlarr, Radarr, Sonarr, qBittorrent, Deluge, Transmission, Discogs
+**Supported services:** Plex, Emby, Jellyfin, Last.fm, Prowlarr, Radarr, Sonarr, qBittorrent, Deluge, Transmission, SABnzbd, Discogs
 
 **Path Translator:** At the bottom of The Kennel, the Path Translator helps ChartHound convert between your media server's file paths and Docker's `/music` mount point. Enter your server's music library prefix (the path you see in Plex/Emby/JF file info) and ChartHound handles the rest.
 
 ### The Retriever — Metadata Tagger
 🏷 *Write Metadata to Physical Files*
 
+![The Retriever](screenshots/Retriever.png)
+
 The Retriever scans your music library through your media server (Plex, Emby, or Jellyfin) and writes genre, mood, and year tags directly to your physical audio files using Mutagen. It uses a multi-source waterfall to find the best metadata: MusicBrainz → Last.fm → ListenBrainz → Deezer → Discogs → iTunes.
+
+You can scan by genre to target specific parts of your library, or scan with no genre filter at all to process every track regardless of genre — useful for a full library pass or for catching untagged tracks that don't have genre metadata yet.
 
 Tags are written to the actual file on disk before refreshing your media server — this is the "File-First" principle. Your metadata survives even if you switch media servers.
 
 ### The Sniffer — Chart Hit Finder
 📡 *Find Missing Chart Hits & Grab Them*
 
+![The Sniffer](screenshots/Sniffer.png)
+
 The Sniffer cross-references your music library against a master list of chart hits and popular tracks, showing you what you own and what you're missing. It uses your connected media server (Plex first, then Emby, then Jellyfin) for the library comparison — meaning it sees your entire library, not just folders you've scanned in The Retriever. Two modes:
 
 - **Chart Gap Fill** — Select genres, decades, and a notability tier (Essential/Notable/Deep Cuts), and see every charting song you don't own. Narrowing to a single genre gives you up to 1,000 of that genre's biggest hits. Add a decade filter to go even deeper.
 - **Trending** — Browse top tracks by genre using Last.fm data.
 
-For any missing track, click to search Prowlarr for album torrents. Results show seeders, size, and indexer. One-click grab sends the torrent to qBittorrent with a `charthound-music` category tag.
+For any missing track, click to search Prowlarr for album releases. Results show seeders/size for torrents and size for NZBs. One-click grab sends the release to your connected download client — torrents go to qBittorrent, Deluge, or Transmission; NZBs go to SABnzbd. All downloads are tagged with a `charthound-music` category.
 
 ### The Groomer — Playlist Builder
 ✂️ *Build Playlists from What You Own*
+
+![The Groomer](screenshots/Groomer.png)
 
 The Groomer scans your library, looks up each track against the chart reference database, and writes chart performance data into the COMMENT tag of your music files. A track that peaked at #4 on the Hot 100 for 12 weeks gets a comment like: `Hot 100: #4 (12 wks) | Adult Pop: #1 (18 wks)`.
 
@@ -294,6 +317,8 @@ Features a skip cache system so re-scans skip tracks that have already been chec
 ### The Bloodhound — Album Hunter
 🔍 *Hunt Every Album by Any Artist*
 
+![The Bloodhound](screenshots/Bloodhound.png)
+
 Four search modes powered by MusicBrainz:
 
 - **Artist Search** — Find an artist, then browse their complete discography filtered by release type (Albums, Compilations, Singles, All). Results are sortable by Artist, Title, Year, or Owned/Missing status.
@@ -301,7 +326,7 @@ Four search modes powered by MusicBrainz:
 - **Compilation Search** — 31 preset compilation series (Now That's What I Call Music, WOW Hits, Grammy Nominees, etc.) plus custom search.
 - **Genre Browse** — Browse by primary genre (Rock, Pop, Country, R&B, Hip-Hop, Electronic, Jazz, Blues, Metal, Alternative, Folk, Classical, CCM/Gospel). Selecting a genre automatically pulls in all its sub-genres behind the scenes.
 
-Every result shows whether you already own it (cross-referenced against your library). Missing releases can be searched on Prowlarr and grabbed to qBittorrent directly from the results table.
+Every result shows whether you already own it (cross-referenced against your library). Missing releases can be searched on Prowlarr and grabbed to your download client — torrents to qBittorrent, Deluge, or Transmission; NZBs to SABnzbd — directly from the results table.
 
 ### The Tracker — Missing Media Hunter
 🎯 *Radarr / Sonarr Automatic Search*
@@ -322,6 +347,8 @@ The Tracker monitors your Radarr and Sonarr libraries for missing movies and TV 
 
 ### The Veterinarian — Database Admin
 🩺 *Database Health & Admin Tools*
+
+![The Veterinarian](screenshots/Veterinarian.png)
 
 The Veterinarian is where you check on ChartHound's internal database — track counts, artist counts, album counts, skip cache statistics, dynamic vs. static DB sizes, and maintenance tools (VACUUM, integrity checks). Includes an in-tab debug console (off by default, 1,000-line cap) for troubleshooting scans without polluting Docker logs.
 
@@ -465,8 +492,8 @@ Add Docker's subnet to Jellyfin's LAN Networks list: `172.28.0.0/16` (Jellyfin D
 **SECRET_KEY warning on startup:**
 You haven't replaced the placeholder key in your `docker-compose.yml`. Generate one with `python3 -c "import secrets; print(secrets.token_hex(32))"` and restart the container.
 
-**qBittorrent on a different machine:**
-ChartHound and qBittorrent don't need to be on the same server. Enter the qBittorrent machine's LAN IP and port in The Kennel (e.g., `http://192.168.1.100:8080`).
+**Download client on a different machine:**
+ChartHound and your download client don't need to be on the same server. Enter the download client machine's LAN IP and port in The Kennel (e.g., `http://192.168.1.100:8080` for qBittorrent, `http://192.168.1.100:8112` for Deluge, `http://192.168.1.100:9091` for Transmission, `http://192.168.1.100:8080` for SABnzbd).
 
 **Session expired banner appears unexpectedly:**
 ChartHound sessions last 7 days. After that you'll see a clear "session expired" banner on the login screen — log back in and you're good. Your data, settings, and connections are all preserved.
