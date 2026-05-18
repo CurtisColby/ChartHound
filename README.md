@@ -44,6 +44,7 @@ If ChartHound saves you time, [a coffee](https://buymeacoffee.com/colbycurtis) i
 - [Updating ChartHound](#updating-charthound)
 - [Troubleshooting](#troubleshooting)
 - [Support ChartHound](#support-charthound)
+- [Disclaimer](#disclaimer)
 - [License](#license)
 
 ---
@@ -533,6 +534,12 @@ If money isn't on the table, there's plenty else that helps:
 - **🐛 Report bugs** — open an issue with reproduction steps and I'll get to it
 - **💡 Share use cases** — tell me how you're using ChartHound, what's working, what's not. Real user feedback shapes the roadmap.
 - **📣 Spread the word** — tell other Plex/Emby/Jellyfin users. r/selfhosted, r/Plex, the Awesome-Selfhosted list, your homelab Discord.
+
+---
+
+## Disclaimer
+
+ChartHound is a library management tool. Any downloading functionality is intended for use with content you have legally purchased or are otherwise authorized to obtain. The developer is not responsible for how users choose to use this software. Always comply with the copyright laws in your jurisdiction.
 
 ---
 
