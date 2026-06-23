@@ -61,8 +61,9 @@ class ConnectionSaveRequest(BaseModel):
 
 
 class PathSaveRequest(BaseModel):
-    server_prefix: str
-    docker_prefix: str = "/music"
+    server_prefix:     str
+    docker_prefix:     str = "/music"
+    navidrome_prefix:  str = ""
 
 
 class PathTranslateRequest(BaseModel):
@@ -323,9 +324,11 @@ async def _run_test(service: str, base_url: str, token: str, extra: dict | None 
             r = await client.post(f"{base_url.rstrip('/')}/api/v2/auth/login",
                                   data={"username": username, "password": token})
         # BUG-006 FIX: Check for exact "Ok." response
-        if r.text.strip() == "Ok.":
+        # 204 = whitelisted IP bypass (no body); 200+empty = same via some configs
+        body = r.text.strip()
+        if body == "Ok." or r.status_code == 204 or (r.status_code == 200 and body == ""):
             return "qBittorrent connected"
-        elif r.text.strip() == "Fails.":
+        elif body == "Fails.":
             raise ValueError("qBittorrent login failed. Check username and password.")
         else:
             raise ValueError(f"Unexpected qBittorrent response: {r.text[:100]}")
@@ -405,11 +408,14 @@ async def save_path(req: PathSaveRequest, user: dict = Depends(require_auth)):
         await db.executemany(
             "INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?) "
             "ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
-            [("path_server_prefix", req.server_prefix, now),
-             ("path_docker_prefix", req.docker_prefix, now)],
+            [("path_server_prefix",    req.server_prefix,    now),
+             ("path_docker_prefix",    req.docker_prefix,    now),
+             ("path_navidrome_prefix", req.navidrome_prefix, now)],
         )
         await db.commit()
-    return {"ok": True, "server_prefix": req.server_prefix, "docker_prefix": req.docker_prefix}
+    return {"ok": True, "server_prefix": req.server_prefix,
+            "docker_prefix": req.docker_prefix,
+            "navidrome_prefix": req.navidrome_prefix}
 
 
 @router.post("/path-translate")
@@ -439,12 +445,13 @@ async def get_path_settings(user: dict = Depends(require_auth)):
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
             "SELECT key, value FROM app_settings "
-            "WHERE key IN ('path_server_prefix','path_docker_prefix')"
+            "WHERE key IN ('path_server_prefix','path_docker_prefix','path_navidrome_prefix')"
         )
         rows = await cursor.fetchall()
     result = {r["key"]: r["value"] for r in rows}
-    return {"server_prefix": result.get("path_server_prefix", ""),
-            "docker_prefix": result.get("path_docker_prefix", "/music")}
+    return {"server_prefix":    result.get("path_server_prefix",    ""),
+            "docker_prefix":    result.get("path_docker_prefix",    "/music"),
+            "navidrome_prefix": result.get("path_navidrome_prefix", "")}
 
 
 # ── SECRET KEY STATUS ─────────────────────────────────────────────────────────
