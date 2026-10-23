@@ -242,7 +242,8 @@ async def _run_test(service: str, base_url: str, token: str, extra: dict | None 
         if not base_url:
             raise ValueError("No Plex URL configured.")
         async with httpx.AsyncClient(timeout=timeout, verify=False) as client:
-            r = await client.get(f"{base_url.rstrip('/')}/identity",
+            # /library/sections requires a valid token (/identity does not)
+            r = await client.get(f"{base_url.rstrip('/')}/library/sections",
                                  params={"X-Plex-Token": token},
                                  headers={"Accept": "application/json"})
         if r.status_code == 401:
@@ -250,8 +251,10 @@ async def _run_test(service: str, base_url: str, token: str, extra: dict | None 
         if r.status_code == 503:
             raise ValueError("503 Service Unavailable — Plex may be starting up.")
         r.raise_for_status()
-        friendly = r.json().get("MediaContainer", {}).get("friendlyName", "Plex Server")
-        return f"Connected to '{friendly}'"
+        mc = r.json().get("MediaContainer", {})
+        music = sum(1 for d in mc.get("Directory", []) if d.get("type") == "artist")
+        friendly = mc.get("title1") or "Plex Server"
+        return f"Connected to '{friendly}' — token valid, {music} music library(s)"
 
     elif service in ("emby", "jellyfin"):
         if not base_url:

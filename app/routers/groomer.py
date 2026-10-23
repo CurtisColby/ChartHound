@@ -98,6 +98,48 @@ CHART_DISPLAY = {
 
 MATCH_THRESHOLD = 0.82
 
+# ── M1: lookup integrity ──────────────────────────────────────────────────────
+# Bump when matching logic changes → every track is re-checked once on next scan.
+_LOOKUP_VERSION = "m1-2026-10"
+# Rows that are not real chart data (bad April import baked into static DB).
+_EXCLUDED_SOURCES = ("lastfm_estimate", "test")
+_EXCL_SQL = "AND COALESCE(data_source,'') NOT IN ('lastfm_estimate','test')"
+
+import codecs as _codecs
+
+def _latin1_fallback(err):
+    """Decode invalid UTF-8 bytes as Latin-1 (Ç, ü, é…) instead of failing."""
+    bad = err.object[err.start:err.end]
+    return (bytes(bad).decode("latin-1"), err.end)
+
+_codecs.register_error("ch_latin1", _latin1_fallback)
+
+
+def _safe_json(r, service: str) -> dict:
+    """Status-checked, encoding-tolerant JSON decode for media server responses."""
+    if r.status_code == 401:
+        raise RuntimeError(f"{service} rejected the token (401) — re-save it in The Kennel.")
+    if r.status_code == 404:
+        raise RuntimeError(f"{service} returned 404 — library may no longer exist. Re-select it.")
+    if not r.is_success:
+        raise RuntimeError(f"{service} returned HTTP {r.status_code}.")
+    try:
+        return json.loads(r.content.decode("utf-8", errors="ch_latin1"))
+    except ValueError:
+        raise RuntimeError(f"{service} sent a non-JSON response (HTTP {r.status_code}).")
+
+
+def _utc_epoch(ts: Optional[str]) -> float:
+    """Parse 'YYYY-MM-DD HH:MM:SS' or ISO (naive = UTC) → epoch. 0 if missing/bad."""
+    if not ts:
+        return 0.0
+    try:
+        import calendar
+        t = str(ts).replace("T", " ").split(".")[0].split("+")[0].rstrip("Z")
+        return float(calendar.timegm(datetime.strptime(t, "%Y-%m-%d %H:%M:%S").timetuple()))
+    except Exception:
+        return 0.0
+
 # ── Last.fm listener thresholds by genre bucket ───────────────────────────────
 _LFM_THRESHOLDS = {
     "ccm":     (100_000,  40_000,  15_000,  5_000,   5_000),   # loosened: min 5k
@@ -762,7 +804,24 @@ def _fuzzy(a: str, b: str) -> float:
     return difflib.SequenceMatcher(None, a, b).ratio()
 
 
-def _lookup_static(artist: str, title: str, charts: list) -> Optional[dict]:
+def _open_static_conn():
+    """Open static DB once with dynamic DB attached. Returns (conn, has_extras) or (None, False)."""
+    if not os.path.exists(_STATIC_DB):
+        return None, False
+    conn = sqlite3.connect(_STATIC_DB, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    has_extras = False
+    try:
+        conn.execute(f"ATTACH DATABASE '{_DYNAMIC_DB}' AS dyn")
+        has_extras = bool(conn.execute(
+            "SELECT name FROM dyn.sqlite_master WHERE type='table' AND name='chart_reference_extras'"
+        ).fetchone())
+    except Exception:
+        has_extras = False
+    return conn, has_extras
+
+
+def _lookup_static(artist: str, title: str, charts: list, shared=None) -> Optional[dict]:
     """
     Synchronous lookup against charthound_static.db.
     Checks chart_reference first (Billboard CSV data), then billboard_pop
@@ -774,9 +833,6 @@ def _lookup_static(artist: str, title: str, charts: list) -> Optional[dict]:
     have no dedicated DB rows — they fan out to their parent chart_name ('ccm'/'gospel')
     so the query still finds data. The result chart_name is preserved from the DB row.
     """
-    if not os.path.exists(_STATIC_DB):
-        return None
-
     artist_n = _norm(artist)
     title_n  = _norm(title)
 
@@ -789,22 +845,20 @@ def _lookup_static(artist: str, title: str, charts: list) -> Optional[dict]:
         if parent and parent not in expanded_charts:
             expanded_charts.append(parent)
 
+    # shared = (conn, has_extras) reused across a whole scan; else open per call
+    own = shared is None
+    conn = None
     try:
-        conn = sqlite3.connect(_STATIC_DB, check_same_thread=False)
-        conn.row_factory = sqlite3.Row
+        if own:
+            conn, has_extras = _open_static_conn()
+            if conn is None:
+                return None
+        else:
+            conn, has_extras = shared
 
-        # Attach dynamic DB read-only so we can UNION chart_reference_extras.
-        # Safe no-op if extras table doesn't exist yet — we wrap extras queries in try/except.
-        has_extras = False
-        try:
-            conn.execute(f"ATTACH DATABASE '{_DYNAMIC_DB}' AS dyn")
-            # Probe for table existence once per call
-            probe = conn.execute(
-                "SELECT name FROM dyn.sqlite_master WHERE type='table' AND name='chart_reference_extras'"
-            ).fetchone()
-            has_extras = bool(probe)
-        except Exception:
-            has_extras = False
+        def _close():
+            if own and conn is not None:
+                conn.close()
 
         # ── Step 1: chart_reference (Billboard CSVs) + extras (user-imported) ─
         chart_filter = ""
@@ -822,13 +876,13 @@ def _lookup_static(artist: str, title: str, charts: list) -> Optional[dict]:
                        artist_norm, title_norm, data_source
                 FROM chart_reference
                 WHERE artist_norm = ? AND title_norm = ?
-                {chart_filter}
+                {chart_filter} {_EXCL_SQL}
                 UNION ALL
                 SELECT chart_name, peak_position, weeks_on_chart, chart_year,
                        artist_norm, title_norm, data_source
                 FROM dyn.chart_reference_extras
                 WHERE artist_norm = ? AND title_norm = ?
-                {chart_filter}
+                {chart_filter} {_EXCL_SQL}
                 ORDER BY peak_position ASC
                 LIMIT 20
             """, union_params).fetchall()
@@ -838,7 +892,7 @@ def _lookup_static(artist: str, title: str, charts: list) -> Optional[dict]:
                        artist_norm, title_norm, data_source
                 FROM chart_reference
                 WHERE artist_norm = ? AND title_norm = ?
-                {chart_filter}
+                {chart_filter} {_EXCL_SQL}
                 ORDER BY peak_position ASC
                 LIMIT 20
             """, params).fetchall()
@@ -852,12 +906,12 @@ def _lookup_static(artist: str, title: str, charts: list) -> Optional[dict]:
                     SELECT chart_name, peak_position, weeks_on_chart, chart_year,
                            artist_norm, title_norm, data_source
                     FROM chart_reference
-                    WHERE artist_norm LIKE ? {chart_filter}
+                    WHERE artist_norm LIKE ? {chart_filter} {_EXCL_SQL}
                     UNION ALL
                     SELECT chart_name, peak_position, weeks_on_chart, chart_year,
                            artist_norm, title_norm, data_source
                     FROM dyn.chart_reference_extras
-                    WHERE artist_norm LIKE ? {chart_filter}
+                    WHERE artist_norm LIKE ? {chart_filter} {_EXCL_SQL}
                     LIMIT 400
                 """, union_like).fetchall()
             else:
@@ -865,7 +919,7 @@ def _lookup_static(artist: str, title: str, charts: list) -> Optional[dict]:
                     SELECT chart_name, peak_position, weeks_on_chart, chart_year,
                            artist_norm, title_norm, data_source
                     FROM chart_reference
-                    WHERE artist_norm LIKE ? {chart_filter}
+                    WHERE artist_norm LIKE ? {chart_filter} {_EXCL_SQL}
                     LIMIT 200
                 """, like_params).fetchall()
 
@@ -882,7 +936,7 @@ def _lookup_static(artist: str, title: str, charts: list) -> Optional[dict]:
 
         if rows:
             best_row = rows[0]
-            conn.close()
+            _close()
             return {
                 "peak_position":  best_row["peak_position"],
                 "weeks_on_chart": best_row["weeks_on_chart"] or 1,
@@ -910,7 +964,7 @@ def _lookup_static(artist: str, title: str, charts: list) -> Optional[dict]:
                 best_score = score
                 best = r
 
-        conn.close()
+        _close()
 
         if best:
             return {
@@ -923,13 +977,14 @@ def _lookup_static(artist: str, title: str, charts: list) -> Optional[dict]:
                 "all_charts":     [],
             }
 
-        conn.close()
+        _close()
         return None
 
     except Exception as e:
         log.warning(f"Static DB lookup error: {e}")
         try:
-            conn.close()
+            if own and conn is not None:
+                conn.close()
         except Exception:
             pass
         return None
@@ -3048,14 +3103,8 @@ async def scan_start(req: ScanRequest, _=Depends(require_auth)):
     # Migrate schema if needed (safe no-op if column already exists)
     await _migrate_chart_data()
 
-    # Wipe previous scan results so stale data never bleeds into a new scan
-    try:
-        async with aiosqlite.connect(_DYNAMIC_DB) as db:
-            await db.execute("DELETE FROM chart_data")
-            await db.commit()
-        log.info("chart_data cleared — starting fresh scan")
-    except Exception as e:
-        log.warning(f"Could not clear chart_data before scan: {e}")
+    # M1: results are NO LONGER wiped here. Each track's rows are replaced
+    # individually when it is re-checked, so a failed fetch loses nothing.
 
     _scan_job.update({
         "status": "starting", "message": "Initialising scan...",
@@ -3102,6 +3151,42 @@ async def scan_stop(_=Depends(require_auth)):
 #  SCAN — BACKGROUND WORKER
 # ══════════════════════════════════════════════════════════════════════════════
 
+async def _get_recheck_cutoffs(db) -> tuple:
+    """
+    Returns (version_cutoff, data_cutoff) as UTC epochs.
+      version_cutoff — when matching logic last changed (_LOOKUP_VERSION bump).
+                       Hits checked before this are re-checked.
+      data_cutoff    — max(version_cutoff, newest chart import). Misses checked
+                       before this are re-checked (new data may now match them).
+    """
+    vals = {}
+    async with db.execute(
+        "SELECT key, value FROM app_settings "
+        "WHERE key IN ('groomer_lookup_version','groomer_recheck_after')"
+    ) as cur:
+        for k, v in await cur.fetchall():
+            vals[k] = v
+    if vals.get("groomer_lookup_version") != _LOOKUP_VERSION:
+        now_s = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+        await db.executemany(
+            "INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, datetime('now')) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
+            [("groomer_lookup_version", _LOOKUP_VERSION), ("groomer_recheck_after", now_s)],
+        )
+        await db.commit()
+        vals["groomer_recheck_after"] = now_s
+        log.info(f"Lookup version → {_LOOKUP_VERSION}: all tracks will be re-checked once")
+    latest_import = None
+    try:
+        async with db.execute("SELECT MAX(added_at) FROM chart_reference_extras") as cur:
+            row = await cur.fetchone()
+            latest_import = row[0] if row else None
+    except Exception:
+        pass
+    version_cutoff = _utc_epoch(vals.get("groomer_recheck_after"))
+    return version_cutoff, max(version_cutoff, _utc_epoch(latest_import))
+
+
 async def _run_scan(req: ScanRequest):
     # Early log — ALWAYS hits before any heavy I/O so we have proof the
     # background task started, even if something catastrophic happens next.
@@ -3127,10 +3212,35 @@ async def _run_scan(req: ScanRequest):
             pass
 
         # Pull track list
-        tracks = await _fetch_tracks(req)
-        if not tracks:
-            _scan_job.update({"status": "done", "message": "No tracks found to scan."})
+        try:
+            tracks = await _fetch_tracks(req)
+        except Exception as fe:
+            log.error(f"Groomer library fetch failed: {fe}")
+            _scan_job.update({"status": "failed",
+                              "message": f"{fe} Previous results kept."})
             return
+        if _scan_job["stop_requested"]:
+            _scan_job.update({"status": "stopped", "message": "Stopped before chart lookups began."})
+            return
+        if not tracks:
+            where = (req.folder_path or "/music") if req.source == "local" else f"{req.source} library"
+            _scan_job.update({"status": "failed",
+                              "message": f"No tracks returned from {where}. Previous results kept."})
+            return
+
+        # Dedupe — 'All Libraries' can return the same file from several libraries
+        _seen, _uniq = set(), []
+        for t in tracks:
+            fp = (t.get("file_path") or "").strip()
+            key = fp or (_norm(t.get("artist", "")), _norm(t.get("title", "")), _norm(t.get("album", "")))
+            if key in _seen:
+                continue
+            _seen.add(key)
+            _uniq.append(t)
+        dupes = len(tracks) - len(_uniq)
+        tracks = _uniq
+        if dupes:
+            log.info(f"Dedupe: {dupes:,} duplicate tracks removed ({len(tracks):,} unique)")
 
         limit = req.limit or len(tracks)
         tracks = tracks[:limit]
@@ -3178,11 +3288,20 @@ async def _run_scan(req: ScanRequest):
                     return fp
                 return ""
 
-            for idx, track in enumerate(tracks):
+            version_cutoff, data_cutoff = await _get_recheck_cutoffs(db)
+            static_shared = await loop.run_in_executor(None, _open_static_conn)
+            if static_shared[0] is None:
+                static_shared = None
+
+            try:
+              for idx, track in enumerate(tracks):
                 if _scan_job["stop_requested"]:
+                    await db.commit()
                     _scan_job["status"] = "stopped"
                     _scan_job["message"] = f"Stopped at track {idx + 1} of {len(tracks)}"
                     return
+                if idx and idx % 200 == 0:
+                    await db.commit()   # persist miss/hit status in batches
 
                 artist = track.get("artist", "").strip()
                 title  = track.get("title",  "").strip()
@@ -3192,22 +3311,44 @@ async def _run_scan(req: ScanRequest):
 
                 _scan_job["message"] = f"[{idx+1}/{len(tracks)}] {artist} — {title}"
 
-                # Check dynamic cache (chart_data rows from THIS scan)
-                cached = await _check_cache(db, track, [])  # [] = any chart
-                if cached:
-                    _scan_job["cached"]    += 1
-                    _scan_job["processed"] += 1
-                    continue
-
                 # Resolve track_id
                 track_id = await _resolve_track_id(db, track)
                 if track_id:
                     track["track_id"] = track_id
 
+                # ── SKIP CACHE (incremental) ──────────────────────────────────
+                # hit  → skip if checked after last lookup-logic change and rows exist
+                # miss → skip if checked after newest chart import and < 6 months old
+                if track_id:
+                    cs_row = None
+                    try:
+                        async with db.execute(
+                            "SELECT chart_status, chart_last_checked FROM tracks WHERE track_id=?",
+                            (track_id,)
+                        ) as cur:
+                            cs_row = await cur.fetchone()
+                    except Exception:
+                        pass
+                    if cs_row and cs_row["chart_status"] in ("hit", "miss"):
+                        chk  = _utc_epoch(cs_row["chart_last_checked"])
+                        skip = False
+                        if cs_row["chart_status"] == "hit" and chk >= version_cutoff:
+                            async with db.execute(
+                                "SELECT 1 FROM chart_data WHERE track_id=? LIMIT 1", (track_id,)
+                            ) as cur:
+                                skip = await cur.fetchone() is not None
+                        elif (cs_row["chart_status"] == "miss" and chk >= data_cutoff
+                              and (time.time() - chk) < _MISS_AGE_SECONDS):
+                            skip = True
+                            skipped_miss += 1
+                        if skip:
+                            _scan_job["cached"]    += 1
+                            _scan_job["processed"] += 1
+                            continue
+                    # Re-checking → replace this track's old rows (never accumulate)
+                    await db.execute("DELETE FROM chart_data WHERE track_id=?", (track_id,))
+
                 # ── PULL RETRIEVER GENRE TAGS FROM DB ────────────────────────
-                # genre_1/2/3 written by the Retriever live in the tracks table.
-                # Media server fetch dicts don't include these — pull them now
-                # so the LBZ router and Last.fm genre gate use real data.
                 if track_id and not track.get("genre_1"):
                     try:
                         async with db.execute(
@@ -3222,38 +3363,10 @@ async def _run_scan(req: ScanRequest):
                     except Exception:
                         pass
 
-                # ── CHART STATUS SKIP CACHE ───────────────────────────────────
-                if track_id:
-                    cs_row = None
-                    try:
-                        async with db.execute(
-                            "SELECT chart_status, chart_last_checked FROM tracks WHERE track_id=?",
-                            (track_id,)
-                        ) as cur:
-                            cs_row = await cur.fetchone()
-                    except Exception:
-                        pass
-
-                    if cs_row and cs_row["chart_status"] == "miss":
-                        last_checked = cs_row["chart_last_checked"] or ""
-                        is_fresh = False
-                        if last_checked:
-                            try:
-                                checked_ts = datetime.fromisoformat(last_checked)
-                                age = time.time() - checked_ts.timestamp()
-                                is_fresh = age < _MISS_AGE_SECONDS
-                            except Exception:
-                                pass
-                        if is_fresh:
-                            skipped_miss += 1
-                            _scan_job["cached"]    += 1
-                            _scan_job["processed"] += 1
-                            continue
-
                 # ── WATERFALL ────────────────────────────────────────────────
                 # Step 1: Static DB + extras — ALL charts, no restriction
                 static_result = await loop.run_in_executor(
-                    None, _lookup_static, artist, title, []   # [] = all charts
+                    None, _lookup_static, artist, title, [], static_shared
                 )
 
                 if static_result:
@@ -3426,6 +3539,13 @@ async def _run_scan(req: ScanRequest):
 
                 _scan_job["processed"] += 1
                 await asyncio.sleep(0)
+            finally:
+                await db.commit()
+                if static_shared:
+                    try:
+                        static_shared[0].close()
+                    except Exception:
+                        pass
 
         elapsed = time.time() - (_scan_job["started_at"] or time.time())
         _scan_job.update({
@@ -3434,7 +3554,8 @@ async def _run_scan(req: ScanRequest):
                         f"{_scan_job['cached']:,} cached "
                         f"({skipped_miss:,} skip-cached misses, "
                         f"{comment_readback_hits:,} comment read-backs), "
-                        f"{_scan_job['failed']:,} unmatched "
+                        f"{_scan_job['failed']:,} unmatched"
+                        f"{f', {dupes:,} duplicates skipped' if dupes else ''} "
                         f"in {elapsed:.0f}s"),
         })
         log.info(f"Skip cache stats: {skipped_miss:,} misses skipped, "
@@ -3442,7 +3563,7 @@ async def _run_scan(req: ScanRequest):
 
     except Exception as e:
         log.exception("Groomer scan error")
-        _scan_job.update({"status": "error", "message": str(e)})
+        _scan_job.update({"status": "failed", "message": f"Scan error: {e}"})
 
 
 async def _enrich_genre_from_file(db: aiosqlite.Connection, track: dict, loop) -> None:
@@ -3917,7 +4038,7 @@ async def _fetch_media_server(req: ScanRequest) -> list:
         conn = None
 
     if not conn:
-        raise HTTPException(400, f"No {req.source} connection configured in The Kennel.")
+        raise RuntimeError(f"No {req.source} connection configured in The Kennel.")
 
     base_url   = conn["base_url"]
     token      = decrypt_token(conn["token_enc"]) if conn["token_enc"] else ""
@@ -3933,30 +4054,34 @@ async def _fetch_media_server(req: ScanRequest) -> list:
 
 
 async def _fetch_plex_tracks(base: str, token: str, library_id: str = None) -> list:
+    """Raises RuntimeError with a readable reason on any failure (no silent empty list)."""
     tracks = []
     prefix_server = os.environ.get("MEDIA_SERVER_MUSIC_PREFIX", "")
     prefix_docker = os.environ.get("DOCKER_MUSIC_PREFIX", "/music")
+    hdr = {"Accept": "application/json"}
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            # Get music library section
-            r = await client.get(f"{base}/library/sections?X-Plex-Token={token}",
-                                 headers={"Accept":"application/json"})
-            sections = r.json().get("MediaContainer",{}).get("Directory",[])
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            r = await client.get(f"{base}/library/sections",
+                                 params={"X-Plex-Token": token}, headers=hdr)
+            sections = _safe_json(r, "Plex").get("MediaContainer", {}).get("Directory", [])
             music_sections = (
                 [library_id] if library_id
                 else [s["key"] for s in sections if s.get("type") == "artist"]
             )
+            if not music_sections:
+                raise RuntimeError("Plex has no music libraries.")
 
             for sec in music_sections:
                 offset = 0
                 while True:
+                    _scan_job["message"] = f"Reading Plex library {sec}: {len(tracks):,} tracks…"
                     r = await client.get(
                         f"{base}/library/sections/{sec}/all",
-                        params={"type":10,"X-Plex-Token":token,
-                                "X-Plex-Container-Start":offset,
-                                "X-Plex-Container-Size":500},
-                        headers={"Accept":"application/json"})
-                    items = r.json().get("MediaContainer",{}).get("Metadata",[])
+                        params={"type": 10, "X-Plex-Token": token,
+                                "X-Plex-Container-Start": offset,
+                                "X-Plex-Container-Size": 500},
+                        headers=hdr)
+                    items = _safe_json(r, "Plex").get("MediaContainer", {}).get("Metadata", [])
                     if not items:
                         break
                     for item in items:
@@ -3967,20 +4092,25 @@ async def _fetch_plex_tracks(base: str, token: str, library_id: str = None) -> l
                                 fp = prefix_docker + fp[len(prefix_server):]
                         except (KeyError, IndexError):
                             pass
+                        # originalTitle = track artist on compilations; grandparent = album artist
+                        artist = item.get("originalTitle") or item.get("grandparentTitle", "")
                         tracks.append({
-                            "track_id":       None,
-                            "plex_rating_key": item.get("ratingKey",""),
-                            "artist":          item.get("grandparentTitle",""),
-                            "title":           item.get("title",""),
-                            "album":           item.get("parentTitle",""),
+                            "track_id":        None,
+                            "plex_rating_key": item.get("ratingKey", ""),
+                            "artist":          artist,
+                            "title":           item.get("title", ""),
+                            "album":           item.get("parentTitle", ""),
                             "file_path":       fp,
-                            "tag_artist":      item.get("grandparentTitle",""),
+                            "tag_artist":      artist,
                         })
                     offset += len(items)
                     if len(items) < 500:
                         break
-    except Exception as e:
-        log.error(f"Plex fetch error: {e}")
+    except RuntimeError:
+        raise
+    except httpx.HTTPError as e:
+        raise RuntimeError(f"Could not reach Plex at {base} ({type(e).__name__}).")
+    log.info(f"Plex fetch: {len(tracks):,} tracks from {len(music_sections)} library(s)")
     return tracks
 
 
@@ -3999,7 +4129,7 @@ async def _fetch_emby_tracks(base: str, token: str, user_id: str, library_id: st
                             "ParentId": library_id if library_id else None,
                         }.items() if v is not None},
                     headers=headers)
-                items = r.json().get("Items",[]) if r.is_success else []
+                items = _safe_json(r, "Emby").get("Items", [])
                 if not items:
                     break
                 for item in items:
@@ -4015,8 +4145,10 @@ async def _fetch_emby_tracks(base: str, token: str, user_id: str, library_id: st
                 start += len(items)
                 if len(items) < 500:
                     break
-    except Exception as e:
-        log.error(f"Emby fetch error: {e}")
+    except RuntimeError:
+        raise
+    except httpx.HTTPError as e:
+        raise RuntimeError(f"Could not reach Emby at {base} ({type(e).__name__}).")
     return tracks
 
 
@@ -4035,7 +4167,7 @@ async def _fetch_jellyfin_tracks(base: str, token: str, user_id: str, library_id
                             "ParentId": library_id if library_id else None,
                         }.items() if v is not None},
                     headers=headers)
-                items = r.json().get("Items",[]) if r.is_success else []
+                items = _safe_json(r, "Jellyfin").get("Items", [])
                 if not items:
                     break
                 for item in items:
@@ -4051,8 +4183,10 @@ async def _fetch_jellyfin_tracks(base: str, token: str, user_id: str, library_id
                 start += len(items)
                 if len(items) < 500:
                     break
-    except Exception as e:
-        log.error(f"Jellyfin fetch error: {e}")
+    except RuntimeError:
+        raise
+    except httpx.HTTPError as e:
+        raise RuntimeError(f"Could not reach Jellyfin at {base} ({type(e).__name__}).")
     return tracks
 
 

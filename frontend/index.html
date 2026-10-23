@@ -5690,8 +5690,15 @@ async function grmPollScan() {
       } else {
         document.getElementById('grm-status-title').textContent =
           d.status === 'stopped' ? 'SCAN STOPPED' : 'SCAN FAILED';
-        document.getElementById('grm-status-sub').textContent =
-          `${matched.toLocaleString()} hits found before stop`;
+        if (d.status === 'failed') {
+          const why = d.message || 'Scan failed';
+          document.getElementById('grm-status-sub').textContent = why;
+          grmLog(`✗ ${why}`, 'err');
+          toast(why, 'error');
+        } else {
+          document.getElementById('grm-status-sub').textContent =
+            `${matched.toLocaleString()} hits found before stop`;
+        }
         if (matched > 0) grmSearch();
       }
     }
