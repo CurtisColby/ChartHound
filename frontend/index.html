@@ -1660,6 +1660,26 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
               </div>
             </div>
 
+            <!-- M2: HITS filters -->
+            <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem;display:flex;flex-direction:column;gap:.6rem;margin-bottom:.5rem">
+              <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted);letter-spacing:1px">HITS</div>
+              <div>
+                <div style="display:flex;justify-content:space-between;margin-bottom:.3rem">
+                  <label style="font-size:.7rem;color:var(--muted)">Min Hit Score</label>
+                  <span style="font-family:var(--display);font-size:1.05rem;color:var(--amber)" id="grm-score-display">Any</span>
+                </div>
+                <input type="range" id="grm-min-score" min="0" max="90" step="5" value="0" oninput="document.getElementById('grm-score-display').textContent=this.value>0?this.value+'+':'Any'" onchange="grmSearch()" style="width:100%">
+                <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted2);margin-top:.2rem;line-height:1.6">70+ = big hits everyone knows · 85+ = all-time smashes</div>
+              </div>
+              <div>
+                <div style="font-size:.7rem;color:var(--muted);margin-bottom:.35rem">Decades <span style="font-size:.55rem;color:var(--muted2)">(none = all)</span></div>
+                <div style="display:flex;flex-wrap:wrap;gap:.3rem"><button class="grm-dec" data-dec="1950" onclick="grmToggleDecade(1950)" style="padding:.3rem .45rem;background:var(--surface3);color:var(--muted);border:1px solid var(--border2);border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer">50s</button><button class="grm-dec" data-dec="1960" onclick="grmToggleDecade(1960)" style="padding:.3rem .45rem;background:var(--surface3);color:var(--muted);border:1px solid var(--border2);border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer">60s</button><button class="grm-dec" data-dec="1970" onclick="grmToggleDecade(1970)" style="padding:.3rem .45rem;background:var(--surface3);color:var(--muted);border:1px solid var(--border2);border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer">70s</button><button class="grm-dec" data-dec="1980" onclick="grmToggleDecade(1980)" style="padding:.3rem .45rem;background:var(--surface3);color:var(--muted);border:1px solid var(--border2);border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer">80s</button><button class="grm-dec" data-dec="1990" onclick="grmToggleDecade(1990)" style="padding:.3rem .45rem;background:var(--surface3);color:var(--muted);border:1px solid var(--border2);border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer">90s</button><button class="grm-dec" data-dec="2000" onclick="grmToggleDecade(2000)" style="padding:.3rem .45rem;background:var(--surface3);color:var(--muted);border:1px solid var(--border2);border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer">00s</button><button class="grm-dec" data-dec="2010" onclick="grmToggleDecade(2010)" style="padding:.3rem .45rem;background:var(--surface3);color:var(--muted);border:1px solid var(--border2);border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer">10s</button><button class="grm-dec" data-dec="2020" onclick="grmToggleDecade(2020)" style="padding:.3rem .45rem;background:var(--surface3);color:var(--muted);border:1px solid var(--border2);border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer">20s</button></div>
+              </div>
+              <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.7rem;color:var(--muted)">
+                <input type="checkbox" id="grm-ohw" onchange="grmSearch()" style="accent-color:var(--pink)"> One-hit wonders only
+              </label>
+            </div>
+
             <!-- Confidence filter -->
             <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem">
               <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted);letter-spacing:1px;margin-bottom:.5rem">CONFIDENCE</div>
@@ -1671,6 +1691,30 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
               </div>
               <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted2);margin-top:.45rem;line-height:1.7">HIGH = real Billboard data · MED = LBZ popularity data · LOW = Last.fm estimate</div>
             </div>
+
+          <!-- M2: ROAD TRIP BUILDER -->
+          <div>
+            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--pink);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">PLAYLIST BUILDER<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
+            <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem;display:flex;flex-direction:column;gap:.6rem">
+              <div style="font-family:var(--mono);font-size:.52rem;color:var(--muted2);line-height:1.6">Uses the Genre, Decades, Hit Score and One-hit filters. Ignores the peak sliders.</div>
+              <div>
+                <div style="display:flex;justify-content:space-between;margin-bottom:.3rem"><label style="font-size:.7rem;color:var(--muted)">Length</label><span style="font-family:var(--display);font-size:1.05rem;color:var(--amber)" id="grm-len-display">4h</span></div>
+                <input type="range" id="grm-len" min="0.5" max="12" step="0.5" value="4" oninput="document.getElementById('grm-len-display').textContent=grmFmtHours(this.value*60)" style="width:100%">
+              </div>
+              <div>
+                <div style="display:flex;justify-content:space-between;margin-bottom:.3rem"><label style="font-size:.7rem;color:var(--muted)">Familiar hits</label><span style="font-family:var(--display);font-size:1.05rem;color:var(--amber)" id="grm-fam-display">90%</span></div>
+                <input type="range" id="grm-fam" min="50" max="100" step="5" value="90" oninput="document.getElementById('grm-fam-display').textContent=this.value+'%'" style="width:100%">
+                <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted2);margin-top:.2rem">The rest are lesser-known chart songs</div>
+              </div>
+              <div>
+                <div style="display:flex;justify-content:space-between;margin-bottom:.3rem"><label style="font-size:.7rem;color:var(--muted)">Artist spacing</label><span style="font-family:var(--display);font-size:1.05rem;color:var(--amber)" id="grm-gap-display">12</span></div>
+                <input type="range" id="grm-gap" min="0" max="30" step="1" value="12" oninput="document.getElementById('grm-gap-display').textContent=this.value" style="width:100%">
+                <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted2);margin-top:.2rem">Songs before the same artist can play again</div>
+              </div>
+              <button id="grm-btn-build" onclick="grmBuildPlaylist()" style="width:100%;padding:.6rem;background:var(--amber);color:#000;border:none;border-radius:6px;font-family:var(--display);font-size:1rem;letter-spacing:2px;cursor:pointer">🚗 BUILD PLAYLIST</button>
+              <button onclick="grmRecalcScores(this)" style="width:100%;padding:.35rem;background:transparent;color:var(--muted);border:1px solid var(--border2);border-radius:5px;font-family:var(--mono);font-size:.55rem;cursor:pointer">↻ Recalculate Hit Scores</button>
+            </div>
+          </div>
 
           <!-- PLAYLIST NAME -->
           <div>
@@ -1803,6 +1847,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
                     <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer" onclick="grmSort('genre')">GENRE <span id="sort-ind-genre"></span></th>
                     <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer" onclick="grmSort('year')">YEAR <span id="sort-ind-year"></span></th>
                     <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer" onclick="grmSort('stars')">⭐ <span id="sort-ind-stars"></span></th>
+                    <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer" onclick="grmSort('score')">SCORE <span id="sort-ind-score"> ▼</span></th>
                     <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer" onclick="grmSort('peak')">PEAK <span id="sort-ind-peak"></span></th>
                     <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer" onclick="grmSort('weeks')">WEEKS <span id="sort-ind-weeks"></span></th>
                     <th style="padding:.5rem .75rem;text-align:left;color:var(--muted);font-weight:normal;letter-spacing:1px;border-bottom:1px solid var(--border);white-space:nowrap">CHARTS</th>
@@ -6106,6 +6151,73 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
+// ── M2: Hits filters + playlist builder ─────────────────────────
+const grmDecades = new Set();
+function grmToggleDecade(d) {
+  if (grmDecades.has(d)) grmDecades.delete(d); else grmDecades.add(d);
+  document.querySelectorAll('.grm-dec').forEach(b => {
+    const on = grmDecades.has(parseInt(b.dataset.dec));
+    b.style.background = on ? 'var(--pink)' : 'var(--surface3)';
+    b.style.color      = on ? '#000' : 'var(--muted)';
+  });
+  grmSearch();
+}
+function grmFmtHours(min) {
+  min = Math.round(min); const h = Math.floor(min / 60), m = min % 60;
+  return h ? `${h}h${m ? ' ' + String(m).padStart(2,'0') + 'm' : ''}` : `${m}m`;
+}
+async function grmBuildPlaylist() {
+  const btn = document.getElementById('grm-btn-build');
+  const pills = grmGetActivePills();
+  const body = {
+    genre:        pills.length ? pills.join(',') : null,
+    decades:      [...grmDecades],
+    min_score:    parseInt(document.getElementById('grm-min-score')?.value || 0),
+    ohw_only:     !!document.getElementById('grm-ohw')?.checked,
+    minutes:      Math.round(parseFloat(document.getElementById('grm-len').value) * 60),
+    familiar_pct: parseInt(document.getElementById('grm-fam').value),
+    artist_gap:   parseInt(document.getElementById('grm-gap').value),
+  };
+  btn.disabled = true; btn.textContent = 'BUILDING…';
+  try {
+    const r = await fetch(`${API}/api/groomer/playlist/build`, {method:'POST', headers:authHdrs(), body:JSON.stringify(body)});
+    const d = await r.json();
+    if (!r.ok) throw new Error(typeof d.detail === 'string' ? d.detail : `HTTP ${r.status}`);
+    if (!d.count) { toast(d.message || 'No songs match these filters.', 'warn'); return; }
+    const nameEl = document.getElementById('grm-playlist-name');
+    if (!nameEl.value.trim() || nameEl.value === 'Chart Hits') {
+      const dec = [...grmDecades].sort().map(x => `${String(x).slice(2)}s`).join('+');
+      nameEl.value = `Road Trip${dec ? ' ' + dec : ''}${body.ohw_only ? ' One-Hit Wonders' : ''} Hits`;
+    }
+    grmResults = d.results; _grmTotal = d.count; _grmOffset = d.count;
+    _sortKey = 'seq'; _sortAsc = true;
+    ['artist','title','year','stars','score','peak','weeks','conf','genre'].forEach(k => {
+      const el = document.getElementById('sort-ind-' + k); if (el) el.textContent = '';
+    });
+    grmRenderResults(grmResults);
+    grmUpdateLoadMore();
+    document.getElementById('grm-badge').textContent = `${d.count} songs · ${grmFmtHours(d.minutes)}`;
+    let msg = `✓ Built ${d.count} songs (${grmFmtHours(d.minutes)}) from ${d.candidates.toLocaleString()} candidates`;
+    if (d.unknown_durations) msg += ` · ${d.unknown_durations} lengths estimated (rescan fills these in)`;
+    grmLog(msg, 'ok');
+    if (d.short) toast('Not enough matching songs to fill the full length — loosen the filters.', 'warn');
+    else toast(`Playlist built — ${d.count} songs`, 'success');
+  } catch (e) {
+    grmLog(`✗ Build failed: ${e.message}`, 'err'); toast(`Build failed: ${e.message}`, 'error');
+  } finally { btn.disabled = false; btn.textContent = '🚗 BUILD PLAYLIST'; }
+}
+async function grmRecalcScores(btn) {
+  btn.disabled = true; const t = btn.textContent; btn.textContent = 'CALCULATING…';
+  try {
+    const r = await fetch(`${API}/api/groomer/hitscore/rebuild`, {method:'POST', headers:authHdrs()});
+    const d = await r.json();
+    if (!r.ok) throw new Error(typeof d.detail === 'string' ? d.detail : `HTTP ${r.status}`);
+    toast(`Hit Scores updated — ${d.count.toLocaleString()} tracks`, 'success');
+    grmSearch();
+  } catch (e) { toast(e.message, 'error'); }
+  finally { btn.disabled = false; btn.textContent = t; }
+}
+
 // ── Results ───────────────────────────────────────────────────────
 let _grmOffset   = 0;
 let _grmTotal    = 0;
@@ -6127,6 +6239,11 @@ async function grmSearch(append = false) {
   if (activePills.length) params.set('genre', activePills.join(','));
   if (weeksMin > 1) params.set('min_weeks', weeksMin);
   if (conf) params.set('confidence', conf);
+  const minScore = parseInt(document.getElementById('grm-min-score')?.value || 0);
+  if (minScore > 0) params.set('min_score', minScore);
+  if (grmDecades.size) params.set('decades', [...grmDecades].join(','));
+  if (document.getElementById('grm-ohw')?.checked) params.set('ohw', 'true');
+  if (_sortKey === 'seq') { _sortKey = 'score'; _sortAsc = true; }
   try {
     const r = await fetch(`${API}/api/groomer/results?${params}`, {headers:authHdrs()});
     if (!r.ok) return;
@@ -6244,6 +6361,16 @@ function grmRenderResults(results, append = false) {
     const confDot   = `<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${confColor};margin-right:.35rem;vertical-align:middle"></span>`;
     const confLabel = `${confDot}<span style="color:${confColor};font-size:.55rem">${conf}</span>`;
     const filePath  = t.file_path || '';
+    const hs = t.hit_score;
+    const hsColor = hs >= 85 ? 'var(--pink)' : hs >= 70 ? 'var(--amber)' : hs >= 50 ? 'var(--teal)' : 'var(--muted)';
+    const hsTip = [t.hot100_peak ? `Hot 100 #${t.hot100_peak}` : 'No Hot 100 data',
+                   t.hot100_weeks ? `${t.hot100_weeks} wks` : '',
+                   t.yearend_rank ? `Year-end #${t.yearend_rank}` : ''].filter(Boolean).join(' · ');
+    const scoreHTML = (hs != null
+      ? `<span title="${esc(hsTip)}" style="font-family:var(--display);font-size:1rem;color:${hsColor}">${hs}</span>`
+      : '<span style="color:var(--muted2)">—</span>')
+      + (t.one_hit_wonder ? ' <span title="One-hit wonder" style="font-size:.45rem;padding:.05rem .3rem;border-radius:6px;border:1px solid var(--amber);color:var(--amber)">1-HIT</span>' : '')
+      + (t._seq ? ` <span style="color:var(--muted2);font-size:.5rem">#${t._seq}</span>` : '');
     const tr = document.createElement('tr');
     tr.dataset.id     = t.track_id;
     tr.dataset.text   = `${artist} ${t.title||''} ${chartName}`.toLowerCase();
@@ -6288,6 +6415,7 @@ function grmRenderResults(results, append = false) {
       <td style="padding:.45rem .75rem;max-width:180px">${genrePillsHTML}</td>
       <td style="padding:.45rem .75rem;color:var(--muted)">${t.chart_year||t.year||'—'}</td>
       <td style="padding:.45rem .75rem">${starsHTML}</td>
+      <td style="padding:.45rem .75rem;white-space:nowrap">${scoreHTML}</td>
       <td style="padding:.45rem .75rem">${peakHTML}</td>
       <td style="padding:.45rem .75rem">${wBar}</td>
       <td style="padding:.45rem .75rem">${chartBadge}</td>
@@ -6298,7 +6426,7 @@ function grmRenderResults(results, append = false) {
   grmSyncBar();
 }
 
-let _sortKey = 'peak';
+let _sortKey = 'score';
 let _sortAsc  = true;
 
 function grmFilter(q) {
@@ -6344,13 +6472,15 @@ const _sortFields = {
   weeks:  t => -(t.weeks_on_chart || 0),
   conf:   t => _confRank[t.confidence] ?? 9,
   genre:  t => (t.genre_1 || '').toLowerCase(),
+  score:  t => -(t.hit_score || 0),
+  seq:    t => t._seq || 99999,
 };
 
 function grmSort(key) {
   if (_sortKey === key) { _sortAsc = !_sortAsc; }
   else { _sortKey = key; _sortAsc = (key === 'artist' || key === 'title'); }
   // Update indicators
-  ['artist','title','year','stars','peak','weeks','conf','genre'].forEach(k => {
+  ['artist','title','year','stars','score','peak','weeks','conf','genre'].forEach(k => {
     const el = document.getElementById('sort-ind-' + k);
     if (el) el.textContent = k === _sortKey ? (_sortAsc ? ' ▲' : ' ▼') : '';
   });

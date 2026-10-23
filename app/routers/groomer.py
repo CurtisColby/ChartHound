@@ -46,6 +46,7 @@ import difflib
 import json
 import logging
 import os
+import random
 import re
 import sqlite3
 import time
@@ -2962,8 +2963,212 @@ async def groomer_startup():
     """Called from main.py lifespan to start the weekly refresh scheduler."""
     asyncio.create_task(_scheduler_loop())
     asyncio.create_task(_library_cache_scheduler())
+    asyncio.create_task(_hit_score_startup())
     log.info("Groomer scheduler started (auto-refresh every 7 days for current-week sources).")
     log.info("Library cache scheduler started (auto-sync every 24h from physical files).")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  HIT SCORE (M2) — one 0–100 number per charted track
+# ══════════════════════════════════════════════════════════════════════════════
+#  Tier A = Billboard Hot 100 (reliable weekly-derived data + Whitburn year-end ranks)
+#  Tier B = trusted genre charts (country, R&B, rock, AC, dance, UK…)
+#  Tier C = sources with unreliable peaks (many rows are #1 by default)
+#  Score built mostly from Tier A so "everything is #1" sources can't dominate.
+
+_TIER_A_SOURCES = {"hot100_csv", "utdata_hot100"}
+_TIER_C_SOURCES = {
+    "adult_charts_1961_2018", "whitburn_pop_1890_2023", "cw_annual_1944_2004",
+    "chart2000_monthly", "tsort_historical", "kworb_itunes_us", "listenbrainz_historical",
+}
+_SKIP_CHARTS = {"The Billboard 200", "A40 Working", "AC Working", "Chart Runs"}
+_hit_score_job = {"status": "idle", "message": "", "count": 0}
+
+_FEAT_RE  = re.compile(r"\s+(?:feat\.?|featuring|ft\.?|with|duet with|x)\s+.*$", re.I)
+_PAREN_RE = re.compile(r"\s*[\(\[][^\)\]]*[\)\]]")
+_SUFFIX_RE = re.compile(r"\s+-\s+.*\b(remaster|remastered|version|mix|edit|live|mono|stereo|single|radio)\b.*$", re.I)
+
+
+def _artist_key(artist: str) -> str:
+    return _norm(_FEAT_RE.sub("", artist or ""))
+
+
+def _title_key(title: str) -> str:
+    t = _SUFFIX_RE.sub("", title or "")
+    t = _PAREN_RE.sub("", t)
+    return _norm(t) or _norm(title or "")
+
+
+def _peak_factor(peak) -> float:
+    try:
+        p = max(1, int(peak))
+    except Exception:
+        return 0.0
+    return max(0.0, 1 - (p - 1) / 100) ** 1.6
+
+
+def _source_tier(data_source: str, chart_name: str) -> int:
+    if data_source in _EXCLUDED_SOURCES or chart_name in _SKIP_CHARTS:
+        return 0
+    if data_source in _TIER_A_SOURCES or chart_name == "The Billboard Hot 100":
+        return 1
+    if data_source in _TIER_C_SOURCES or chart_name == "Bubbling Under Hot 100":
+        return 3
+    return 2
+
+
+def _score_track(rows: list, cd_peak, cd_conf: str) -> tuple:
+    """rows: [(tier, chart_name, peak, weeks, year, yrank)] → (score, year, h100_peak, h100_wks, yrank, n_charts)."""
+    t1 = [r for r in rows if r[0] == 1]
+    a  = [r for r in t1 if r[2]]
+    b  = [r for r in rows if r[0] == 2 and r[2]]
+    c  = [r for r in rows if r[0] == 3 and r[2]]
+    h_peak = h_wks = yrank = year = None
+    ranks = [r[5] for r in t1 if r[5]]
+    yrank = min(ranks) if ranks else None
+    ye_pts = 15 * (101 - yrank) / 100 if yrank and yrank <= 100 else 0
+    if t1:
+        # Earliest Hot 100 year = the song's original era (re-releases chart later)
+        yrs  = [r[4] for r in t1 if r[4]]
+        year = min(yrs) if yrs else None
+        h_wks = max((r[3] or 0) for r in t1) or None
+    if a:
+        h_peak = min(r[2] for r in a)
+        score  = 60 * _peak_factor(h_peak) + 15 * min(h_wks or 0, 30) / 30 + ye_pts
+    elif yrank:
+        # Pre-1958 / year-end-only songs: no reliable peak, rank carries it
+        score  = 35 + 15 * min(h_wks or 0, 30) / 30 + ye_pts
+    elif b:
+        best  = min(b, key=lambda r: r[2])
+        year  = year or best[4]
+        score = 45 * _peak_factor(best[2]) + 10 * min(max((r[3] or 0) for r in b), 30) / 30
+    elif c:
+        best  = min(c, key=lambda r: r[2])
+        year  = year or best[4]
+        score = 25 * _peak_factor(best[2])
+    else:
+        score = (15 if cd_conf == "low" else 25) * _peak_factor(cd_peak or 100)
+    if not year:
+        year = next((r[4] for r in b + c if r[4]), None)
+    strong_genre = {r[1] for r in b if r[2] <= 20}
+    score += min(10, 3 * len(strong_genre))
+    if cd_conf == "low":
+        score = min(score, 25)
+    n_charts = len({r[1] for r in rows if r[0]})
+    return int(round(max(0, min(100, score)))), year, h_peak, h_wks, yrank, n_charts
+
+
+def _rebuild_hit_scores_sync() -> int:
+    """Load chart sources into memory once, score every charted track, rewrite hit_scores."""
+    t0 = time.time()
+    index: dict = {}
+    top40: dict = {}
+
+    def _add(artist, title, tier, chart, peak, weeks, year, yrank=None):
+        if not tier or not artist or not title:
+            return
+        ak, tk = _artist_key(artist), _title_key(title)
+        index.setdefault((ak, tk), []).append((tier, chart, peak, weeks, year, yrank))
+        if tier == 1 and peak and peak <= 40:
+            top40.setdefault(ak, set()).add(tk)
+
+    if os.path.exists(_STATIC_DB):
+        sconn = sqlite3.connect(_STATIC_DB, check_same_thread=False)
+        try:
+            for artist, title, chart, peak, wks, yr, src in sconn.execute(
+                "SELECT artist, title, chart_name, peak_position, weeks_on_chart, chart_year, data_source "
+                "FROM chart_reference"
+            ):
+                _add(artist, title, _source_tier(src or "", chart or ""), chart, peak, wks, yr)
+            try:
+                for artist, title, peak, wks, yr, yrank in sconn.execute(
+                    "SELECT artist, title, peak_position, chart_weeks, year, yearly_rank FROM billboard_pop"
+                ):
+                    # billboard_pop.peak_position is unreliable (not a Hot 100 peak) —
+                    # use it only for year-end rank, weeks and year.
+                    _add(artist, title, 1, "billboard_pop", None, wks, yr, yrank)
+            except Exception:
+                pass
+        finally:
+            sconn.close()
+
+    dconn = sqlite3.connect(_DYNAMIC_DB, check_same_thread=False)
+    try:
+        try:
+            for artist, title, chart, peak, wks, yr, src in dconn.execute(
+                "SELECT artist, title, chart_name, peak_position, weeks_on_chart, chart_year, data_source "
+                "FROM chart_reference_extras"
+            ):
+                _add(artist, title, _source_tier(src or "", chart or ""), chart, peak, wks, yr)
+        except Exception:
+            pass
+
+        tracks = dconn.execute("""
+            SELECT cd.track_id, COALESCE(t.tag_artist, a.name, ''), t.title,
+                   MIN(cd.peak_position), MAX(cd.confidence = 'low'), MAX(cd.chart_year), t.year
+            FROM chart_data cd
+            JOIN tracks t ON cd.track_id = t.track_id
+            LEFT JOIN artists a ON t.artist_id = a.artist_id
+            GROUP BY cd.track_id
+        """).fetchall()
+
+        out = []
+        for tid, artist, title, cd_peak, is_low, cd_year, t_year in tracks:
+            ak, tk = _artist_key(artist), _title_key(title)
+            rows = index.get((ak, tk), [])
+            score, year, h_peak, h_wks, yrank, n = _score_track(rows, cd_peak, "low" if is_low else "high")
+            ohw = 1 if (ak in top40 and len(top40[ak]) == 1 and tk in top40[ak]) else 0
+            out.append((tid, score, year or cd_year or t_year, h_peak, h_wks, yrank, ohw, n))
+
+        dconn.execute("BEGIN")
+        dconn.execute("DELETE FROM hit_scores")
+        dconn.executemany(
+            "INSERT INTO hit_scores (track_id, hit_score, hit_year, hot100_peak, hot100_weeks, "
+            "yearend_rank, one_hit_wonder, charts_count, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))", out)
+        dconn.commit()
+    finally:
+        dconn.close()
+    log.info(f"Hit Scores rebuilt: {len(out):,} tracks in {time.time() - t0:.1f}s "
+             f"({len(index):,} chart songs indexed)")
+    return len(out)
+
+
+async def _rebuild_hit_scores() -> int:
+    _hit_score_job.update({"status": "running", "message": "Calculating Hit Scores…"})
+    try:
+        n = await asyncio.get_event_loop().run_in_executor(None, _rebuild_hit_scores_sync)
+        _hit_score_job.update({"status": "done", "message": f"{n:,} tracks scored", "count": n})
+        return n
+    except Exception as e:
+        log.exception("Hit Score rebuild failed")
+        _hit_score_job.update({"status": "failed", "message": str(e)})
+        return 0
+
+
+async def _hit_score_startup():
+    """On boot: run migrations, build scores if chart data exists but scores don't."""
+    await _migrate_chart_data()
+    try:
+        async with aiosqlite.connect(_DYNAMIC_DB) as db:
+            hs = (await (await db.execute("SELECT COUNT(*) FROM hit_scores")).fetchone())[0]
+            cd = (await (await db.execute("SELECT COUNT(*) FROM chart_data")).fetchone())[0]
+        if cd and not hs:
+            await _rebuild_hit_scores()
+    except Exception as e:
+        log.warning(f"Hit Score startup check failed: {e}")
+
+
+@router.post("/hitscore/rebuild")
+async def hitscore_rebuild(_=Depends(require_auth)):
+    if _hit_score_job["status"] == "running":
+        raise HTTPException(409, "Hit Scores are already being calculated.")
+    if _scan_job.get("status") == "running":
+        raise HTTPException(409, "A scan is running — scores update automatically when it finishes.")
+    n = await _rebuild_hit_scores()
+    if _hit_score_job["status"] == "failed":
+        raise HTTPException(500, _hit_score_job["message"])
+    return {"ok": True, "count": n}
 
 
 async def _library_cache_scheduler():
@@ -3068,6 +3273,27 @@ async def _migrate_chart_data():
             if "chart_last_checked" not in tr_cols:
                 await db.execute("ALTER TABLE tracks ADD COLUMN chart_last_checked TEXT")
                 log.info("tracks: chart_last_checked column added via migration")
+
+            if "duration_sec" not in tr_cols:
+                await db.execute("ALTER TABLE tracks ADD COLUMN duration_sec INTEGER")
+                log.info("tracks: duration_sec column added via migration")
+
+            # M2: Hit Score table — one row per charted track, rebuilt after scans
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS hit_scores (
+                    track_id        INTEGER PRIMARY KEY,
+                    hit_score       INTEGER NOT NULL,
+                    hit_year        INTEGER,
+                    hot100_peak     INTEGER,
+                    hot100_weeks    INTEGER,
+                    yearend_rank    INTEGER,
+                    one_hit_wonder  INTEGER NOT NULL DEFAULT 0,
+                    charts_count    INTEGER NOT NULL DEFAULT 0,
+                    updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+                )
+            """)
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_hs_score ON hit_scores(hit_score)")
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_hs_year  ON hit_scores(hit_year)")
 
             # library_cache tables — ownership index used by Sniffer + Bloodhound
             await db.execute("""
@@ -3297,6 +3523,8 @@ async def _run_scan(req: ScanRequest):
               for idx, track in enumerate(tracks):
                 if _scan_job["stop_requested"]:
                     await db.commit()
+                    _scan_job["message"] = "Stopped — calculating Hit Scores…"
+                    await _rebuild_hit_scores()
                     _scan_job["status"] = "stopped"
                     _scan_job["message"] = f"Stopped at track {idx + 1} of {len(tracks)}"
                     return
@@ -3315,6 +3543,14 @@ async def _run_scan(req: ScanRequest):
                 track_id = await _resolve_track_id(db, track)
                 if track_id:
                     track["track_id"] = track_id
+                    # Keep artist (compilation fix) + duration current, even for skipped tracks
+                    try:
+                        await db.execute(
+                            "UPDATE tracks SET tag_artist=COALESCE(NULLIF(?, ''), tag_artist), "
+                            "duration_sec=COALESCE(?, duration_sec) WHERE track_id=?",
+                            (track.get("tag_artist") or "", track.get("duration_sec"), track_id))
+                    except Exception:
+                        pass
 
                 # ── SKIP CACHE (incremental) ──────────────────────────────────
                 # hit  → skip if checked after last lookup-logic change and rows exist
@@ -3547,6 +3783,8 @@ async def _run_scan(req: ScanRequest):
                     except Exception:
                         pass
 
+        _scan_job["message"] = "Calculating Hit Scores…"
+        await _rebuild_hit_scores()
         elapsed = time.time() - (_scan_job["started_at"] or time.time())
         _scan_job.update({
             "status":  "done",
@@ -3985,6 +4223,7 @@ async def _fetch_local(folder: str) -> list:
                 "title":     str(mf.get("title",  [""])[0]),
                 "album":     str(mf.get("album",  [""])[0]),
                 "track_id":  None,
+                "duration_sec": int(mf.info.length) if getattr(mf, "info", None) and mf.info.length else None,
             }
         except Exception:
             return None
@@ -4096,6 +4335,7 @@ async def _fetch_plex_tracks(base: str, token: str, library_id: str = None) -> l
                         artist = item.get("originalTitle") or item.get("grandparentTitle", "")
                         tracks.append({
                             "track_id":        None,
+                            "duration_sec":    int(item["duration"] / 1000) if item.get("duration") else None,
                             "plex_rating_key": item.get("ratingKey", ""),
                             "artist":          artist,
                             "title":           item.get("title", ""),
@@ -4136,6 +4376,7 @@ async def _fetch_emby_tracks(base: str, token: str, user_id: str, library_id: st
                     tracks.append({
                         "track_id":  None,
                         "emby_id":   item.get("Id",""),
+                        "duration_sec": int(item["RunTimeTicks"] / 10_000_000) if item.get("RunTimeTicks") else None,
                         "artist":    (item.get("Artists") or [""])[0],
                         "title":     item.get("Name",""),
                         "album":     item.get("Album",""),
@@ -4174,6 +4415,7 @@ async def _fetch_jellyfin_tracks(base: str, token: str, user_id: str, library_id
                     tracks.append({
                         "track_id": None,
                         "jf_id":    item.get("Id",""),
+                        "duration_sec": int(item["RunTimeTicks"] / 10_000_000) if item.get("RunTimeTicks") else None,
                         "artist":   (item.get("Artists") or [""])[0],
                         "title":    item.get("Name",""),
                         "album":    item.get("Album",""),
@@ -4204,6 +4446,9 @@ async def get_results(
     max_year:    Optional[int] = None,
     confidence:  Optional[str] = None,
     genre:       Optional[str] = None,
+    min_score:   Optional[int] = None,
+    decades:     Optional[str] = None,   # "1980,1990"
+    ohw:         bool = False,           # one-hit wonders only
     limit:       int = 500,
     offset:      int = 0,
     _=Depends(require_auth),
@@ -4226,6 +4471,21 @@ async def get_results(
         conditions.append("cd.weeks_on_chart >= ?"); params.append(min_weeks)
     if confidence:
         conditions.append("cd.confidence = ?"); params.append(confidence)
+    _yr = "COALESCE(hs.hit_year, cd.chart_year, t.year)"
+    if min_year is not None:
+        conditions.append(f"{_yr} >= ?"); params.append(min_year)
+    if max_year is not None:
+        conditions.append(f"{_yr} <= ?"); params.append(max_year)
+    if min_score:
+        conditions.append("COALESCE(hs.hit_score, 0) >= ?"); params.append(min_score)
+    if ohw:
+        conditions.append("hs.one_hit_wonder = 1")
+    if decades:
+        ds = [int(d) for d in decades.split(",") if d.strip().isdigit()]
+        if ds:
+            conditions.append("(" + " OR ".join([f"({_yr} BETWEEN ? AND ?)"] * len(ds)) + ")")
+            for d in ds:
+                params += [d, d + 9]
     if genre:
         # genre param is comma-separated genre keys (e.g. "country,rock,ccm")
         # Filter purely by file genre tags (genre_1/2/3) using keyword sets.
@@ -4283,6 +4543,7 @@ async def get_results(
                 FROM chart_data cd
                 JOIN tracks t ON cd.track_id = t.track_id
                 LEFT JOIN artists a ON t.artist_id = a.artist_id
+                LEFT JOIN hit_scores hs ON hs.track_id = cd.track_id
                 {where}
             """, filter_params) as cur:
                 total_row   = await cur.fetchone()
@@ -4305,14 +4566,17 @@ async def get_results(
                         cd.chart_name, cd.peak_position, cd.weeks_on_chart,
                         cd.star_rating, cd.confidence, cd.comment_string,
                         cd.listener_count, cd.fetched_at,
-                        COALESCE(cd.chart_year, NULL) AS chart_year,
+                        COALESCE(hs.hit_year, cd.chart_year, t.year) AS chart_year,
+                        hs.hit_score, hs.one_hit_wonder, hs.hot100_peak,
+                        hs.hot100_weeks, hs.yearend_rank, t.duration_sec,
                         t.title, t.file_path, t.file_format,
                         t.plex_rating_key, t.emby_id, t.jf_id,
                         t.track_id, t.genre_1, t.genre_2, t.genre_3,
                         COALESCE(t.tag_artist, a.name, '') AS tag_artist,
                         COALESCE(t.tag_album,  al.title, '') AS tag_album,
                         ROW_NUMBER() OVER (
-                            PARTITION BY LOWER(t.title)
+                            PARTITION BY LOWER(TRIM(t.title)),
+                                         LOWER(TRIM(COALESCE(t.tag_artist, a.name, '')))
                             ORDER BY
                                 -- Compilation rows rank below real-artist rows
                                 CASE
@@ -4333,9 +4597,10 @@ async def get_results(
                     JOIN tracks t   ON cd.track_id = t.track_id
                     LEFT JOIN artists a  ON t.artist_id = a.artist_id
                     LEFT JOIN albums al  ON t.album_id  = al.album_id
+                    LEFT JOIN hit_scores hs ON hs.track_id = cd.track_id
                     WHERE 1=1 {dedup_where}
                 ) WHERE rn = 1
-                ORDER BY peak_position ASC, chart_name
+                ORDER BY COALESCE(hit_score, 0) DESC, peak_position ASC
                 LIMIT ? OFFSET ?
             """, page_params) as cur:
                 rows = await cur.fetchall()
@@ -4356,6 +4621,90 @@ async def get_results(
 # ══════════════════════════════════════════════════════════════════════════════
 #  PLAYLIST PUSH
 # ══════════════════════════════════════════════════════════════════════════════
+
+class PlaylistBuildRequest(BaseModel):
+    genre:        Optional[str] = None          # same keys as /results genre filter
+    decades:      List[int] = []                # [1980, 1990]
+    min_score:    int = 0
+    ohw_only:     bool = False
+    minutes:      int = 120
+    familiar_pct: int = 90                      # % of runtime from the top-ranked pool
+    artist_gap:   int = 12                      # songs before an artist may repeat
+
+
+@router.post("/playlist/build")
+async def playlist_build(req: PlaylistBuildRequest, _=Depends(require_auth)):
+    """Build a sequenced playlist of a target length from Hit Scores."""
+    res = await get_results(
+        charts=None, min_peak=None, max_peak=None, min_weeks=None,
+        min_year=None, max_year=None, confidence=None, genre=req.genre,
+        min_score=req.min_score or None,
+        decades=",".join(str(d) for d in req.decades) or None,
+        ohw=req.ohw_only, limit=50000, offset=0, _=None,
+    )
+    # One version per song (strip "(Remastered)", "feat." etc.)
+    best: dict = {}
+    for r in res["results"]:
+        k = (_artist_key(r.get("tag_artist", "")), _title_key(r.get("title", "")))
+        if k not in best or (r.get("hit_score") or 0) > (best[k].get("hit_score") or 0):
+            best[k] = r
+    cands = sorted(best.values(), key=lambda r: -(r.get("hit_score") or 0))
+    if not cands:
+        return {"results": [], "count": 0, "minutes": 0, "candidates": 0,
+                "message": "No songs match these filters."}
+
+    target   = max(10, min(req.minutes, 24 * 60)) * 60
+    fam_pct  = max(0, min(req.familiar_pct, 100))
+    fam_goal = target * fam_pct / 100
+    dur      = lambda r: r.get("duration_sec") or 240
+
+    # Familiar: random draw from the top-ranked pool (≈1.5× what's needed → variety per build)
+    pool, acc = [], 0
+    for r in cands:
+        if acc >= fam_goal * 1.5:
+            break
+        pool.append(r); acc += dur(r)
+    random.shuffle(pool)
+    picked, total, used = [], 0, set()
+    for r in pool:
+        if total >= fam_goal:
+            break
+        picked.append(r); used.add(r["track_id"]); total += dur(r)
+
+    # Discovery: random from everything not yet used
+    rest = [r for r in cands if r["track_id"] not in used]
+    if fam_pct >= 100:
+        rest.sort(key=lambda r: -(r.get("hit_score") or 0))   # keep filling with top songs
+    else:
+        random.shuffle(rest)
+    for r in rest:
+        if total >= target:
+            break
+        picked.append(r); used.add(r["track_id"]); total += dur(r)
+
+    # Sequence: shuffle, then keep each artist ≥ artist_gap songs apart where possible
+    random.shuffle(picked)
+    gap, order, recent = max(0, req.artist_gap), [], []
+    while picked:
+        j = next((i for i, r in enumerate(picked)
+                  if _artist_key(r.get("tag_artist", "")) not in recent), 0)
+        r = picked.pop(j)
+        order.append(r)
+        if gap:
+            recent.append(_artist_key(r.get("tag_artist", "")))
+            recent = recent[-gap:]
+    for i, r in enumerate(order):
+        r["_seq"] = i + 1
+
+    return {
+        "results":    order,
+        "count":      len(order),
+        "minutes":    round(total / 60),
+        "unknown_durations": sum(1 for r in order if not r.get("duration_sec")),
+        "candidates": len(cands),
+        "short":      total < target,
+    }
+
 
 class PlaylistPushRequest(BaseModel):
     server:        Optional[str] = None   # Required for push, optional for M3U
@@ -4554,7 +4903,13 @@ async def _get_playlist_tracks(req: PlaylistPushRequest) -> list:
                 LIMIT ?
             """, params) as cur:
                 rows = await cur.fetchall()
-            return [dict(r) for r in rows]
+            # Keep the caller's order (built playlists are sequenced); one row per track
+            pos = {tid: i for i, tid in enumerate(req.track_ids)}
+            seen, out = set(), []
+            for r in sorted((dict(r) for r in rows), key=lambda d: pos.get(d["track_id"], 1 << 30)):
+                if r["track_id"] not in seen:
+                    seen.add(r["track_id"]); out.append(r)
+            return out
 
         # ── Path B: no explicit IDs — run compilation-aware dedup ───────────
         # Format rank: FLAC=1, M4A=2, WAV=3, AIFF=4, OGG=5, MP3=6, other=7
