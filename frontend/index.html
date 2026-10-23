@@ -655,6 +655,12 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
                 </div>
               </div>
               <input type="text" id="pathDocker" value="/music">
+              <div class="label-row"><label>Navidrome Music Path</label>
+                <div class="help-wrap"><button class="help-btn" tabindex="0">?</button>
+                  <div class="tooltip">The path inside your Navidrome container where music is mounted. Check your Navidrome docker-compose.yml under volumes: — the part after the colon is what goes here. Example: if your entry is /media/colby/NAS1/MUSIC TAGGED:/music:ro then enter /music. Required to use the ↓ Navidrome M3U button in The Groomer.</div>
+                </div>
+              </div>
+              <input type="text" id="pathNavidrome" placeholder="/music">
               <button class="btn btn-purple" onclick="savePath()" style="margin-bottom:.65rem">SAVE TRANSLATION</button>
               <div style="height:1px;background:var(--border);margin:.5rem 0"></div>
               <label style="margin-top:.5rem">Preview a Path</label>
@@ -1823,6 +1829,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
             <button id="grm-push-emby" onclick="grmPushPlaylist('emby')" disabled title="Scan Emby library first" style="padding:.45rem 1rem;background:#52b54b;color:#000;border:none;border-radius:5px;font-family:var(--mono);font-size:.65rem;cursor:pointer;opacity:.35;transition:all .2s">↑ EMBY</button>
             <button id="grm-push-jf" onclick="grmPushPlaylist('jellyfin')" disabled title="Scan Jellyfin library first" style="padding:.45rem 1rem;background:#00a4dc;color:#000;border:none;border-radius:5px;font-family:var(--mono);font-size:.65rem;cursor:pointer;opacity:.35;transition:all .2s">↑ JELLYFIN</button>
             <button id="grm-push-m3u" onclick="grmDownloadM3U()" disabled title="Download as M3U file" style="padding:.45rem 1rem;background:var(--surface2);color:var(--teal);border:1px solid var(--teal);border-radius:5px;font-family:var(--mono);font-size:.65rem;cursor:pointer;opacity:.35;transition:all .2s">↓ M3U</button>
+            <button id="grm-push-m3u-nav" onclick="grmDownloadNavidromeM3U()" disabled title="Configure Navidrome path in Kennel to enable" style="padding:.45rem 1rem;background:var(--surface2);color:var(--purple);border:1px solid var(--purple);border-radius:5px;font-family:var(--mono);font-size:.65rem;cursor:pointer;opacity:.35;transition:all .2s">↓ Navidrome M3U</button>
           </div>
 
         </div><!-- /grm-results-panel -->
@@ -2830,19 +2837,24 @@ async function loadPathSettings() {
     const r = await fetch(`${API}/api/kennel/path-settings`, {headers:authHdrs()});
     if (!r.ok) return;
     const d = await r.json();
-    const serverEl = document.getElementById('pathServer');
-    const dockerEl = document.getElementById('pathDocker');
-    if (serverEl && d.server_prefix) { serverEl.value = d.server_prefix; serverEl.dispatchEvent(new Event('input')); }
-    if (dockerEl && d.docker_prefix) dockerEl.value = d.docker_prefix;
+    const serverEl    = document.getElementById('pathServer');
+    const dockerEl    = document.getElementById('pathDocker');
+    const navidromeEl = document.getElementById('pathNavidrome');
+    if (serverEl    && d.server_prefix)    { serverEl.value = d.server_prefix; serverEl.dispatchEvent(new Event('input')); }
+    if (dockerEl    && d.docker_prefix)    dockerEl.value    = d.docker_prefix;
+    if (navidromeEl && d.navidrome_prefix) navidromeEl.value = d.navidrome_prefix;
+    // Sync Navidrome M3U button state in Groomer if results are loaded
+    grmSyncBar();
   } catch {}
 }
 async function savePath() {
   const sp = document.getElementById('pathServer').value.trim();
   const dp = document.getElementById('pathDocker').value.trim() || '/music';
+  const np = document.getElementById('pathNavidrome') ? document.getElementById('pathNavidrome').value.trim() : '';
   if (!sp) { toast('Enter a media server path prefix first.', 'warn'); return; }
   try {
-    const r = await fetch(`${API}/api/kennel/save-path`, {method:'POST', headers:authHdrs(), body:JSON.stringify({server_prefix:sp, docker_prefix:dp})});
-    if (r.ok) toast('Path translation saved.', 'ok');
+    const r = await fetch(`${API}/api/kennel/save-path`, {method:'POST', headers:authHdrs(), body:JSON.stringify({server_prefix:sp, docker_prefix:dp, navidrome_prefix:np})});
+    if (r.ok) { toast('Path translation saved.', 'ok'); grmSyncBar(); }
     else toast('Failed to save path.', 'error');
   } catch { toast('Server error.', 'error'); }
 }
@@ -6377,6 +6389,20 @@ function grmSyncBar() {
     m3u.style.opacity = hasResults ? '1' : '.35';
     m3u.style.cursor  = hasResults ? 'pointer' : 'default';
   }
+
+  // Navidrome M3U — requires results AND a configured Navidrome path in Kennel
+  const navBtn = document.getElementById('grm-push-m3u-nav');
+  if (navBtn) {
+    const navEl      = document.getElementById('pathNavidrome');
+    const navPath    = navEl ? navEl.value.trim() : '';
+    const navActive  = hasResults && navPath.length > 0;
+    navBtn.disabled      = !navActive;
+    navBtn.style.opacity = navActive ? '1' : '.35';
+    navBtn.style.cursor  = navActive ? 'pointer' : 'default';
+    navBtn.title = navActive
+      ? 'Download M3U with Navidrome Docker paths'
+      : 'Configure Navidrome Music Path in The Kennel → Path Translator to enable';
+  }
 }
 
 // ── Push to server ────────────────────────────────────────────────
@@ -6388,7 +6414,7 @@ async function grmPushPlaylist(server) {
   const label    = labels[server] || server;
   if (!confirm(`Push "${name}" with ${trackIds.length} tracks to ${label}?\n\nThis replaces any existing playlist with the same name.`)) return;
   grmLog(`Pushing ${trackIds.length} tracks to ${label}…`, 'info');
-  ['grm-push-plex','grm-push-emby','grm-push-jf','grm-push-m3u'].forEach(id => {
+  ['grm-push-plex','grm-push-emby','grm-push-jf','grm-push-m3u','grm-push-m3u-nav'].forEach(id => {
     const b=document.getElementById(id); if(b){b.disabled=true;b.style.opacity='.35';}
   });
   try {
@@ -6442,6 +6468,39 @@ async function grmDownloadM3U() {
   } catch(e) {
     grmLog(`M3U error: ${e.message}`, 'err');
     toast('M3U download failed', 'error');
+  }
+}
+
+// ── Navidrome M3U Download ────────────────────────────────────────
+async function grmDownloadNavidromeM3U() {
+  const name     = document.getElementById('grm-playlist-name').value.trim() || 'Chart Hits';
+  const trackIds = grmSelected.size > 0 ? [...grmSelected] : grmResults.map(r=>r.track_id);
+  if (!trackIds.length) { toast('No tracks to export.', 'warn'); return; }
+  grmLog(`Generating Navidrome M3U for ${trackIds.length} tracks…`, 'info');
+  try {
+    const r = await fetch(`${API}/api/groomer/playlist/m3u`, {
+      method:'POST', headers:authHdrs(),
+      body:JSON.stringify({track_ids:trackIds, playlist_name:name, path_mode:'navidrome'}),
+    });
+    if (!r.ok) {
+      const d = await r.json();
+      const msg = typeof d.detail === 'string' ? d.detail
+                : Array.isArray(d.detail) ? d.detail.map(e=>e.msg||JSON.stringify(e)).join('; ')
+                : JSON.stringify(d.detail) || `HTTP ${r.status}`;
+      throw new Error(msg);
+    }
+    const blob = await r.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = name.replace(/\s+/g,'_')+'_navidrome.m3u';
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
+    grmLog(`✓ Navidrome M3U downloaded: ${a.download}`, 'ok');
+    toast('✓ Navidrome M3U downloaded!', 'success');
+  } catch(e) {
+    grmLog(`Navidrome M3U error: ${e.message}`, 'err');
+    toast('Navidrome M3U failed — check Kennel path setting', 'error');
   }
 }
 

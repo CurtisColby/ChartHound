@@ -66,6 +66,16 @@ _JITTER_PCT       = 0.25   # ±25% randomization on every sleep
 _FLOOR_INTERVAL   = 300    # absolute minimum sleep (5 min) — safety net
 _MAX_DAILY_SAFETY = 999    # effectively unlimited — safety net only
 
+# Smart priority / backoff
+_TIER0_DAYS       = 90     # released within 90d  → top priority, flat cooldown
+_TIER1_DAYS       = 730    # released within 2y   → second priority
+_MAX_COOLDOWN     = 30     # backoff ceiling (days)
+_DORMANT_TRIES    = 6      # old titles with this many misses → monthly only
+_TV_WEIGHT        = 3      # TV ticks per movie tick when both have eligible items
+_GRAB_CHECK_DELAY = 900    # seconds after a search before checking arr history
+_GRAB_HOLD_DAYS   = 3      # cooldown after a confirmed grab (lets download land)
+_verify_tasks: set = set()
+
 
 async def _get_cooldown_days(source: str) -> int:
     """
@@ -229,7 +239,7 @@ async def _add_log(source: str, title: str, action: str, detail: str = ""):
 
 async def _count_searches_today() -> int:
     """Count how many search actions logged in the last 24h."""
-    cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
     try:
         async with aiosqlite.connect(_DYNAMIC_DB) as db:
             async with db.execute(
@@ -246,10 +256,67 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _tier_bounds() -> tuple:
+    now = datetime.now(timezone.utc)
+    return ((now - timedelta(days=_TIER0_DAYS)).strftime("%Y-%m-%d"),
+            (now - timedelta(days=_TIER1_DAYS)).strftime("%Y-%m-%d"))
+
+
+def _tier(release_date: Optional[str]) -> int:
+    if not release_date:
+        return 2
+    t0, t1 = _tier_bounds()
+    if release_date >= t0:
+        return 0
+    if release_date >= t1:
+        return 1
+    return 2
+
+
+def _backoff_days(base: int, tries: int, release_date: Optional[str]) -> int:
+    """Cooldown grows with each miss: base, 2x, 4x, 8x (cap 30d).
+    New releases keep the flat base. Old titles with many misses go monthly."""
+    tier = _tier(release_date)
+    if tier == 0:
+        return base
+    days = base * (2 ** max(0, min(tries - 1, 3)))
+    if tier == 2 and tries >= _DORMANT_TRIES:
+        days = _MAX_COOLDOWN
+    return max(base, min(_MAX_COOLDOWN, days))
+
+
+async def _migrate_backoff():
+    """One-time: re-space existing cooldowns using the new backoff curve."""
+    if await _get_setting("tracker_backoff_v2", "") == "1":
+        return
+    try:
+        base = {"radarr": await _get_cooldown_days("radarr"),
+                "sonarr": await _get_cooldown_days("sonarr")}
+        updates = []
+        async with aiosqlite.connect(_DYNAMIC_DB) as db:
+            async with db.execute(
+                "SELECT item_id, source, search_count, release_date, last_searched "
+                "FROM tracker_items WHERE status='missing' AND last_searched IS NOT NULL"
+            ) as cur:
+                async for iid, src, cnt, rel, last in cur:
+                    try:
+                        ls = datetime.strptime(last[:19], "%Y-%m-%d %H:%M:%S")
+                    except Exception:
+                        continue
+                    days = _backoff_days(base.get(src, _DEFAULT_COOLDOWN), cnt or 0, rel)
+                    updates.append(((ls + timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S"), iid))
+            await db.executemany("UPDATE tracker_items SET cooldown_until=? WHERE item_id=?", updates)
+            await db.commit()
+        await _set_setting("tracker_backoff_v2", "1")
+        log.info(f"Tracker: backoff migration applied to {len(updates)} items")
+    except Exception as e:
+        log.warning(f"backoff migration warning: {e}")
+
+
 async def _get_mode_config() -> dict:
     """Return fixed interval config. No more mode presets."""
     return {
-        "mode": "continuous",
+        "mode": "smart",
         "base_interval": _BASE_INTERVAL,
         "max_daily": _MAX_DAILY_SAFETY,
     }
@@ -288,6 +355,7 @@ async def tracker_startup():
     """Initialize tables and resume hunt loop if it was enabled."""
     await _ensure_tracker_tables()
     await _migrate_cooldown_setting()
+    await _migrate_backoff()
     enabled = await _get_setting("tracker_enabled", "false")
     if enabled == "true":
         log.info("Tracker was enabled — resuming hunt loop.")
@@ -360,9 +428,10 @@ async def _do_sync() -> dict:
                         )
                         radarr_count += 1
                     else:
-                        # Keep release_date fresh on existing rows
+                        # Keep release_date fresh; re-open if it was 'found' but file is gone
                         await db.execute(
-                            """UPDATE tracker_items SET release_date=?
+                            """UPDATE tracker_items SET release_date=?,
+                                   status=CASE WHEN status='found' THEN 'missing' ELSE status END
                                WHERE source='radarr' AND external_id=? AND search_type='movie'""",
                             (rel_date, movie_id)
                         )
@@ -465,7 +534,8 @@ async def _do_sync() -> dict:
                                 sonarr_count += 1
                             else:
                                 await db.execute(
-                                    """UPDATE tracker_items SET release_date=?
+                                    """UPDATE tracker_items SET release_date=?,
+                                           status=CASE WHEN status='found' THEN 'missing' ELSE status END
                                        WHERE source='sonarr' AND external_id=?""",
                                     (rel_date, ep_id)
                                 )
@@ -553,34 +623,29 @@ def _start_hunt_loop():
 
 async def _hunt_loop():
     """
-    Background loop. Strict alternation: Radarr → Sonarr → Radarr → Sonarr.
-    Fixed 40-min ±25% jitter interval. No daily cap (999 safety net).
+    Background loop. Same pace as before (40 min ±25% jitter) — indexer load unchanged.
 
     Every tick:
-      1. Pick the preferred source's item with lowest search_count, oldest last_searched.
-      2. If preferred source has zero missing items, fall back to the other source.
-      3. Always flip the toggle regardless.
-    No cooldown filtering — search_count ordering ensures natural round-robin.
+      1. Choose source: TV gets 3 ticks per movie tick (TV backlog is far larger).
+         If the chosen source has nothing eligible, fall back to the other.
+      2. Pick the best eligible item: newest releases first, then fewest tries.
+      3. Fire the search, then verify via arr history ~15 min later.
     """
     global _hunt_running, _next_tick_utc
-    log.info("Hunt loop started (continuous mode, strict alternation, 40min ±25% jitter).")
+    log.info("Hunt loop started (smart mode, TV-weighted, 40min ±25% jitter).")
 
-    # Small initial delay so startup settles
     _next_tick_utc = None
     await asyncio.sleep(5)
 
-    # Alternator: 0 = radarr, 1 = sonarr
-    alt_toggle = 0
+    tick = 0
 
     while _hunt_running:
         try:
-            # Check if still enabled
             enabled = await _get_setting("tracker_enabled", "false")
             if enabled != "true":
                 _hunt_running = False
                 break
 
-            # Auto-sync every 6 hours — pull fresh missing lists
             if _last_sync_utc is None or (time.time() - _last_sync_utc) >= _AUTO_SYNC_INTERVAL:
                 log.info("Tracker: auto-sync triggered (every 6h)")
                 try:
@@ -590,7 +655,6 @@ async def _hunt_loop():
 
             cfg = await _get_mode_config()
 
-            # Safety-net daily cap (effectively unlimited at 999)
             today_count = await _count_searches_today()
             if today_count >= cfg["max_daily"]:
                 log.info(f"Tracker: safety cap reached ({today_count}), sleeping 1h")
@@ -598,25 +662,18 @@ async def _hunt_loop():
                 await asyncio.sleep(3600)
                 continue
 
-            # Strict alternation — always flip after this tick
-            preferred = "radarr" if alt_toggle == 0 else "sonarr"
-            fallback  = "sonarr" if alt_toggle == 0 else "radarr"
-            alt_toggle = 1 - alt_toggle   # flip BEFORE searching — guarantees alternation
+            preferred = "radarr" if tick % (_TV_WEIGHT + 1) == 0 else "sonarr"
+            fallback  = "sonarr" if preferred == "radarr" else "radarr"
+            tick += 1
 
             item = await _pick_next_item(source=preferred)
+            if not item:
+                item = await _pick_next_item(source=fallback)
             if item:
                 await _execute_search(item)
-                log.info(f"Tracker: searched {preferred}, next turn → {fallback}")
             else:
-                # Preferred source has zero missing items — try fallback
-                item = await _pick_next_item(source=fallback)
-                if item:
-                    await _execute_search(item)
-                    log.info(f"Tracker: {preferred} empty, searched {fallback}")
-                else:
-                    log.debug("Tracker: both sources empty, sleeping")
+                log.debug("Tracker: nothing eligible on either source, sleeping")
 
-            # Jittered sleep before next tick
             sleep_for = _jittered_sleep(cfg["base_interval"])
             _next_tick_utc = (datetime.now(timezone.utc) + timedelta(seconds=sleep_for)).strftime("%Y-%m-%d %H:%M:%S")
             log.info(f"Tracker: next tick in {sleep_for}s ({sleep_for // 60}min)")
@@ -633,124 +690,110 @@ async def _hunt_loop():
     log.info("Hunt loop stopped.")
 
 
+_PICK_SQL = """
+    SELECT *,
+        CASE WHEN release_date >= ? THEN 0
+             WHEN release_date >= ? THEN 1
+             ELSE 2 END AS tier
+    FROM tracker_items
+    WHERE source=? AND status='missing'
+      AND (release_date IS NULL OR release_date <= ?)
+      AND (cooldown_until IS NULL OR cooldown_until <= ?)
+    ORDER BY
+        tier ASC,
+        CASE WHEN release_date >= ? THEN release_date END DESC,
+        search_count ASC,
+        release_date DESC,
+        COALESCE(last_searched, '0000') ASC
+"""
+
+
 async def _pick_next_item(source: str) -> Optional[dict]:
     """
-    Pick next eligible item for the given source ('radarr' or 'sonarr').
-
-    Ordering:
-      1. Lowest search_count first (0 before 1 before 2…)
-      2. Oldest last_searched breaks ties (longest-waiting gets next shot)
-      3. Never-searched (NULL last_searched) always before searched items at same count
-
-    Filters:
-      - status = 'missing'
-      - release_date not in the future
-      - last_searched NULL (never searched) OR older than cooldown_days for this source
-    For sonarr: earlier-season-blocks-later-season logic preserved.
+    Eligible = missing, already released, cooldown expired.
+    Order: last 90 days (newest first) → last 2 years (newest first)
+           → older (fewest tries, then newest).
+    Sonarr: an earlier missing season blocks later ones EXCEPT for the
+    series' newest season and anything released in the last 90 days.
     """
+    t0, t1 = _tier_bounds()
     today_ymd = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    cooldown_days = await _get_cooldown_days(source)
+    now = _now_iso()
+    args = (t0, t1, source, today_ymd, now, t1)
 
     async with aiosqlite.connect(_DYNAMIC_DB) as db:
         db.row_factory = aiosqlite.Row
 
         if source == "radarr":
-            async with db.execute("""
-                SELECT * FROM tracker_items
-                WHERE source='radarr' AND status='missing'
-                  AND (release_date IS NULL OR release_date <= ?)
-                  AND (last_searched IS NULL OR last_searched <= datetime('now', ? || ' days'))
-                ORDER BY
-                    search_count ASC,
-                    COALESCE(last_searched, '0000') ASC
-                LIMIT 1
-            """, (today_ymd, f"-{cooldown_days}")) as cur:
+            async with db.execute(_PICK_SQL + " LIMIT 1", args) as cur:
                 row = await cur.fetchone()
                 return dict(row) if row else None
 
-        # Sonarr — respect season-blocking
-        async with db.execute("""
-            SELECT * FROM tracker_items
-            WHERE source='sonarr' AND status='missing'
-              AND (release_date IS NULL OR release_date <= ?)
-              AND (last_searched IS NULL OR last_searched <= datetime('now', ? || ' days'))
-            ORDER BY
-                search_count ASC,
-                COALESCE(last_searched, '0000') ASC
-        """, (today_ymd, f"-{cooldown_days}")) as cur:
+        async with db.execute(_PICK_SQL, args) as cur:
             all_eps = [dict(r) async for r in cur]
-
         if not all_eps:
             return None
 
-        # Group by series to enforce season order within each series
-        series_map: dict[int, list] = {}
-        for ep in all_eps:
-            sid = ep["series_id"]
-            series_map.setdefault(sid, []).append(ep)
+        latest: dict = {}
+        async with db.execute(
+            "SELECT series_id, MAX(season_number) FROM tracker_items "
+            "WHERE source='sonarr' GROUP BY series_id"
+        ) as cur:
+            async for sid, mx in cur:
+                latest[sid] = mx
 
-        # Walk the already-sorted list and return the first ep that isn't
-        # blocked by an earlier missing season in its own series
-        for ep in all_eps:
-            sid = ep["series_id"]
-            target_season = ep["season_number"]
-            eps_in_series = series_map[sid]
+    earliest_missing: dict = {}
+    for ep in all_eps:
+        if ep.get("skipped_season"):
+            continue
+        sid = ep["series_id"]
+        if sid not in earliest_missing or ep["season_number"] < earliest_missing[sid]:
+            earliest_missing[sid] = ep["season_number"]
 
-            earlier_missing = [
-                e for e in eps_in_series
-                if e["season_number"] < target_season
-                and e["status"] == "missing"
-                and not e.get("skipped_season", 0)
-            ]
-            if not earlier_missing:
-                return ep
-
-        return None
+    for ep in all_eps:
+        sid = ep["series_id"]
+        sn = ep["season_number"]
+        if ep["tier"] == 0 or sn == latest.get(sid) or sn <= earliest_missing.get(sid, sn):
+            return ep
+    return None
 
 
 async def _execute_search(item: dict):
-    """Fire a search command to Radarr or Sonarr for the given item."""
+    """Fire a search command to Radarr or Sonarr, apply backoff, schedule grab check."""
     source = item["source"]
     item_id = item["item_id"]
     ext_id = item["external_id"]
     title = item["title"]
-    cooldown_days = await _get_cooldown_days(source)
-    cooldown_until = (datetime.now(timezone.utc) + timedelta(days=cooldown_days)).strftime("%Y-%m-%d %H:%M:%S")
+    tries = (item.get("search_count") or 0) + 1
+    base = await _get_cooldown_days(source)
+    days = _backoff_days(base, tries, item.get("release_date"))
+    cooldown_until = (datetime.now(timezone.utc) + timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+    started = datetime.now(timezone.utc)
 
     try:
         conn = await _get_connection(source)
-        base = conn["base_url"].rstrip("/")
+        base_url = conn["base_url"].rstrip("/")
         token = conn["token"]
 
         if source == "radarr":
-            # MoviesSearch command
             payload = {"name": "MoviesSearch", "movieIds": [ext_id]}
         else:
-            # For Sonarr: always emit SeasonSearch and let Sonarr handle
-            # the pack-vs-episode decision internally. This avoids brittle
-            # count-and-decide logic and an extra Sonarr API round-trip.
-            series_id = item.get("series_id")
-            season_num = item.get("season_number")
-            payload = {"name": "SeasonSearch", "seriesId": series_id, "seasonNumber": season_num}
-            log.info(f"Tracker: SeasonSearch for {title} (season {season_num})")
+            payload = {"name": "SeasonSearch", "seriesId": item.get("series_id"),
+                       "seasonNumber": item.get("season_number")}
 
-        # Fire the command
         async with httpx.AsyncClient(timeout=20.0, verify=False) as client:
             r = await client.post(
-                f"{base}/api/v3/command",
+                f"{base_url}/api/v3/command",
                 json=payload,
                 headers={"X-Api-Key": token, "Content-Type": "application/json"}
             )
             r.raise_for_status()
 
-        # Update item
         async with aiosqlite.connect(_DYNAMIC_DB) as db:
-            if source == "sonarr" and payload.get("name") == "SeasonSearch":
-                # Mark all episodes in this season as searched
+            if source == "sonarr":
                 await db.execute(
                     """UPDATE tracker_items
-                       SET last_searched=?, search_count=search_count+1,
-                           cooldown_until=?, status='missing'
+                       SET last_searched=?, search_count=search_count+1, cooldown_until=?
                        WHERE source='sonarr' AND series_id=? AND season_number=?
                        AND status='missing'""",
                     (_now_iso(), cooldown_until, item["series_id"], item["season_number"])
@@ -758,18 +801,21 @@ async def _execute_search(item: dict):
             else:
                 await db.execute(
                     """UPDATE tracker_items
-                       SET last_searched=?, search_count=search_count+1,
-                           cooldown_until=?
+                       SET last_searched=?, search_count=search_count+1, cooldown_until=?
                        WHERE item_id=?""",
                     (_now_iso(), cooldown_until, item_id)
                 )
             await db.commit()
 
-        cmd_name = payload.get("name", "Search")
-        logging_on = await _get_setting("tracker_logging", "true")
-        if logging_on == "true":
-            await _add_log(source, title, "search", f"{cmd_name} fired → {source.title()} handling download")
-        log.info(f"Tracker: {cmd_name} for '{title}' (ext_id={ext_id})")
+        cmd_name = payload["name"]
+        if await _get_setting("tracker_logging", "true") == "true":
+            await _add_log(source, title, "search",
+                           f"{cmd_name} sent (try {tries}) — checking result in {_GRAB_CHECK_DELAY // 60}min")
+        log.info(f"Tracker: {cmd_name} for '{title}' (ext_id={ext_id}, try {tries}, next in {days}d)")
+
+        t = asyncio.create_task(_verify_grab(item, started, days))
+        _verify_tasks.add(t)
+        t.add_done_callback(_verify_tasks.discard)
 
     except HTTPException as e:
         await _add_log(source, title, "error", f"Connection error: {e.detail}")
@@ -777,6 +823,60 @@ async def _execute_search(item: dict):
     except Exception as e:
         await _add_log(source, title, "error", str(e)[:300])
         log.warning(f"Tracker search error for '{title}': {e}")
+
+
+def _parse_arr_date(s: str) -> Optional[datetime]:
+    try:
+        d = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
+    except Exception:
+        return None
+
+
+async def _verify_grab(item: dict, started: datetime, next_days: int):
+    """Ask Radarr/Sonarr history (local API, no indexer hits) whether the search grabbed anything."""
+    await asyncio.sleep(_GRAB_CHECK_DELAY)
+    source, title = item["source"], item["title"]
+    try:
+        conn = await _get_connection(source)
+        base_url = conn["base_url"].rstrip("/")
+        hdr = {"X-Api-Key": conn["token"]}
+        if source == "radarr":
+            url, params = f"{base_url}/api/v3/history/movie", {"movieId": item["external_id"]}
+        else:
+            url, params = f"{base_url}/api/v3/history/series", {
+                "seriesId": item["series_id"], "seasonNumber": item["season_number"]}
+        async with httpx.AsyncClient(timeout=20.0, verify=False) as client:
+            r = await client.get(url, params=params, headers=hdr)
+            r.raise_for_status()
+            data = r.json()
+        records = data.get("records", data) if isinstance(data, dict) else data
+        cutoff = started - timedelta(minutes=1)
+        grabs = [h for h in (records or [])
+                 if str(h.get("eventType", "")).lower() == "grabbed"
+                 and (_parse_arr_date(h.get("date", "")) or cutoff) > cutoff]
+
+        logging_on = await _get_setting("tracker_logging", "true") == "true"
+        if grabs:
+            hold = (datetime.now(timezone.utc) + timedelta(days=_GRAB_HOLD_DAYS)).strftime("%Y-%m-%d %H:%M:%S")
+            async with aiosqlite.connect(_DYNAMIC_DB) as db:
+                if source == "sonarr":
+                    await db.execute(
+                        "UPDATE tracker_items SET cooldown_until=? WHERE source='sonarr' "
+                        "AND series_id=? AND season_number=? AND status='missing'",
+                        (hold, item["series_id"], item["season_number"]))
+                else:
+                    await db.execute("UPDATE tracker_items SET cooldown_until=? WHERE item_id=?",
+                                     (hold, item["item_id"]))
+                await db.commit()
+            if logging_on:
+                rel = grabs[0].get("sourceTitle") or ""
+                await _add_log(source, title, "found",
+                               f"GRABBED {len(grabs)} release(s){' — ' + rel[:120] if rel else ''}")
+        elif logging_on:
+            await _add_log(source, title, "miss", f"Nothing grabbed — next try in {next_days}d")
+    except Exception as e:
+        log.warning(f"Tracker grab-check failed for '{title}': {e}")
 
 
 # ══════════════════════════════════════════════════════════════════════════════

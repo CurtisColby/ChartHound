@@ -4233,7 +4233,7 @@ class PlaylistPushRequest(BaseModel):
     min_weeks:     Optional[int] = None            # e.g. 4 = charted 4+ weeks
     confidence:    Optional[str] = None            # 'high'|'medium'|'low'|None=all
     limit:         int = 5000
-    docker_paths:  bool = False                    # M3U only — emit raw Docker /music paths (for Navidrome)
+    path_mode:     Optional[str] = None            # 'navidrome' = use Navidrome prefix
 
 
 @router.post("/playlist/push")
@@ -4287,76 +4287,76 @@ async def playlist_m3u(req: PlaylistPushRequest, _=Depends(require_auth)):
     #   b) Server paths:  /media/NAS1/MUSIC TAGGED/FULL ALBUMS/...
     #   c) Desktop paths: /media/colby/NAS1/MUSIC TAGGED/FULL ALBUMS/...
     #
-    # The M3U needs the DESKTOP path (what the user's machine can open).
-    # We read the Kennel path settings (server_prefix = desktop path) and
-    # the Docker env vars (MEDIA_SERVER_MUSIC_PREFIX = server's raw mount).
-    # Then we try each known prefix and replace with the desktop path.
-    desktop_prefix = ""
-    docker_prefix  = os.environ.get("DOCKER_MUSIC_PREFIX", "/music")
-    server_raw     = ""  # server's own mount (from env, e.g. /media/colby/NAS1/MUSIC TAGGED)
+    # Standard M3U: translate to desktop/host path (what the user's machine opens).
+    # Navidrome M3U: strip to relative suffix, prepend the Navidrome music mount.
+    desktop_prefix   = ""
+    docker_prefix    = os.environ.get("DOCKER_MUSIC_PREFIX", "/music")
+    navidrome_prefix = ""
+    server_raw       = ""
     try:
         async with aiosqlite.connect(_DYNAMIC_DB) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
                 "SELECT key, value FROM app_settings "
-                "WHERE key IN ('path_server_prefix','path_docker_prefix')"
+                "WHERE key IN ('path_server_prefix','path_docker_prefix','path_navidrome_prefix')"
             ) as cur:
                 rows = await cur.fetchall()
             ps = {r["key"]: r["value"] for r in rows}
-            desktop_prefix = ps.get("path_server_prefix", "")
-            # The docker_prefix from Kennel settings (if set) overrides env
+            desktop_prefix   = ps.get("path_server_prefix",    "")
+            navidrome_prefix = ps.get("path_navidrome_prefix", "").rstrip("/")
             kp = ps.get("path_docker_prefix", "")
             if kp:
                 docker_prefix = kp
     except Exception:
         pass
-    # The env var MEDIA_SERVER_MUSIC_PREFIX is the path the media server
-    # reports — also the second Docker volume mount's real path
     server_raw = os.environ.get("MEDIA_SERVER_MUSIC_PREFIX", "")
 
-    def _translate_path(fp: str) -> str:
-        if not desktop_prefix or not fp:
-            return fp
-        # Already the desktop path — no translation needed
-        if fp.startswith(desktop_prefix):
-            return fp
-        # Docker path (/music/...) → desktop path
-        if fp.startswith(docker_prefix):
-            return desktop_prefix + fp[len(docker_prefix):]
-        # Server raw path (from media server, may differ from desktop mount)
-        # e.g. /media/NAS1/... vs /media/colby/NAS1/...
-        if server_raw and fp.startswith(server_raw):
-            return desktop_prefix + fp[len(server_raw):]
-        # Last resort: try to find common suffix
-        # e.g. stored = /media/NAS1/MUSIC TAGGED/FULL ALBUMS/...
-        #      desktop = /media/colby/NAS1/MUSIC TAGGED
-        # Look for the music root folder name in the stored path
+    # ── Helper: strip any known prefix, return the bare relative suffix ──────
+    def _bare_suffix(fp: str) -> str:
+        """Return the path component after the music root, e.g. /FULL ALBUMS/..."""
+        for prefix in [desktop_prefix, docker_prefix, server_raw]:
+            if prefix and fp.startswith(prefix):
+                return fp[len(prefix):]
+        # Last-resort anchor search
         if desktop_prefix:
-            # Extract the last folder name from desktop_prefix as anchor
             anchor = desktop_prefix.rstrip("/").rsplit("/", 1)[-1]
             idx = fp.find(f"/{anchor}/")
             if idx >= 0:
-                return desktop_prefix + fp[idx + len(anchor) + 1:]
-        return fp
+                return fp[idx + len(anchor):]
+        return fp  # give up — return as-is
+
+    def _translate_path(fp: str) -> str:
+        """Standard translation: stored path → host/desktop path."""
+        if not desktop_prefix or not fp:
+            return fp
+        if fp.startswith(desktop_prefix):
+            return fp
+        suffix = _bare_suffix(fp)
+        return desktop_prefix + suffix if suffix != fp else fp
+
+    def _translate_navidrome(fp: str) -> str:
+        """Navidrome translation: stored path → Navidrome Docker mount path."""
+        if not fp:
+            return fp
+        suffix = _bare_suffix(fp)
+        # Ensure leading slash
+        if suffix and not suffix.startswith("/"):
+            suffix = "/" + suffix
+        return navidrome_prefix + suffix
+
+    # ── Choose translator based on path_mode ─────────────────────────────────
+    if req.path_mode == "navidrome":
+        if not navidrome_prefix:
+            raise HTTPException(400, "Navidrome music path is not configured. Set it in The Kennel → Path Translator.")
+        translate = _translate_navidrome
+    else:
+        translate = _translate_path
 
     lines = ["#EXTM3U", f"#PLAYLIST:{req.playlist_name}"]
     for t in tracks:
         artist = t.get("tag_artist", "")
         title  = t.get("title", "")
-        raw_fp = t.get("file_path", "")
-        if req.docker_paths:
-            # Navidrome mode: emit the Docker-internal path (/music/...) as-is,
-            # or normalise any host/desktop path back to the docker prefix.
-            if raw_fp.startswith(docker_prefix):
-                fp = raw_fp
-            elif desktop_prefix and raw_fp.startswith(desktop_prefix):
-                fp = docker_prefix + raw_fp[len(desktop_prefix):]
-            elif server_raw and raw_fp.startswith(server_raw):
-                fp = docker_prefix + raw_fp[len(server_raw):]
-            else:
-                fp = raw_fp  # already unknown format — pass through unchanged
-        else:
-            fp = _translate_path(raw_fp)
+        fp     = translate(t.get("file_path", ""))
         lines.append(f"#EXTINF:-1,{artist} - {title}")
         lines.append(fp)
 
