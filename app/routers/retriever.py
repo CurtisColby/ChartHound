@@ -75,6 +75,24 @@ class ItunesRateLimiter:
 
 itunes_limiter = ItunesRateLimiter(max_per_minute=20)
 
+
+class MusicBrainzLimiter:
+    """MusicBrainz allows ~1 request/second per client; faster gets silently 503'd."""
+    def __init__(self, interval: float = 1.1):
+        self.interval = interval
+        self._lock = asyncio.Lock()
+        self._last = 0.0
+
+    async def acquire(self):
+        async with self._lock:
+            wait = self._last + self.interval - time.monotonic()
+            if wait > 0:
+                await asyncio.sleep(wait)
+            self._last = time.monotonic()
+
+
+mb_limiter = MusicBrainzLimiter()
+
 # ── Chart display map ─────────────────────────────────────────────────────────
 CHART_DISPLAY = {
     "hot100":   "Hot 100",       "adultpop": "Adult Pop",
@@ -422,6 +440,7 @@ async def fetch_musicbrainz(artist: str, title: str, album: str = "") -> dict:
         query = f"{artist} {title}"
         headers = {"User-Agent": "ChartHound/1.0 (https://github.com/CurtisColby/ChartHound)"}
         async with httpx.AsyncClient(timeout=10.0) as client:
+            await mb_limiter.acquire()
             r = await client.get("https://musicbrainz.org/ws/2/recording/",
                                  params={"query": query, "fmt": "json", "limit": 5},
                                  headers=headers)
@@ -489,6 +508,7 @@ async def fetch_musicbrainz(artist: str, title: str, album: str = "") -> dict:
             if rec_id:
                 try:
                     async with httpx.AsyncClient(timeout=10.0) as client2:
+                        await mb_limiter.acquire()
                         r2 = await client2.get(
                             f"https://musicbrainz.org/ws/2/recording/{rec_id}",
                             params={"inc": "tags+genres+release-groups", "fmt": "json"},
@@ -540,8 +560,6 @@ async def fetch_musicbrainz(artist: str, title: str, album: str = "") -> dict:
             best_tags = releases[0].get("release-group", {}).get("tags", [])
         best_tags.sort(key=lambda t: t.get("count", 0), reverse=True)
         result["genres"] = [t["name"].title() for t in best_tags[:5] if t.get("count", 0) >= 0]
-
-        await asyncio.sleep(0.1)
     except Exception as e:
         log.debug(f"MusicBrainz error for {artist} - {title}: {e}")
     return result
@@ -914,6 +932,7 @@ async def fetch_musicbrainz_album(artist: str, album: str) -> dict:
         headers = {"User-Agent": "ChartHound/1.0 (https://github.com/CurtisColby/ChartHound)"}
         query = f'artist:"{artist}" release:"{album}"'
         async with httpx.AsyncClient(timeout=10.0) as client:
+            await mb_limiter.acquire()
             r = await client.get(
                 "https://musicbrainz.org/ws/2/release-group/",
                 params={"query": query, "fmt": "json", "limit": 3},
@@ -933,6 +952,7 @@ async def fetch_musicbrainz_album(artist: str, album: str) -> dict:
         rg_id = best.get("id")
         if rg_id:
             async with httpx.AsyncClient(timeout=10.0) as client:
+                await mb_limiter.acquire()
                 r2 = await client.get(
                     f"https://musicbrainz.org/ws/2/release-group/{rg_id}",
                     params={"inc": "tags+genres", "fmt": "json"},
@@ -950,8 +970,6 @@ async def fetch_musicbrainz_album(artist: str, album: str) -> dict:
             yr = int(frd[:4])
             if 1900 < yr < 2030:
                 result["year"] = yr
-
-        await asyncio.sleep(0.1)
     except Exception as e:
         log.debug(f"MB album lookup error for {artist}/{album}: {e}")
     return result
@@ -1685,15 +1703,18 @@ async def write_tracks(req: ApproveRequest, user: dict = Depends(require_auth)):
 
 @router.delete("/cache")
 async def clear_cache(user: dict = Depends(require_auth)):
+    """
+    Clears ONLY the Retriever's lookup cache so the next Retriever scan re-fetches
+    metadata. Tracks, Top Dogs results, Hit Scores, Last.fm data, write history and
+    hand-verified tracks are all kept. (Full wipe lives in The Veterinarian.)
+    """
     async with aiosqlite.connect(settings.database_url) as db:
-        await db.execute("DELETE FROM tracks")
-        await db.execute("DELETE FROM chart_data")
-        await db.execute("DELETE FROM write_log")
-        await db.execute("DELETE FROM scan_jobs")
-        await db.execute("DELETE FROM artists")
-        await db.execute("DELETE FROM albums")
+        cur = await db.execute(
+            "UPDATE tracks SET last_updated=NULL "
+            "WHERE last_updated IS NOT NULL AND COALESCE(manually_verified, 0) = 0")
+        n = cur.rowcount
         await db.commit()
-    return {"ok": True, "message": "Cache cleared."}
+    return {"ok": True, "message": f"Lookup cache cleared for {n:,} tracks.", "cleared": n}
 
 
 @router.post("/override")
@@ -2617,3 +2638,228 @@ async def write_approved_tracks(job_id: int, track_ids: List[int], write_art: bo
 
     executor.shutdown(wait=False)
     return {"success": success_count, "failed": fail_count}
+
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  ONLINE GENRES (M5a) — write Last.fm genres to files, GENRE field only
+# ══════════════════════════════════════════════════════════════════════════════
+
+_GENRE_KEY_DISPLAY = {
+    "rock": "Rock", "classicrock": "Classic Rock", "hardrock": "Hard Rock", "softrock": "Soft Rock",
+    "arenarock": "Arena Rock", "indierock": "Indie Rock", "folkrock": "Folk Rock",
+    "southernrock": "Southern Rock", "punkrock": "Punk / New Wave", "alternative": "Alternative Rock",
+    "pop": "Pop", "dancepop": "Dance-Pop", "synthpop": "Synth-Pop", "teenpop": "Teen Pop",
+    "powerpop": "Power Pop", "adultpop": "Adult Contemporary", "indipop": "Indie Pop",
+    "country": "Country", "tradcountry": "Traditional Country", "countrypop": "Country Pop",
+    "outlawcountry": "Outlaw Country", "americana": "Americana", "brocountry": "Bro-Country",
+    "texascountry": "Texas Country", "rnb": "R&B", "soul": "Soul", "neosoul": "Neo-Soul",
+    "funk": "Funk", "motown": "Motown", "quietstorm": "Quiet Storm", "newjack": "New Jack Swing",
+    "hiphop": "Hip-Hop", "trap": "Trap", "boombap": "Boom Bap", "gangstarap": "Gangsta Rap",
+    "conscrap": "Conscious Rap", "altrap": "Alt Hip-Hop", "metal": "Metal", "heavymetal": "Heavy Metal",
+    "thrashmetal": "Thrash Metal", "deathmetal": "Death Metal", "doommetal": "Doom Metal",
+    "glaemmetal": "Glam Metal", "dance": "Dance", "edm": "EDM", "house": "House", "techno": "Techno",
+    "trance": "Trance", "disco": "Disco", "eurodance": "Eurodance", "folk": "Folk",
+    "tradfolk": "Traditional Folk", "indifolk": "Indie Folk", "singersong": "Singer-Songwriter",
+    "jazz": "Jazz", "smoothjazz": "Smooth Jazz", "vocaljazz": "Vocal Jazz", "bebop": "Bebop",
+    "jazzfusion": "Jazz Fusion", "blues": "Blues", "chicagoblues": "Chicago Blues",
+    "deltablues": "Delta Blues", "texasblues": "Texas Blues", "classical": "Classical",
+    "orchestral": "Orchestral", "opera": "Opera", "baroque": "Baroque", "ccm": "Christian",
+    "ccm-rock": "Christian Rock", "ccm-pop": "Christian Pop", "worship": "Worship",
+    "gospel": "Gospel", "sgospel": "Southern Gospel",
+}
+
+
+def _real_write_path(filepath: str) -> str:
+    """Same Docker→server path translation write_tags() uses; falls back to the given path."""
+    real = filepath
+    if settings.media_server_music_prefix and settings.docker_music_prefix \
+            and filepath.startswith(settings.docker_music_prefix):
+        real = settings.media_server_music_prefix + filepath[len(settings.docker_music_prefix):]
+    return real if os.path.exists(real) else filepath
+
+
+def write_genre_only(filepath: str, genres: List[str]) -> bool:
+    """Replace ONLY the genre tag. Every other tag (title, year, comment, art, MOOD…) is untouched."""
+    if not genres:
+        return False
+    path = _real_write_path(filepath)
+    ext = os.path.splitext(path)[1].lower()
+    try:
+        if ext == ".mp3":
+            from mutagen.id3 import ID3, TCON, ID3NoHeaderError
+            try:
+                tags = ID3(path)
+            except ID3NoHeaderError:
+                tags = ID3()
+            tags.delall("TCON")
+            tags.add(TCON(encoding=3, text=["; ".join(genres)]))
+            tags.save(path, v2_version=3)
+        elif ext == ".flac":
+            import subprocess
+            cmd = ["metaflac", "--remove-tag=GENRE"] + [f"--set-tag=GENRE={g}" for g in genres] + ["--", path]
+            res = subprocess.run(cmd, capture_output=True, text=True)
+            if res.returncode != 0:
+                log.error(f"metaflac genre write failed for {path}: {res.stderr}")
+                return False
+        elif ext in (".m4a", ".aac", ".mp4", ".alac"):
+            from mutagen.mp4 import MP4
+            f = MP4(path)
+            f["\xa9gen"] = ["; ".join(genres)]
+            f.save()
+        else:
+            from mutagen import File as MFile
+            f = MFile(path, easy=True)
+            if f is None:
+                return False
+            f["genre"] = genres
+            f.save()
+        return True
+    except Exception as e:
+        log.error(f"Genre write failed for {path}: {e}")
+        return False
+
+
+_og_job = {"status": "idle", "done": 0, "total": 0, "written": 0, "failed": 0, "message": ""}
+_og_stop = {"flag": False}
+
+
+async def _online_genre_rows(scope: str, folder: Optional[str]) -> list:
+    """[(track_id, file_path, artist, title, current[list], proposed[list])] for the chosen scope."""
+    from app.routers.groomer import _artist_key, _title_key, _genres_from_tags, _migrate_chart_data
+    await _migrate_chart_data()
+    async with aiosqlite.connect(settings.database_url) as db:
+        lfm = {(a, t): tags for a, t, tags in await (await db.execute(
+            "SELECT artist_key, title_key, tags FROM lastfm_tracks WHERE status='ok'")).fetchall()}
+        art = {a: tags for a, tags in await (await db.execute(
+            "SELECT artist_key, tags FROM lastfm_artists WHERE status='ok'")).fetchall()}
+        q = ("SELECT t.track_id, t.file_path, COALESCE(t.tag_artist, a.name, ''), t.title, "
+             "t.genre_1, t.genre_2, t.genre_3 FROM tracks t LEFT JOIN artists a ON t.artist_id = a.artist_id "
+             "WHERE COALESCE(t.manually_verified, 0) = 0")
+        params = []
+        if folder:
+            q += " AND t.file_path LIKE ?"
+            params.append(folder.rstrip("/") + "/%")
+        rows = await (await db.execute(q, params)).fetchall()
+    out = []
+    for tid, fp, artist, title, g1, g2, g3 in rows:
+        ak = _artist_key(artist)
+        keys = _genres_from_tags(lfm.get((ak, _title_key(title)))) or _genres_from_tags(art.get(ak))
+        proposed = [_GENRE_KEY_DISPLAY.get(k, k) for k in keys]
+        if not proposed:
+            continue
+        current = [g for g in (g1, g2, g3) if g]
+        same = [c.lower() for c in current] == [p.lower() for p in proposed]
+        if scope == "empty" and current:
+            continue
+        if scope == "changed" and same:
+            continue
+        out.append((tid, fp, artist, title, current, proposed))
+    return out
+
+
+class OnlineGenreRequest(BaseModel):
+    scope:  str = "changed"           # empty | changed | all
+    folder: Optional[str] = None      # /music/... subfolder, optional
+
+
+@router.post("/online-genres/preview")
+async def online_genres_preview(req: OnlineGenreRequest, user: dict = Depends(require_auth)):
+    rows = await _online_genre_rows(req.scope, req.folder)
+    return {
+        "count":  len(rows),
+        "sample": [{"track_id": r[0], "artist": r[2], "title": r[3],
+                    "current": r[4], "proposed": r[5]} for r in rows[:300]],
+    }
+
+
+async def _refresh_media_servers() -> list:
+    """Ask Plex / Emby / Jellyfin to rescan music so they pick up the new file tags."""
+    from app.security import decrypt_token
+    done = []
+    async with aiosqlite.connect(settings.database_url) as db:
+        conns = await (await db.execute(
+            "SELECT service, base_url, token_enc FROM connections "
+            "WHERE service IN ('plex','emby','jellyfin')")).fetchall()
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        for svc, base, tok_enc in conns:
+            try:
+                tok = decrypt_token(tok_enc) if tok_enc else ""
+                base = (base or "").rstrip("/")
+                if svc == "plex":
+                    r = await client.get(f"{base}/library/sections", params={"X-Plex-Token": tok},
+                                         headers={"Accept": "application/json"})
+                    for d in r.json().get("MediaContainer", {}).get("Directory", []):
+                        if d.get("type") == "artist":
+                            await client.get(f"{base}/library/sections/{d['key']}/refresh",
+                                             params={"X-Plex-Token": tok})
+                else:
+                    await client.post(f"{base}/Library/Refresh", params={"api_key": tok})
+                done.append(svc)
+            except Exception as e:
+                log.warning(f"Media refresh failed for {svc}: {e}")
+    return done
+
+
+async def _run_online_genres(req: OnlineGenreRequest):
+    global _og_job
+    _og_stop["flag"] = False
+    _og_job = {"status": "running", "done": 0, "total": 0, "written": 0, "failed": 0,
+               "message": "Preparing…"}
+    try:
+        rows = await _online_genre_rows(req.scope, req.folder)
+        _og_job["total"] = len(rows)
+        loop = asyncio.get_event_loop()
+        async with aiosqlite.connect(settings.database_url, timeout=30) as db:
+            for i, (tid, fp, artist, title, current, proposed) in enumerate(rows):
+                if _og_stop["flag"]:
+                    break
+                ok = await loop.run_in_executor(None, write_genre_only, fp, proposed)
+                if ok:   # File-First: DB only follows a successful file write
+                    g = (proposed + [None, None, None])[:3]
+                    await db.execute("UPDATE tracks SET genre_1=?, genre_2=?, genre_3=? WHERE track_id=?",
+                                     (g[0], g[1], g[2], tid))
+                    _og_job["written"] += 1
+                else:
+                    _og_job["failed"] += 1
+                await db.execute(
+                    "INSERT INTO write_log (track_id, file_path, field_changed, old_value, new_value, "
+                    "write_status, error_msg) VALUES (?, ?, 'genre', ?, ?, ?, ?)",
+                    (tid, fp, "; ".join(current), "; ".join(proposed),
+                     "success" if ok else "failed", None if ok else "see container log"))
+                _og_job["done"] = i + 1
+                _og_job["message"] = f"{artist} — {title}"
+                if (i + 1) % 100 == 0:
+                    await db.commit()
+                    await asyncio.sleep(0)
+            await db.commit()
+        refreshed = await _refresh_media_servers() if _og_job["written"] else []
+        stopped = _og_stop["flag"]
+        _og_job.update({"status": "stopped" if stopped else "done",
+                        "message": (f"{'Stopped' if stopped else 'Done'} — {_og_job['written']:,} files updated, "
+                                    f"{_og_job['failed']:,} failed"
+                                    + (f" · refresh sent to {', '.join(refreshed)}" if refreshed else ""))})
+        log.info(f"Online genres: {_og_job['message']}")
+    except Exception as e:
+        log.exception("Online genres job failed")
+        _og_job.update({"status": "failed", "message": f"Error: {e}"})
+
+
+@router.post("/online-genres/apply")
+async def online_genres_apply(req: OnlineGenreRequest, background_tasks: BackgroundTasks,
+                              user: dict = Depends(require_auth)):
+    if _og_job.get("status") == "running":
+        raise HTTPException(409, "Already running.")
+    background_tasks.add_task(_run_online_genres, req)
+    return {"ok": True}
+
+
+@router.get("/online-genres/status")
+async def online_genres_status(user: dict = Depends(require_auth)):
+    return _og_job
+
+
+@router.post("/online-genres/stop")
+async def online_genres_stop(user: dict = Depends(require_auth)):
+    _og_stop["flag"] = True
+    return {"ok": True}

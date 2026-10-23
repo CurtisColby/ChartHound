@@ -3708,6 +3708,10 @@ async def _migrate_chart_data():
                 await db.execute("ALTER TABLE tracks ADD COLUMN chart_last_checked TEXT")
                 log.info("tracks: chart_last_checked column added via migration")
 
+            if "manually_verified" not in tr_cols:
+                # Used by the Retriever (hand edits) but never created by the schema
+                await db.execute("ALTER TABLE tracks ADD COLUMN manually_verified INTEGER DEFAULT 0")
+                log.info("tracks: manually_verified column added via migration")
             if "duration_sec" not in tr_cols:
                 await db.execute("ALTER TABLE tracks ADD COLUMN duration_sec INTEGER")
                 log.info("tracks: duration_sec column added via migration")
@@ -3881,6 +3885,7 @@ async def _run_scan(req: ScanRequest):
         f"job_id={_scan_job.get('job_id')}"
     )
     _scan_job["status"] = "running"
+    req.use_estimates = False   # M5: retired — replaced by the Online Data (Last.fm) pass
     try:
         # Get Last.fm key for fallback
         lfm_key = ""

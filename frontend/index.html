@@ -1032,9 +1032,25 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
           </div>
 
           <div>
+            <div class="section-label sl-teal">ONLINE GENRES</div>
+            <p style="font-family:var(--mono);font-size:.56rem;color:var(--muted);line-height:1.7;margin:0 0 .5rem">Writes up to 3 genres per song from the Last.fm data Top Dogs collected (① SCAN → Online Data). Changes the <b>GENRE tag only</b> — nothing else in the file. Hand-edited tracks are skipped. Preview first; nothing is written until you approve.</p>
+            <select id="og-scope" style="width:100%;margin-bottom:.4rem;background:var(--bg);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:.62rem;padding:.4rem .5rem">
+              <option value="empty">Only songs with no genre</option>
+              <option value="changed" selected>Songs where the genre would change</option>
+              <option value="all">All songs with online genres</option>
+            </select>
+            <input type="text" id="og-folder" placeholder="Folder (optional) e.g. /music/ABBA" style="width:100%;box-sizing:border-box;margin-bottom:.4rem;background:var(--bg);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:.62rem;padding:.4rem .5rem">
+            <div style="display:flex;gap:.35rem">
+              <button class="btn btn-outline" id="og-btn-preview" onclick="ogPreview()" style="flex:1;font-size:.65rem;font-family:var(--mono)">🔍 PREVIEW</button>
+              <button class="btn btn-outline" id="og-btn-stop" onclick="ogStop()" style="font-size:.65rem;font-family:var(--mono);display:none;color:var(--red);border-color:var(--red)">■ STOP</button>
+            </div>
+            <div id="og-status" style="font-family:var(--mono);font-size:.55rem;color:var(--muted2);line-height:1.6;margin-top:.4rem;word-break:break-word"></div>
+          </div>
+
+          <div>
             <div class="section-label sl-teal">MAINTENANCE</div>
             <button class="btn btn-outline" onclick="clearCache()" style="font-size:.7rem;font-family:var(--mono);letter-spacing:.5px">🗑 CLEAR METADATA CACHE</button>
-            <p style="font-family:var(--mono);font-size:.56rem;color:var(--muted);line-height:1.7;margin-top:.4rem">Clears SQLite cache. Next scan fetches fresh data from MusicBrainz · Last.fm · Discogs · Deezer · ListenBrainz.</p>
+            <p style="font-family:var(--mono);font-size:.56rem;color:var(--muted);line-height:1.7;margin-top:.4rem">Forgets the Retriever's lookups so the next Retriever scan fetches fresh data from MusicBrainz · Last.fm · Discogs · Deezer · ListenBrainz. Your tracks, Top Dogs results, Hit Scores and hand-edited tracks are kept.</p>
             <p style="font-family:var(--mono);font-size:.54rem;color:var(--muted2);line-height:1.7;margin-top:.4rem;font-style:italic">Need a full database wipe? It lives on The Veterinarian tab under Danger Zone.</p>
           </div>
         </div>
@@ -1695,10 +1711,6 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
               <label style="display:flex;align-items:flex-start;gap:.6rem;cursor:pointer;font-size:.72rem">
                 <input type="checkbox" id="grm-write-tags" style="accent-color:var(--pink);margin-top:.1rem">
                 <span style="color:var(--muted);line-height:1.6">Write chart data to file COMMENT tags<span class="grm-q" tabindex="0" data-tip="Writes e.g. &quot;Hot 100: #4 (12 wks)&quot; and a star rating into each matched file during the scan. Not needed for playlists. Leave OFF unless you want chart info visible in other players — it modifies your files.">?</span><br><span style="color:var(--muted2);font-size:.6rem">Survives a database wipe. Peak + weeks written permanently.</span></span>
-              </label>
-              <label style="display:flex;align-items:flex-start;gap:.6rem;cursor:pointer;font-size:.72rem">
-                <input type="checkbox" id="grm-use-estimates" style="accent-color:var(--amber);margin-top:.1rem">
-                <span style="color:var(--muted);line-height:1.6">Use Last.fm estimates for unmatched tracks<span class="grm-q" tabindex="0" data-tip="Guesses chart strength from Last.fm listener counts for songs with no chart data. Makes scans much slower and estimated songs score 25 or less, so they rarely reach good playlists. Leave OFF.">?</span><br><span style="color:var(--muted2);font-size:.6rem">⚠ Slower — adds ~0.2s per track. Use for CCM or when static DB misses too many. Charts with <span style="color:var(--amber)">~ estimates</span> badge always use this.</span></span>
               </label>
             </div>
           </div>
@@ -4977,8 +4989,81 @@ async function confirmClearDatabase() {
   }
 }
 
+// ── M5a: Online Genres → files ───────────────────────────────────
+let _ogTimer = null;
+function _ogReq() {
+  return {scope: document.getElementById('og-scope').value,
+          folder: (document.getElementById('og-folder').value || '').trim() || null};
+}
+async function ogPreview() {
+  const btn = document.getElementById('og-btn-preview');
+  btn.disabled = true; btn.textContent = 'LOADING…';
+  try {
+    const r = await fetch(`${API}/api/retriever/online-genres/preview`, {method:'POST', headers:authHdrs(), body:JSON.stringify(_ogReq())});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    ogShowPreview(d);
+  } catch (e) { toast(`Preview failed: ${e.message}`, 'error'); }
+  finally { btn.disabled = false; btn.textContent = '🔍 PREVIEW'; }
+}
+function ogShowPreview(d) {
+  document.getElementById('og-modal')?.remove();
+  const m = document.createElement('div');
+  m.id = 'og-modal';
+  m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:4000;display:flex;align-items:center;justify-content:center;padding:2rem';
+  const rows = (d.sample || []).map(x => `<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:.35rem .6rem;color:var(--muted)">${esc(x.artist)}</td>
+      <td style="padding:.35rem .6rem">${esc(x.title)}</td>
+      <td style="padding:.35rem .6rem;color:var(--muted2)">${esc(x.current.join('; ') || '—')}</td>
+      <td style="padding:.35rem .6rem;color:var(--teal)">${esc(x.proposed.join('; '))}</td></tr>`).join('');
+  m.innerHTML = `<div style="background:var(--surface);border:1px solid var(--border2);border-radius:10px;max-width:1100px;width:100%;max-height:85vh;display:flex;flex-direction:column">
+    <div style="padding:1rem 1.25rem;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:1rem">
+      <div><div style="font-family:var(--display);font-size:1.2rem;letter-spacing:2px">ONLINE GENRES PREVIEW</div>
+      <div style="font-family:var(--mono);font-size:.6rem;color:var(--muted)">${d.count.toLocaleString()} songs would be updated${d.count > 300 ? ' · showing first 300' : ''}</div></div>
+      <div style="display:flex;gap:.5rem">
+        <button class="btn btn-outline" onclick="document.getElementById('og-modal').remove()" style="font-size:.65rem;font-family:var(--mono)">CANCEL</button>
+        <button class="btn" ${d.count ? '' : 'disabled'} onclick="ogApply(${d.count})" style="font-size:.65rem;font-family:var(--mono);background:var(--teal);color:#000">✎ WRITE ${d.count.toLocaleString()} FILES</button>
+      </div></div>
+    <div style="overflow:auto;flex:1"><table style="width:100%;border-collapse:collapse;font-family:var(--mono);font-size:.6rem">
+      <thead><tr style="background:var(--surface2);position:sticky;top:0">
+        <th style="padding:.45rem .6rem;text-align:left;color:var(--muted)">ARTIST</th><th style="padding:.45rem .6rem;text-align:left;color:var(--muted)">TITLE</th>
+        <th style="padding:.45rem .6rem;text-align:left;color:var(--muted)">CURRENT GENRE</th><th style="padding:.45rem .6rem;text-align:left;color:var(--muted)">NEW GENRE</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="4" style="padding:2rem;text-align:center;color:var(--muted2)">Nothing to change. If the Last.fm pass is still running, try again when it finishes.</td></tr>'}</tbody></table></div>
+    <div style="padding:.6rem 1.25rem;border-top:1px solid var(--border);font-family:var(--mono);font-size:.55rem;color:var(--amber)">⚠ Lidarr users: set Settings → Metadata → "Tag Audio Files with Metadata" to Never first, or Lidarr may overwrite these genres.</div>
+  </div>`;
+  m.addEventListener('click', e => { if (e.target === m) m.remove(); });
+  document.body.appendChild(m);
+}
+async function ogApply(n) {
+  if (!confirm(`Write new genres to ${n.toLocaleString()} music files?\n\nOnly the GENRE tag changes. Plex/Emby/Jellyfin get a library refresh when it finishes.`)) return;
+  document.getElementById('og-modal')?.remove();
+  const r = await fetch(`${API}/api/retriever/online-genres/apply`, {method:'POST', headers:authHdrs(), body:JSON.stringify(_ogReq())});
+  if (!r.ok) { const d = await r.json().catch(() => ({})); toast(d.detail || `HTTP ${r.status}`, 'error'); return; }
+  toast('Writing genres in the background', 'ok');
+  ogPoll();
+}
+async function ogStop() {
+  await fetch(`${API}/api/retriever/online-genres/stop`, {method:'POST', headers:authHdrs()});
+  toast('Stopping after the current file', 'ok');
+}
+async function ogPoll() {
+  try {
+    const r = await fetch(`${API}/api/retriever/online-genres/status`, {headers:authHdrs()});
+    const d = await r.json();
+    const el = document.getElementById('og-status'), stop = document.getElementById('og-btn-stop');
+    const running = d.status === 'running';
+    if (stop) stop.style.display = running ? '' : 'none';
+    if (el) el.innerHTML = running
+      ? `<span style="color:var(--teal)">Writing ${d.done.toLocaleString()} / ${d.total.toLocaleString()}</span> · ${d.written.toLocaleString()} ok · ${d.failed} failed<br>${esc(d.message || '')}`
+      : (d.status === 'idle' ? '' : esc(d.message || ''));
+    clearTimeout(_ogTimer);
+    if (running) _ogTimer = setTimeout(ogPoll, 2000);
+  } catch {}
+}
+document.addEventListener('DOMContentLoaded', () => setTimeout(ogPoll, 2500));
+
 async function clearCache() {
-  if (!confirm('Clear the metadata cache? Next scan will fetch fresh data.')) return;
+  if (!confirm('Clear the Retriever lookup cache?\n\nThe next Retriever scan re-fetches metadata online. Your tracks, Top Dogs results, Hit Scores and hand-edited tracks are NOT affected.')) return;
   try {
     const r = await fetch(`${API}/api/retriever/cache`, {method:'DELETE', headers:authHdrs()});
     if (r.ok) {
@@ -9295,7 +9380,6 @@ const _HG_CONTENT = {
       <ul>
         <li><strong>Results table filters</strong> — peak range, min weeks, confidence. Only filter the table; the builder ignores them.</li>
         <li><strong>Write chart data to COMMENT tags</strong> — writes chart info into your files during the scan. Not needed for playlists; leave off.</li>
-        <li><strong>Last.fm estimates</strong> — guesses for songs with no chart data. Slow, low scores; leave off.</li>
       </ul>
     </div>
     <div class="hg-block">
