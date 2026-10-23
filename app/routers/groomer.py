@@ -2999,6 +2999,22 @@ def _title_key(title: str) -> str:
     return _norm(t) or _norm(title or "")
 
 
+def _artist_match(want: str, *candidates) -> bool:
+    """True if the wanted artist matches any candidate (compilation-safe, feat.-tolerant)."""
+    wk = _artist_key(want)
+    if not wk:
+        return False
+    for c in candidates:
+        if isinstance(c, (list, tuple)):
+            if any(_artist_match(want, x) for x in c):
+                return True
+            continue
+        ck = _artist_key(c or "")
+        if ck and (wk == ck or wk in ck or ck in wk):
+            return True
+    return False
+
+
 def _peak_factor(peak) -> float:
     try:
         p = max(1, int(peak))
@@ -3547,8 +3563,13 @@ async def _run_scan(req: ScanRequest):
                     try:
                         await db.execute(
                             "UPDATE tracks SET tag_artist=COALESCE(NULLIF(?, ''), tag_artist), "
-                            "duration_sec=COALESCE(?, duration_sec) WHERE track_id=?",
-                            (track.get("tag_artist") or "", track.get("duration_sec"), track_id))
+                            "duration_sec=COALESCE(?, duration_sec), "
+                            "plex_rating_key=COALESCE(NULLIF(?, ''), plex_rating_key), "
+                            "emby_id=COALESCE(NULLIF(?, ''), emby_id), "
+                            "jf_id=COALESCE(NULLIF(?, ''), jf_id) WHERE track_id=?",
+                            (track.get("tag_artist") or "", track.get("duration_sec"),
+                             track.get("plex_rating_key") or "", track.get("emby_id") or "",
+                             track.get("jf_id") or "", track_id))
                     except Exception:
                         pass
 
@@ -4627,7 +4648,8 @@ class PlaylistBuildRequest(BaseModel):
     decades:      List[int] = []                # [1980, 1990]
     min_score:    int = 0
     ohw_only:     bool = False
-    minutes:      int = 120
+    minutes:      int = 120                     # per playlist (per day)
+    days:         int = 1                       # 1–7 playlists, no song repeated across them
     familiar_pct: int = 90                      # % of runtime from the top-ranked pool
     artist_gap:   int = 12                      # songs before an artist may repeat
 
@@ -4653,7 +4675,9 @@ async def playlist_build(req: PlaylistBuildRequest, _=Depends(require_auth)):
         return {"results": [], "count": 0, "minutes": 0, "candidates": 0,
                 "message": "No songs match these filters."}
 
-    target   = max(10, min(req.minutes, 24 * 60)) * 60
+    days     = max(1, min(req.days, 7))
+    per_day  = max(10, min(req.minutes, 24 * 60)) * 60
+    target   = per_day * days
     fam_pct  = max(0, min(req.familiar_pct, 100))
     fam_goal = target * fam_pct / 100
     dur      = lambda r: r.get("duration_sec") or 240
@@ -4674,7 +4698,7 @@ async def playlist_build(req: PlaylistBuildRequest, _=Depends(require_auth)):
     # Discovery: random from everything not yet used
     rest = [r for r in cands if r["track_id"] not in used]
     if fam_pct >= 100:
-        rest.sort(key=lambda r: -(r.get("hit_score") or 0))   # keep filling with top songs
+        rest.sort(key=lambda r: -(r.get("hit_score") or 0))
     else:
         random.shuffle(rest)
     for r in rest:
@@ -4682,28 +4706,70 @@ async def playlist_build(req: PlaylistBuildRequest, _=Depends(require_auth)):
             break
         picked.append(r); used.add(r["track_id"]); total += dur(r)
 
-    # Sequence: shuffle, then keep each artist ≥ artist_gap songs apart where possible
-    random.shuffle(picked)
-    gap, order, recent = max(0, req.artist_gap), [], []
-    while picked:
-        j = next((i for i, r in enumerate(picked)
-                  if _artist_key(r.get("tag_artist", "")) not in recent), 0)
-        r = picked.pop(j)
-        order.append(r)
-        if gap:
-            recent.append(_artist_key(r.get("tag_artist", "")))
-            recent = recent[-gap:]
-    for i, r in enumerate(order):
-        r["_seq"] = i + 1
+    # Split across days: snake-deal by score so every day gets an equal share of the biggest hits
+    picked.sort(key=lambda r: -(r.get("hit_score") or 0))
+    buckets = [[] for _ in range(days)]
+    for i, r in enumerate(picked):
+        rnd, pos = divmod(i, days)
+        buckets[pos if rnd % 2 == 0 else days - 1 - pos].append(r)
+
+    def _sequence(items: list) -> list:
+        random.shuffle(items)
+        gap, order, recent = max(0, req.artist_gap), [], []
+        while items:
+            j = next((i for i, r in enumerate(items)
+                      if _artist_key(r.get("tag_artist", "")) not in recent), 0)
+            r = items.pop(j)
+            order.append(r)
+            if gap:
+                recent.append(_artist_key(r.get("tag_artist", "")))
+                recent = recent[-gap:]
+        return order
+
+    out_days, results = [], []
+    for d, bucket in enumerate(buckets, start=1):
+        order = _sequence(bucket)
+        for i, r in enumerate(order):
+            r = dict(r, _seq=i + 1, _day=d if days > 1 else None)
+            results.append(r)
+        out_days.append({"day": d, "track_ids": [r["track_id"] for r in order],
+                         "minutes": round(sum(dur(r) for r in order) / 60)})
 
     return {
-        "results":    order,
-        "count":      len(order),
+        "results":    results,
+        "days":       out_days,
+        "count":      len(results),
         "minutes":    round(total / 60),
-        "unknown_durations": sum(1 for r in order if not r.get("duration_sec")),
+        "unknown_durations": sum(1 for r in results if not r.get("duration_sec")),
         "candidates": len(cands),
         "short":      total < target,
     }
+
+
+# ── Builder presets (stored server-side in app_settings) ─────────────────────
+@router.get("/presets")
+async def presets_get(_=Depends(require_auth)):
+    try:
+        async with aiosqlite.connect(_DYNAMIC_DB) as db:
+            row = await (await db.execute(
+                "SELECT value FROM app_settings WHERE key='groomer_presets'")).fetchone()
+        return {"presets": json.loads(row[0]) if row and row[0] else {}}
+    except Exception:
+        return {"presets": {}}
+
+
+@router.put("/presets")
+async def presets_put(body: dict, _=Depends(require_auth)):
+    presets = body.get("presets")
+    if not isinstance(presets, dict) or len(presets) > 50:
+        raise HTTPException(400, "presets must be an object (max 50)")
+    async with aiosqlite.connect(_DYNAMIC_DB) as db:
+        await db.execute(
+            "INSERT INTO app_settings (key, value, updated_at) VALUES ('groomer_presets', ?, datetime('now')) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
+            (json.dumps(presets),))
+        await db.commit()
+    return {"ok": True, "count": len(presets)}
 
 
 class PlaylistPushRequest(BaseModel):
@@ -4961,82 +5027,79 @@ async def _get_playlist_tracks(req: PlaylistPushRequest) -> list:
 # ══════════════════════════════════════════════════════════════════════════════
 
 async def _push_to_plex(base: str, token: str, name: str, tracks: list) -> dict:
+    """Creates/replaces a Plex playlist in EXACT track order. Never guesses a different song."""
     headers = {"Accept": "application/json"}
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        r = await client.get(f"{base}/?X-Plex-Token={token}", headers=headers)
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        r = await client.get(f"{base}/", params={"X-Plex-Token": token}, headers=headers)
         if not r.is_success:
             raise HTTPException(502, f"Plex unreachable: HTTP {r.status_code}")
         machine_id = r.json().get("MediaContainer", {}).get("machineIdentifier", "")
         if not machine_id:
             raise HTTPException(502, "Could not get Plex machine ID")
 
-        rating_keys = []
-        not_found   = 0
+        rating_keys, not_found, missing = [], 0, []
         for track in tracks:
             if track.get("plex_rating_key"):
-                rating_keys.append(track["plex_rating_key"]); continue
+                rating_keys.append(str(track["plex_rating_key"])); continue
+            match = None
             try:
                 sr = await client.get(f"{base}/search",
-                    params={"query": track.get("title",""), "type": 10,
-                            "X-Plex-Token": token}, headers=headers)
+                    params={"query": track.get("title", ""), "type": 10, "X-Plex-Token": token},
+                    headers=headers)
                 if sr.is_success:
-                    items = sr.json().get("MediaContainer",{}).get("Metadata",[])
-                    match = next(
-                        (i for i in items
-                         if i.get("title","").lower() == track.get("title","").lower()
-                         and track.get("tag_artist","").lower()[:8]
-                             in i.get("grandparentTitle","").lower()),
-                        items[0] if items else None)
-                    if match and match.get("ratingKey"):
-                        rating_keys.append(match["ratingKey"])
-                    else:
-                        not_found += 1
-                else:
-                    not_found += 1
+                    want_t = _title_key(track.get("title", ""))
+                    match = next((i for i in sr.json().get("MediaContainer", {}).get("Metadata", [])
+                                  if _title_key(i.get("title", "")) == want_t
+                                  and _artist_match(track.get("tag_artist", ""),
+                                                    i.get("originalTitle"), i.get("grandparentTitle"))),
+                                 None)
             except Exception:
+                pass
+            if match and match.get("ratingKey"):
+                rating_keys.append(str(match["ratingKey"]))
+            else:
                 not_found += 1
-
+                missing.append(f"{track.get('tag_artist', '')} — {track.get('title', '')}")
+        if missing:
+            log.info(f"Plex push '{name}': {len(missing)} not found: {missing[:10]}")
         if not rating_keys:
             raise HTTPException(404, "No tracks found in Plex")
 
-        # Delete existing playlist with same name
-        lr = await client.get(f"{base}/playlists?X-Plex-Token={token}", headers=headers)
+        # Replace existing playlist with the same name
+        lr = await client.get(f"{base}/playlists", params={"X-Plex-Token": token}, headers=headers)
         if lr.is_success:
-            existing = next(
-                (p for p in lr.json().get("MediaContainer",{}).get("Metadata",[])
-                 if p.get("title") == name), None)
-            if existing:
-                await client.delete(
-                    f"{base}/playlists/{existing['ratingKey']}?X-Plex-Token={token}")
+            for p in lr.json().get("MediaContainer", {}).get("Metadata", []):
+                if p.get("title") == name:
+                    await client.delete(f"{base}/playlists/{p['ratingKey']}",
+                                        params={"X-Plex-Token": token})
 
-        first_uri = (f"server://{machine_id}/com.plexapp.plugins.library"
-                     f"/library/metadata/{rating_keys[0]}")
+        def _uri(keys):
+            return (f"server://{machine_id}/com.plexapp.plugins.library"
+                    f"/library/metadata/{','.join(keys)}")
+
+        BATCH = 100
         cr = await client.post(f"{base}/playlists",
-            params={"type":"audio","title":name,"smart":"0",
-                    "uri":first_uri,"X-Plex-Token":token},
+            params={"type": "audio", "title": name, "smart": "0",
+                    "uri": _uri(rating_keys[:BATCH]), "X-Plex-Token": token},
             headers=headers)
         if not cr.is_success:
             raise HTTPException(502, f"Plex create failed: HTTP {cr.status_code}")
-        pl_id = (cr.json().get("MediaContainer",{}).get("Metadata",[{}])[0] or {}).get("ratingKey")
+        pl_id = (cr.json().get("MediaContainer", {}).get("Metadata", [{}])[0] or {}).get("ratingKey")
         if not pl_id:
             raise HTTPException(502, "No playlist ID from Plex")
 
-        added = 1; failed = 0
-        for i in range(0, len(rating_keys[1:]), 8):
-            batch = rating_keys[1:][i:i+8]
-            results = await asyncio.gather(*[
-                client.put(f"{base}/playlists/{pl_id}/items",
-                    params={"uri": f"server://{machine_id}/com.plexapp.plugins.library"
-                                   f"/library/metadata/{k}",
-                            "X-Plex-Token": token},
-                    headers=headers)
-                for k in batch], return_exceptions=True)
-            for res in results:
-                if isinstance(res, Exception) or not res.is_success: failed += 1
-                else: added += 1
+        added, failed = len(rating_keys[:BATCH]), 0
+        for i in range(BATCH, len(rating_keys), BATCH):      # sequential → order preserved
+            batch = rating_keys[i:i + BATCH]
+            pr = await client.put(f"{base}/playlists/{pl_id}/items",
+                params={"uri": _uri(batch), "X-Plex-Token": token}, headers=headers)
+            if pr.is_success:
+                added += len(batch)
+            else:
+                failed += len(batch)
 
-    return {"ok":True,"server":"plex","playlist":name,
-            "added":added,"failed":failed,"not_found":not_found,"playlist_id":pl_id}
+    return {"ok": True, "server": "plex", "playlist": name,
+            "added": added, "failed": failed, "not_found": not_found, "playlist_id": pl_id}
 
 
 async def _push_to_emby(base: str, token: str, user_id: str, name: str, tracks: list) -> dict:
@@ -5057,12 +5120,11 @@ async def _push_to_emby(base: str, token: str, user_id: str, name: str, tracks: 
                     params={"searchTerm":t.get("title",""),"IncludeItemTypes":"Audio",
                             "Recursive":"true","api_key":token}, headers=ah)
                 items = r.json().get("Items",[]) if r.is_success else []
-                a = t.get("tag_artist","")
+                want_t = _title_key(t.get("title", ""))
                 m = next((i for i in items
-                    if i.get("Name","").lower()==t.get("title","").lower()
-                    and a.lower()[:8] in
-                        (i.get("AlbumArtist") or (i.get("Artists") or [""])[0]).lower()),
-                    items[0] if items else None)
+                    if _title_key(i.get("Name", "")) == want_t
+                    and _artist_match(t.get("tag_artist", ""),
+                                      i.get("Artists") or [], i.get("AlbumArtist"))), None)
                 return m.get("Id") if m else None
             except:
                 return None
@@ -5191,18 +5253,12 @@ async def _push_to_jellyfin(base: str, token: str, user_id: str, name: str, trac
                             "Limit":20},
                     headers=hdrs)
                 items = r.json().get("Items",[]) if r.is_success else []
-                artist = (t.get("tag_artist") or "").lower()
-                title  = t.get("title","").lower()
-                # Exact title + artist match first
+                want_t = _title_key(t.get("title", ""))
+                # Title + artist must both match — never guess a different song
                 match = next((i for i in items
-                    if i.get("Name","").lower() == title
-                    and artist[:10] in
-                        (i.get("AlbumArtist") or
-                         (i.get("Artists") or [""])[0]).lower()), None)
-                # Loose title-only fallback
-                if not match:
-                    match = next((i for i in items
-                        if i.get("Name","").lower() == title), None)
+                    if _title_key(i.get("Name", "")) == want_t
+                    and _artist_match(t.get("tag_artist", ""),
+                                      i.get("Artists") or [], i.get("AlbumArtist"))), None)
                 if match and match.get("Id"):
                     jf_ids.append(match["Id"])
                 else:

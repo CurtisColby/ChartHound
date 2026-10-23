@@ -542,7 +542,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
         <button class="hg-toc-btn"        id="hg-toc-kennel"    onclick="hgShow('kennel')">🔑 The Kennel</button>
         <button class="hg-toc-btn"        id="hg-toc-retriever" onclick="hgShow('retriever')">🏷 The Retriever</button>
         <button class="hg-toc-btn"        id="hg-toc-sniffer"   onclick="hgShow('sniffer')">📡 The Sniffer</button>
-        <button class="hg-toc-btn"        id="hg-toc-groomer"   onclick="hgShow('groomer')">✂️ The Groomer</button>
+        <button class="hg-toc-btn"        id="hg-toc-groomer"   onclick="hgShow('groomer')">🏆 Top Dogs</button>
         <button class="hg-toc-btn"        id="hg-toc-bloodhound" onclick="hgShow('bloodhound')">🔍 The Bloodhound</button>
         <button class="hg-toc-btn"        id="hg-toc-tracker"   onclick="hgShow('tracker')">🎯 The Tracker</button>
         <button class="hg-toc-btn"        id="hg-toc-vet"       onclick="hgShow('vet')">🩺 The Veterinarian</button>
@@ -594,8 +594,8 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
       <div class="nav-text"><div class="nav-name">THE SNIFFER</div><div class="nav-desc">Find missing chart hits & grab them</div></div>
     </div>
     <div class="nav-item" id="nav-groomer" style="--tab-color:var(--c4)" onclick="switchTab('groomer')">
-      <span class="nav-icon">✂️</span>
-      <div class="nav-text"><div class="nav-name">THE GROOMER</div><div class="nav-desc">Build playlists from what you own</div></div>
+      <span class="nav-icon">🏆</span>
+      <div class="nav-text"><div class="nav-name">TOP DOGS</div><div class="nav-desc">Road-trip playlists from your biggest hits</div></div>
     </div>
     <div class="nav-item" id="nav-bloodhound" style="--tab-color:var(--c5)" onclick="switchTab('bloodhound')">
       <span class="nav-icon">🔍</span>
@@ -657,7 +657,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
               <input type="text" id="pathDocker" value="/music">
               <div class="label-row"><label>Navidrome Music Path</label>
                 <div class="help-wrap"><button class="help-btn" tabindex="0">?</button>
-                  <div class="tooltip">The path inside your Navidrome container where music is mounted. Check your Navidrome docker-compose.yml under volumes: — the part after the colon is what goes here. Example: if your entry is /media/colby/NAS1/MUSIC TAGGED:/music:ro then enter /music. Required to use the ↓ Navidrome M3U button in The Groomer.</div>
+                  <div class="tooltip">The path inside your Navidrome container where music is mounted. Check your Navidrome docker-compose.yml under volumes: — the part after the colon is what goes here. Example: if your entry is /media/colby/NAS1/MUSIC TAGGED:/music:ro then enter /music. Required to use the ↓ Navidrome M3U button in Top Dogs.</div>
                 </div>
               </div>
               <input type="text" id="pathNavidrome" placeholder="/music">
@@ -1025,7 +1025,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
         <div class="pane-main">
           <div class="section-label sl-teal">SCAN PROGRESS</div>
           <div id="bannerTip" class="feature-banner recommend" style="justify-content:space-between;align-items:flex-start">
-            <span>⭐ Run The Retriever first to pre-populate the metadata cache. The Sniffer and Groomer will be significantly faster once your library is tagged. Chart data is also written permanently to your files as a backup.</span>
+            <span>⭐ Run The Retriever first to pre-populate the metadata cache. The Sniffer and Top Dogs will be significantly faster once your library is tagged. Chart data is also written permanently to your files as a backup.</span>
             <button onclick="document.getElementById('bannerTip').style.display='none'" style="background:none;border:none;color:inherit;cursor:pointer;font-size:.85rem;padding:0 0 0 .75rem;opacity:.5;flex-shrink:0;line-height:1" title="Dismiss">✕</button>
           </div>
           <div id="bannerLidarr" class="feature-banner" style="background:rgba(255,160,0,.08);border-color:rgba(255,160,0,.3);color:#ffa500;margin-bottom:.75rem;justify-content:space-between;align-items:flex-start">
@@ -1533,7 +1533,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
       </div>
     </div>
 
-    <!-- THE GROOMER -->
+    <!-- TOP DOGS -->
     <div class="tab-panel" id="panel-groomer">
       <div class="grm-layout" id="grm-layout">
 
@@ -1697,9 +1697,19 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
             <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--pink);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">PLAYLIST BUILDER<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
             <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem;display:flex;flex-direction:column;gap:.6rem">
               <div style="font-family:var(--mono);font-size:.52rem;color:var(--muted2);line-height:1.6">Uses the Genre, Decades, Hit Score and One-hit filters. Ignores the peak sliders.</div>
+              <div style="display:flex;gap:.3rem">
+                <select id="grm-preset" onchange="grmLoadPreset(this.value)" style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:.62rem;padding:.35rem .45rem;outline:none"><option value="">— Presets —</option></select>
+                <button onclick="grmSavePreset()" title="Save current settings as a preset" style="padding:.3rem .5rem;background:var(--surface3);color:var(--teal);border:1px solid var(--border2);border-radius:5px;font-family:var(--mono);font-size:.55rem;cursor:pointer">SAVE</button>
+                <button onclick="grmDeletePreset()" title="Delete selected preset" style="padding:.3rem .5rem;background:var(--surface3);color:var(--red);border:1px solid var(--border2);border-radius:5px;font-family:var(--mono);font-size:.55rem;cursor:pointer">✕</button>
+              </div>
               <div>
                 <div style="display:flex;justify-content:space-between;margin-bottom:.3rem"><label style="font-size:.7rem;color:var(--muted)">Length</label><span style="font-family:var(--display);font-size:1.05rem;color:var(--amber)" id="grm-len-display">4h</span></div>
                 <input type="range" id="grm-len" min="0.5" max="12" step="0.5" value="4" oninput="document.getElementById('grm-len-display').textContent=grmFmtHours(this.value*60)" style="width:100%">
+              </div>
+              <div>
+                <div style="display:flex;justify-content:space-between;margin-bottom:.3rem"><label style="font-size:.7rem;color:var(--muted)">Playlists (days)</label><span style="font-family:var(--display);font-size:1.05rem;color:var(--amber)" id="grm-days-display">1</span></div>
+                <input type="range" id="grm-days" min="1" max="7" step="1" value="1" oninput="document.getElementById('grm-days-display').textContent=this.value" style="width:100%">
+                <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted2);margin-top:.2rem">Length is per playlist · no song repeats across days</div>
               </div>
               <div>
                 <div style="display:flex;justify-content:space-between;margin-bottom:.3rem"><label style="font-size:.7rem;color:var(--muted)">Familiar hits</label><span style="font-family:var(--display);font-size:1.05rem;color:var(--amber)" id="grm-fam-display">90%</span></div>
@@ -2295,7 +2305,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
               <div style="margin-top:.6rem">
                 <button class="btn btn-outline btn-sm" onclick="vetResetSkipCache()" style="width:100%;font-size:.6rem">🔄 RESET SKIP CACHE</button>
               </div>
-              <div class="field-hint" style="margin-top:.4rem;margin-bottom:0">Forces full re-scan on next Groomer run. Misses auto-expire after 6 months.</div>
+              <div class="field-hint" style="margin-top:.4rem;margin-bottom:0">Forces full re-scan on next Top Dogs run. Misses auto-expire after 6 months.</div>
             </div>
 
             <!-- DB Tools -->
@@ -2888,7 +2898,7 @@ async function loadPathSettings() {
     if (serverEl    && d.server_prefix)    { serverEl.value = d.server_prefix; serverEl.dispatchEvent(new Event('input')); }
     if (dockerEl    && d.docker_prefix)    dockerEl.value    = d.docker_prefix;
     if (navidromeEl && d.navidrome_prefix) navidromeEl.value = d.navidrome_prefix;
-    // Sync Navidrome M3U button state in Groomer if results are loaded
+    // Sync Navidrome M3U button state in Top Dogs if results are loaded
     grmSyncBar();
   } catch {}
 }
@@ -4709,7 +4719,7 @@ function atKeepAll() {
 var _atBulkDropdownsPopulated = false;
 
 function atTranslatePath(path) {
-  // Translate docker path (/music/...) to host path using Groomer's prefix settings
+  // Translate docker path (/music/...) to host path using Top Dogs's prefix settings
   if (!path) return path;
   if (_grmServerPrefix && _grmDockerPrefix && path.startsWith(_grmDockerPrefix)) {
     return _grmServerPrefix + path.slice(_grmDockerPrefix.length);
@@ -5134,7 +5144,7 @@ async function browseSubfolder(subPath) {
 
 
 // ══════════════════════════════════════════════════════════════════
-//  THE GROOMER — JavaScript
+//  TOP DOGS — JavaScript
 // ══════════════════════════════════════════════════════════════════
 
 let grmResults       = [];
@@ -5610,7 +5620,7 @@ async function grmStartScan() {
     var _bg2 = document.getElementById('grm-badge'); if (_bg2) _bg2.textContent = '0 songs';
     grmStartPoll();
     grmLivePoll = setInterval(() => { if (grmScanJobId) grmSearch(); }, 15000);
-    toast(`Groomer scan started on ${scope}`, 'ok');
+    toast(`Top Dogs scan started on ${scope}`, 'ok');
     grmLog('⏳ Scanning against static chart database — first results may take a minute to appear…', 'info');
     if (document.getElementById('grm-use-estimates')?.checked) {
       grmLog('⚠ Last.fm estimates enabled — scan will be slower (~0.2s per unmatched track)', 'warn');
@@ -6153,6 +6163,74 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ── M2: Hits filters + playlist builder ─────────────────────────
 const grmDecades = new Set();
+let grmBuiltDays = null;   // [{day, track_ids, minutes}] when a multi-day set is shown
+
+// One job per playlist: multi-day build → one per day (unless rows are hand-selected)
+function grmPlaylistJobs() {
+  const name = document.getElementById('grm-playlist-name').value.trim() || 'Chart Hits';
+  if (grmBuiltDays && grmSelected.size === 0)
+    return grmBuiltDays.map(d => ({name: `${name} — Day ${d.day}`, ids: d.track_ids}));
+  const ids = grmSelected.size > 0 ? [...grmSelected] : grmResults.map(r => r.track_id);
+  return ids.length ? [{name, ids}] : [];
+}
+
+// ── Presets ──────────────────────────────────────────────────────
+let grmPresets = {};
+async function grmLoadPresets() {
+  try {
+    const r = await fetch(`${API}/api/groomer/presets`, {headers:authHdrs()});
+    grmPresets = (await r.json()).presets || {};
+  } catch { grmPresets = {}; }
+  const sel = document.getElementById('grm-preset'); if (!sel) return;
+  sel.innerHTML = '<option value="">— Presets —</option>' +
+    Object.keys(grmPresets).sort().map(k => `<option value="${esc(k)}">${esc(k)}</option>`).join('');
+}
+async function grmPutPresets() {
+  const r = await fetch(`${API}/api/groomer/presets`, {method:'PUT', headers:authHdrs(), body:JSON.stringify({presets:grmPresets})});
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+}
+async function grmSavePreset() {
+  const def = document.getElementById('grm-preset').value || document.getElementById('grm-playlist-name').value.trim();
+  const name = (prompt('Preset name:', def) || '').trim();
+  if (!name) return;
+  grmPresets[name] = {
+    genres: grmGetActivePills(), decades: [...grmDecades],
+    min_score: document.getElementById('grm-min-score').value,
+    ohw: !!document.getElementById('grm-ohw').checked,
+    len: document.getElementById('grm-len').value, days: document.getElementById('grm-days').value,
+    fam: document.getElementById('grm-fam').value, gap: document.getElementById('grm-gap').value,
+    playlist: document.getElementById('grm-playlist-name').value,
+  };
+  try { await grmPutPresets(); await grmLoadPresets(); document.getElementById('grm-preset').value = name; toast(`Preset "${name}" saved`, 'success'); }
+  catch (e) { toast(`Save failed: ${e.message}`, 'error'); }
+}
+async function grmDeletePreset() {
+  const name = document.getElementById('grm-preset').value;
+  if (!name || !confirm(`Delete preset "${name}"?`)) return;
+  delete grmPresets[name];
+  try { await grmPutPresets(); await grmLoadPresets(); toast('Preset deleted', 'ok'); }
+  catch (e) { toast(`Delete failed: ${e.message}`, 'error'); }
+}
+function grmLoadPreset(name) {
+  const p = grmPresets[name]; if (!p) return;
+  const set = (id, v, disp, fmt) => { const el = document.getElementById(id); if (el && v != null) { el.value = v; const d = document.getElementById(disp); if (d) d.textContent = fmt(v); } };
+  set('grm-min-score', p.min_score, 'grm-score-display', v => v > 0 ? v + '+' : 'Any');
+  set('grm-len', p.len, 'grm-len-display', v => grmFmtHours(v * 60));
+  set('grm-days', p.days, 'grm-days-display', v => v);
+  set('grm-fam', p.fam, 'grm-fam-display', v => v + '%');
+  set('grm-gap', p.gap, 'grm-gap-display', v => v);
+  document.getElementById('grm-ohw').checked = !!p.ohw;
+  if (p.playlist) document.getElementById('grm-playlist-name').value = p.playlist;
+  grmDecades.clear(); (p.decades || []).forEach(d => grmDecades.add(parseInt(d)));
+  document.querySelectorAll('.grm-dec').forEach(b => {
+    const on = grmDecades.has(parseInt(b.dataset.dec));
+    b.style.background = on ? 'var(--pink)' : 'var(--surface3)'; b.style.color = on ? '#000' : 'var(--muted)';
+  });
+  _grmTreeSelected.clear(); (p.genres || []).forEach(g => _grmTreeSelected.add(g));
+  grmBuildTree(); _grmSyncAllRow();
+  toast(`Preset "${name}" loaded — click Build`, 'ok');
+}
+document.addEventListener('DOMContentLoaded', () => setTimeout(grmLoadPresets, 1500));
 function grmToggleDecade(d) {
   if (grmDecades.has(d)) grmDecades.delete(d); else grmDecades.add(d);
   document.querySelectorAll('.grm-dec').forEach(b => {
@@ -6175,6 +6253,7 @@ async function grmBuildPlaylist() {
     min_score:    parseInt(document.getElementById('grm-min-score')?.value || 0),
     ohw_only:     !!document.getElementById('grm-ohw')?.checked,
     minutes:      Math.round(parseFloat(document.getElementById('grm-len').value) * 60),
+    days:         parseInt(document.getElementById('grm-days').value),
     familiar_pct: parseInt(document.getElementById('grm-fam').value),
     artist_gap:   parseInt(document.getElementById('grm-gap').value),
   };
@@ -6190,14 +6269,18 @@ async function grmBuildPlaylist() {
       nameEl.value = `Road Trip${dec ? ' ' + dec : ''}${body.ohw_only ? ' One-Hit Wonders' : ''} Hits`;
     }
     grmResults = d.results; _grmTotal = d.count; _grmOffset = d.count;
+    grmBuiltDays = (d.days && d.days.length > 1) ? d.days : null;
     _sortKey = 'seq'; _sortAsc = true;
     ['artist','title','year','stars','score','peak','weeks','conf','genre'].forEach(k => {
       const el = document.getElementById('sort-ind-' + k); if (el) el.textContent = '';
     });
     grmRenderResults(grmResults);
     grmUpdateLoadMore();
-    document.getElementById('grm-badge').textContent = `${d.count} songs · ${grmFmtHours(d.minutes)}`;
-    let msg = `✓ Built ${d.count} songs (${grmFmtHours(d.minutes)}) from ${d.candidates.toLocaleString()} candidates`;
+    document.getElementById('grm-badge').textContent = grmBuiltDays
+      ? `${grmBuiltDays.length} days · ${d.count} songs · ${grmFmtHours(d.minutes)}`
+      : `${d.count} songs · ${grmFmtHours(d.minutes)}`;
+    let msg = `✓ Built ${grmBuiltDays ? grmBuiltDays.length + ' playlists, ' : ''}${d.count} songs (${grmFmtHours(d.minutes)}) from ${d.candidates.toLocaleString()} candidates`;
+    if (grmBuiltDays) msg += ' · ' + grmBuiltDays.map(x => `Day ${x.day}: ${grmFmtHours(x.minutes)}`).join(', ');
     if (d.unknown_durations) msg += ` · ${d.unknown_durations} lengths estimated (rescan fills these in)`;
     grmLog(msg, 'ok');
     if (d.short) toast('Not enough matching songs to fill the full length — loosen the filters.', 'warn');
@@ -6244,6 +6327,7 @@ async function grmSearch(append = false) {
   if (grmDecades.size) params.set('decades', [...grmDecades].join(','));
   if (document.getElementById('grm-ohw')?.checked) params.set('ohw', 'true');
   if (_sortKey === 'seq') { _sortKey = 'score'; _sortAsc = true; }
+  grmBuiltDays = null;
   try {
     const r = await fetch(`${API}/api/groomer/results?${params}`, {headers:authHdrs()});
     if (!r.ok) return;
@@ -6337,20 +6421,21 @@ function grmRenderResults(results, append = false) {
   toRender.forEach(t => {
     const artist = t.tag_artist || t.artist || '';
     const stars  = t.star_rating || t.stars || 0;
-    const peak   = t.peak_position || 0;
+    const useH   = !!t.hot100_peak;
+    const peak   = useH ? t.hot100_peak : (t.peak_position || 0);
     const conf   = t.confidence || 'low';
     const starsHTML = stars > 0
       ? '<span style="color:var(--amber)">'+'★'.repeat(stars)+'</span>'
         +'<span style="color:var(--muted2)">'+'★'.repeat(5-stars)+'</span>'
       : '<span style="color:var(--muted2)">—</span>';
-    const chartName = t.chart_name || '';
+    const chartName = useH ? 'hot100' : (t.chart_name || '');
     const chartDisplay = chartName ? chartName.toUpperCase() : '—';
     const peakHTML = conf === 'low' && peak
       ? `<span style="font-family:var(--display);font-size:1rem;color:var(--muted2)" title="Estimated">~#${peak}</span>`
       : peak
         ? `<span style="font-family:var(--display);font-size:1rem;color:var(--amber)">#${peak}</span>`
         : '<span style="color:var(--muted2)">—</span>';
-    const weeks = t.weeks_on_chart || 0;
+    const weeks = (useH && t.hot100_weeks) ? t.hot100_weeks : (t.weeks_on_chart || 0);
     const wBar  = weeks > 0
       ? `<span style="color:var(--teal)">${'▪'.repeat(Math.min(weeks,10))}</span>`
         +`<span style="color:var(--muted2);font-size:.55rem"> ${weeks}w</span>` : '—';
@@ -6370,7 +6455,7 @@ function grmRenderResults(results, append = false) {
       ? `<span title="${esc(hsTip)}" style="font-family:var(--display);font-size:1rem;color:${hsColor}">${hs}</span>`
       : '<span style="color:var(--muted2)">—</span>')
       + (t.one_hit_wonder ? ' <span title="One-hit wonder" style="font-size:.45rem;padding:.05rem .3rem;border-radius:6px;border:1px solid var(--amber);color:var(--amber)">1-HIT</span>' : '')
-      + (t._seq ? ` <span style="color:var(--muted2);font-size:.5rem">#${t._seq}</span>` : '');
+      + (t._seq ? ` <span style="color:var(--muted2);font-size:.5rem">${t._day ? 'D' + t._day + ' ' : ''}#${t._seq}</span>` : '');
     const tr = document.createElement('tr');
     tr.dataset.id     = t.track_id;
     tr.dataset.text   = `${artist} ${t.title||''} ${chartName}`.toLowerCase();
@@ -6468,12 +6553,12 @@ const _sortFields = {
   title:  t => (t.title  || '').toLowerCase(),
   year:   t => parseInt(t.chart_year || t.year) || 9999,
   stars:  t => -(t.star_rating || t.stars || 0),
-  peak:   t => t.peak_position || 9999,
-  weeks:  t => -(t.weeks_on_chart || 0),
+  peak:   t => t.hot100_peak || t.peak_position || 9999,
+  weeks:  t => -(t.hot100_weeks || t.weeks_on_chart || 0),
   conf:   t => _confRank[t.confidence] ?? 9,
   genre:  t => (t.genre_1 || '').toLowerCase(),
   score:  t => -(t.hit_score || 0),
-  seq:    t => t._seq || 99999,
+  seq:    t => (t._day || 0) * 100000 + (t._seq || 99999),
 };
 
 function grmSort(key) {
@@ -6544,42 +6629,46 @@ function grmSyncBar() {
 
 // ── Push to server ────────────────────────────────────────────────
 async function grmPushPlaylist(server) {
-  const name     = document.getElementById('grm-playlist-name').value.trim() || 'Chart Hits';
-  const trackIds = grmSelected.size > 0 ? [...grmSelected] : grmResults.map(r=>r.track_id);
-  if (!trackIds.length) { toast('No tracks to push.', 'warn'); return; }
-  const labels   = {plex:'Plex', emby:'Emby', jellyfin:'Jellyfin'};
-  const label    = labels[server] || server;
-  if (!confirm(`Push "${name}" with ${trackIds.length} tracks to ${label}?\n\nThis replaces any existing playlist with the same name.`)) return;
-  grmLog(`Pushing ${trackIds.length} tracks to ${label}…`, 'info');
+  const jobs = grmPlaylistJobs();
+  if (!jobs.length) { toast('No tracks to push.', 'warn'); return; }
+  const labels = {plex:'Plex', emby:'Emby', jellyfin:'Jellyfin'};
+  const label  = labels[server] || server;
+  const total  = jobs.reduce((n, j) => n + j.ids.length, 0);
+  const what   = jobs.length > 1 ? `${jobs.length} playlists (${jobs.map(j => j.name).join(', ')})` : `"${jobs[0].name}"`;
+  if (!confirm(`Push ${what} — ${total} tracks — to ${label}?\n\nThis replaces any existing playlist with the same name.`)) return;
   ['grm-push-plex','grm-push-emby','grm-push-jf','grm-push-m3u','grm-push-m3u-nav'].forEach(id => {
     const b=document.getElementById(id); if(b){b.disabled=true;b.style.opacity='.35';}
   });
+  let ok = 0;
   try {
-    const r = await fetch(`${API}/api/groomer/playlist/push`, {
-      method:'POST', headers:authHdrs(),
-      body:JSON.stringify({server, playlist_name:name, track_ids:trackIds}),
-    });
-    const d = await r.json();
-    if (r.ok && d.ok) {
-      const nf = d.not_found || 0;
-      const nfStr = nf > 0 ? ` · ${nf} not found in ${label}` : '';
-      grmLog(`✓ "${name}" pushed to ${label} — ${d.added} tracks added${nfStr}`, 'ok');
-      toast(`✓ "${name}" — ${d.added} added${nf?' · '+nf+' not found':''}`, 'success');
-    } else {
-      grmLog(`${label} push failed: ${d.detail||d.message||'HTTP '+r.status}`, 'err');
-      toast(`${label} push failed — see log`, 'error');
+    for (const job of jobs) {
+      grmLog(`Pushing "${job.name}" (${job.ids.length} tracks) to ${label}…`, 'info');
+      try {
+        const r = await fetch(`${API}/api/groomer/playlist/push`, {
+          method:'POST', headers:authHdrs(),
+          body:JSON.stringify({server, playlist_name:job.name, track_ids:job.ids}),
+        });
+        const d = await r.json();
+        if (r.ok && d.ok) {
+          ok++;
+          const nf = d.not_found || 0;
+          grmLog(`✓ "${job.name}" → ${label}: ${d.added} added${nf ? ` · ${nf} not found (skipped, never substituted)` : ''}`, 'ok');
+        } else {
+          grmLog(`✗ "${job.name}" push failed: ${d.detail||d.message||'HTTP '+r.status}`, 'err');
+        }
+      } catch (e) { grmLog(`✗ "${job.name}" push error: ${e.message}`, 'err'); }
     }
-  } catch(e) {
-    grmLog(`${label} push error: ${e.message}`, 'err');
-    toast(`${label} push failed`, 'error');
+    toast(ok === jobs.length ? `✓ ${ok} playlist${ok>1?'s':''} pushed to ${label}` : `${ok}/${jobs.length} pushed — see log`, ok === jobs.length ? 'success' : 'warn');
   } finally { grmSyncBar(); }
 }
 
 // ── M3U Download ──────────────────────────────────────────────────
 async function grmDownloadM3U() {
-  const name     = document.getElementById('grm-playlist-name').value.trim() || 'Chart Hits';
-  const trackIds = grmSelected.size > 0 ? [...grmSelected] : grmResults.map(r=>r.track_id);
-  if (!trackIds.length) { toast('No tracks to export.', 'warn'); return; }
+  const jobs = grmPlaylistJobs();
+  if (!jobs.length) { toast('No tracks to export.', 'warn'); return; }
+  for (const j of jobs) await _grmM3UOne(j.name, j.ids);
+}
+async function _grmM3UOne(name, trackIds) {
   grmLog(`Generating M3U for ${trackIds.length} tracks…`, 'info');
   try {
     const r = await fetch(`${API}/api/groomer/playlist/m3u`, {
@@ -6610,9 +6699,11 @@ async function grmDownloadM3U() {
 
 // ── Navidrome M3U Download ────────────────────────────────────────
 async function grmDownloadNavidromeM3U() {
-  const name     = document.getElementById('grm-playlist-name').value.trim() || 'Chart Hits';
-  const trackIds = grmSelected.size > 0 ? [...grmSelected] : grmResults.map(r=>r.track_id);
-  if (!trackIds.length) { toast('No tracks to export.', 'warn'); return; }
+  const jobs = grmPlaylistJobs();
+  if (!jobs.length) { toast('No tracks to export.', 'warn'); return; }
+  for (const j of jobs) await _grmNavM3UOne(j.name, j.ids);
+}
+async function _grmNavM3UOne(name, trackIds) {
   grmLog(`Generating Navidrome M3U for ${trackIds.length} tracks…`, 'info');
   try {
     const r = await fetch(`${API}/api/groomer/playlist/m3u`, {
@@ -6641,7 +6732,7 @@ async function grmDownloadNavidromeM3U() {
   }
 }
 
-// Hook into tab navigation to init Groomer when tab is opened
+// Hook into tab navigation to init Top Dogs when tab is opened
 const _origShowTab = typeof showTab === 'function' ? showTab : null;
 
 
@@ -7973,7 +8064,7 @@ async function vetLoadStaticSources() {
            + '</div>';
     });
     list.innerHTML = html;
-    // Refresh Groomer chart-database card too, since totals changed
+    // Refresh Top Dogs chart-database card too, since totals changed
     if (typeof grmLoadStats === 'function') grmLoadStats();
   } catch(e) {
     list.innerHTML = '<div style="padding:.4rem 0;font-family:var(--mono);font-size:.55rem;color:var(--red)">Error: ' + esc(e.message) + '</div>';
@@ -8167,7 +8258,7 @@ async function vetSyncLibrary() {
 }
 
 async function vetResetSkipCache() {
-  if (!confirm('Reset the skip cache?\n\nAll tracks will be marked as unchecked. The next Groomer scan will do a full lookup on every track instead of skipping known misses.\n\nThis is safe — no data is deleted.')) return;
+  if (!confirm('Reset the skip cache?\n\nAll tracks will be marked as unchecked. The next Top Dogs scan will do a full lookup on every track instead of skipping known misses.\n\nThis is safe — no data is deleted.')) return;
   try {
     const r = await fetch(`${API}/api/groomer/skip_cache/reset`, {method:'POST', headers:authHdrs()});
     const d = await r.json();
@@ -8868,7 +8959,7 @@ const _HG_CONTENT = {
       <div class="hg-block-title">YOUR LIBRARY GETS FASTER THE LONGER YOU USE IT</div>
       <p>ChartHound's database isn't just storage — it's a knowledge cache. Every scan teaches it something: track fingerprints, chart matches, MusicBrainz IDs, Discogs lookups, Last.fm popularity scores, skip cache entries, genre-resolution waterfall results. All of it accumulates and gets reused. The first scan of a large library is the slowest one you'll ever do. Every scan after that gets faster as the database fills out and fewer tracks need fresh lookups. This is why the Clear Full Database button in The Veterinarian is in the danger zone — treat it that way.</p>
     </div>
-    <div class="hg-tip">💡 <strong>Recommended order:</strong> The Kennel → The Retriever → The Groomer → The Sniffer → The Bloodhound. The Tracker is independent and can be set up any time.</div>
+    <div class="hg-tip">💡 <strong>Recommended order:</strong> The Kennel → The Retriever → Top Dogs → The Sniffer → The Bloodhound. The Tracker is independent and can be set up any time.</div>
   `,
   kennel: `
     <div class="hg-section-title">🔑 THE KENNEL</div>
@@ -8881,7 +8972,7 @@ const _HG_CONTENT = {
     <div class="hg-block">
       <div class="hg-block-title">CONNECTIONS TO SET UP</div>
       <ul>
-        <li><strong>Plex / Emby / Jellyfin</strong> — Required for The Retriever and The Groomer to scan your library. Connect at least one. Plex is recommended as the primary.</li>
+        <li><strong>Plex / Emby / Jellyfin</strong> — Required for The Retriever and Top Dogs to scan your library. Connect at least one. Plex is recommended as the primary.</li>
         <li><strong>Last.fm</strong> — Strongly recommended. Powers genre metadata and popularity scoring for tracks not in the static Billboard database. Free, takes 30 seconds at last.fm/api/account/create.</li>
         <li><strong>Prowlarr</strong> — Required for The Sniffer and Bloodhound to search for albums to download.</li>
         <li><strong>qBittorrent / Deluge / Transmission</strong> — Required for The Sniffer and Bloodhound to send downloads.</li>
@@ -8902,7 +8993,7 @@ const _HG_CONTENT = {
   retriever: `
     <div class="hg-section-title">🏷 THE RETRIEVER</div>
     <div class="hg-section-sub">METADATA TAGGER — WRITES TAGS TO YOUR PHYSICAL FILES</div>
-    <div class="hg-tip">💡 <strong>Run this first.</strong> The Retriever is the foundation. Tag your library here before using The Groomer or The Sniffer for best results.</div>
+    <div class="hg-tip">💡 <strong>Run this first.</strong> The Retriever is the foundation. Tag your library here before using Top Dogs or The Sniffer for best results.</div>
     <div class="hg-block">
       <div class="hg-block-title">WHAT IT DOES</div>
       <p>The Retriever scans your music folders and writes genre, mood, and year tags directly to your physical audio files using Mutagen. It uses a multi-source waterfall to find the best metadata: MusicBrainz → Last.fm → ListenBrainz → Deezer → Discogs → iTunes. Tags are written to the actual file before refreshing your media server — your metadata survives even if you switch media servers.</p>
@@ -8929,7 +9020,7 @@ const _HG_CONTENT = {
     </div>
     <div class="hg-block">
       <div class="hg-block-title">GENRE SELECTION</div>
-      <p>When editing genres on a card, genres are organized by parent category first (Rock, Pop, Country, etc.) then all sub-genres beneath each parent. Up to 3 genres can be assigned per track. The genres used here are the same ones The Groomer filters on — tagging your files correctly here makes Groomer playlists much more accurate.</p>
+      <p>When editing genres on a card, genres are organized by parent category first (Rock, Pop, Country, etc.) then all sub-genres beneath each parent. Up to 3 genres can be assigned per track. The genres used here are the same ones Top Dogs filters on — tagging your files correctly here makes Top Dogs playlists much more accurate.</p>
     </div>
     <div class="hg-block">
       <div class="hg-block-title">ITUNES RATE LIMITING</div>
@@ -8975,11 +9066,11 @@ const _HG_CONTENT = {
     <div class="hg-tip">💡 <strong>Best practice:</strong> Start with all genres + Notable. Then narrow to one genre at a time to get deeper coverage per genre. Adding a decade filter gives you 1,000 of just that genre's best hits from that era.</div>
   `,
   groomer: `
-    <div class="hg-section-title">✂️ THE GROOMER</div>
+    <div class="hg-section-title">🏆 TOP DOGS</div>
     <div class="hg-section-sub">PLAYLIST BUILDER — BUILD SMART PLAYLISTS FROM CHART HITS YOU OWN</div>
     <div class="hg-block">
       <div class="hg-block-title">WHAT IT DOES</div>
-      <p>The Groomer scans your library against the chart reference database and writes chart performance data into the COMMENT tag of your music files (e.g. "Hot 100: #4 (12 wks)"). It then lets you build smart playlists filtered by genre, decade, peak position, and weeks on chart — and push those playlists directly to Plex, Emby, or Jellyfin.</p>
+      <p>Top Dogs scans your library against the chart reference database and writes chart performance data into the COMMENT tag of your music files (e.g. "Hot 100: #4 (12 wks)"). It then lets you build smart playlists filtered by genre, decade, peak position, and weeks on chart — and push those playlists directly to Plex, Emby, or Jellyfin.</p>
     </div>
     <div class="hg-block">
       <div class="hg-block-title">CONNECTIONS REQUIRED</div>
@@ -8994,13 +9085,13 @@ const _HG_CONTENT = {
     </div>
     <div class="hg-block">
       <div class="hg-block-title">SKIP CACHE — SCANS GET FASTER OVER TIME</div>
-      <p>Re-scanning a large library is expensive. The Groomer remembers which tracks have already been processed and skips them on subsequent runs unless something changed. The first scan of your library takes a while — every scan after that is significantly faster. The cache is automatically invalidated when a track's path or metadata changes. You can reset it manually in The Veterinarian if you need to force a full rescan.</p>
+      <p>Re-scanning a large library is expensive. Top Dogs remembers which tracks have already been processed and skips them on subsequent runs unless something changed. The first scan of your library takes a while — every scan after that is significantly faster. The cache is automatically invalidated when a track's path or metadata changes. You can reset it manually in The Veterinarian if you need to force a full rescan.</p>
     </div>
     <div class="hg-block">
       <div class="hg-block-title">ALBUM BATCHING</div>
-      <p>When the Groomer scans your library, it groups tracks by album folder and makes one API call per album instead of one per track. For a 33,000-track library, that's the difference between ~33,000 API calls and ~3,000. Same data, an order of magnitude less work — and far less chance of hitting rate limits.</p>
+      <p>When Top Dogs scans your library, it groups tracks by album folder and makes one API call per album instead of one per track. For a 33,000-track library, that's the difference between ~33,000 API calls and ~3,000. Same data, an order of magnitude less work — and far less chance of hitting rate limits.</p>
     </div>
-    <div class="hg-tip">💡 <strong>Best practice:</strong> Run The Retriever on your library first so files have genre tags. Then scan The Groomer — genre filtering will be significantly more accurate. Use the Genre Tree to narrow to one genre, set your peak/weeks filters, and push a tight playlist.</div>
+    <div class="hg-tip">💡 <strong>Best practice:</strong> Run The Retriever on your library first so files have genre tags. Then scan Top Dogs — genre filtering will be significantly more accurate. Use the Genre Tree to narrow to one genre, set your peak/weeks filters, and push a tight playlist.</div>
   `,
   bloodhound: `
     <div class="hg-section-title">🔍 THE BLOODHOUND</div>
@@ -9078,7 +9169,7 @@ const _HG_CONTENT = {
       <ul>
         <li><strong>VACUUM DATABASE</strong> — Reclaims unused space in the SQLite database. Safe to run any time. Does not delete any data.</li>
         <li><strong>INTEGRITY CHECK</strong> — Verifies the database has no corruption. If this fails, use CLEAR FULL DATABASE and start fresh.</li>
-        <li><strong>RESET SKIP CACHE</strong> — Forces The Groomer to re-scan all tracks on next run, ignoring previously cached results. Use if you've changed your library significantly.</li>
+        <li><strong>RESET SKIP CACHE</strong> — Forces Top Dogs to re-scan all tracks on next run, ignoring previously cached results. Use if you've changed your library significantly.</li>
         <li><strong>CLEAR METADATA CACHE</strong> — Clears the metadata cache so the next Retriever scan fetches fresh data from MusicBrainz, Last.fm, etc.</li>
       </ul>
     </div>
