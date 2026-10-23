@@ -1671,6 +1671,23 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
             </div>
           </div>
 
+          <!-- ONLINE DATA (Last.fm) -->
+          <div class="v-scan">
+            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--pink);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">ONLINE DATA<span class="grm-q" tabindex="0" data-tip="Looks up every song on Last.fm once: listener counts (how much it is still played today) and genres. Boosts timeless classics, lets never-charted favourites like Stairway to Heaven into playlists, and powers the Main-genre filter. First run takes about 3 hours in the background; afterwards only new songs are looked up. Nothing is written to your files.">?</span><span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
+            <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem;display:flex;flex-direction:column;gap:.45rem">
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <span style="font-family:var(--mono);font-size:.6rem;color:var(--muted)">🌐 Last.fm</span>
+                <span id="grm-lfm-state" style="font-family:var(--mono);font-size:.55rem;color:var(--muted2)">—</span>
+              </div>
+              <div style="background:var(--bg);border-radius:3px;height:5px;overflow:hidden;border:1px solid var(--border)"><div id="grm-lfm-bar" style="height:100%;width:0%;background:var(--teal);transition:width .4s"></div></div>
+              <div id="grm-lfm-msg" style="font-family:var(--mono);font-size:.52rem;color:var(--muted2);line-height:1.6;min-height:1.6em;word-break:break-word">Loading…</div>
+              <div style="display:flex;gap:.35rem">
+                <button id="grm-lfm-start" onclick="grmLfmStart()" style="flex:1;padding:.3rem .5rem;border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer;border:1px solid var(--border2);background:var(--surface3);color:var(--teal)">▶ START</button>
+                <button id="grm-lfm-stop"  onclick="grmLfmStop()"  style="flex:1;padding:.3rem .5rem;border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer;border:1px solid var(--border2);background:var(--surface3);color:var(--red)">■ STOP</button>
+              </div>
+            </div>
+          </div>
+
           <!-- SCAN OPTIONS -->
           <div class="v-scan">
             <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--pink);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">SCAN OPTIONS<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
@@ -1701,6 +1718,13 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
               <div>
                 <div style="font-size:.7rem;color:var(--muted);margin-bottom:.35rem">Decades<span class="grm-q" tabindex="0" data-tip="Based on the year the song first charted (Bohemian Rhapsody = 1976, not its 1992 re-release). Pick several to mix eras. None selected = all.">?</span> <span style="font-size:.55rem;color:var(--muted2)">(none = all)</span></div>
                 <div style="display:flex;flex-wrap:wrap;gap:.3rem"><button class="grm-dec" data-dec="1950" onclick="grmToggleDecade(1950)" style="padding:.3rem .45rem;background:var(--surface3);color:var(--muted);border:1px solid var(--border2);border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer">50s</button><button class="grm-dec" data-dec="1960" onclick="grmToggleDecade(1960)" style="padding:.3rem .45rem;background:var(--surface3);color:var(--muted);border:1px solid var(--border2);border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer">60s</button><button class="grm-dec" data-dec="1970" onclick="grmToggleDecade(1970)" style="padding:.3rem .45rem;background:var(--surface3);color:var(--muted);border:1px solid var(--border2);border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer">70s</button><button class="grm-dec" data-dec="1980" onclick="grmToggleDecade(1980)" style="padding:.3rem .45rem;background:var(--surface3);color:var(--muted);border:1px solid var(--border2);border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer">80s</button><button class="grm-dec" data-dec="1990" onclick="grmToggleDecade(1990)" style="padding:.3rem .45rem;background:var(--surface3);color:var(--muted);border:1px solid var(--border2);border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer">90s</button><button class="grm-dec" data-dec="2000" onclick="grmToggleDecade(2000)" style="padding:.3rem .45rem;background:var(--surface3);color:var(--muted);border:1px solid var(--border2);border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer">00s</button><button class="grm-dec" data-dec="2010" onclick="grmToggleDecade(2010)" style="padding:.3rem .45rem;background:var(--surface3);color:var(--muted);border:1px solid var(--border2);border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer">10s</button><button class="grm-dec" data-dec="2020" onclick="grmToggleDecade(2020)" style="padding:.3rem .45rem;background:var(--surface3);color:var(--muted);border:1px solid var(--border2);border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer">20s</button></div>
+              </div>
+              <div>
+                <div style="font-size:.7rem;color:var(--muted);margin-bottom:.35rem">Genre match<span class="grm-q" tabindex="0" data-tip="MAIN GENRE: a song counts only if its top online (Last.fm) genre is one you picked — Whitney Houston is Pop, so she stays out of a Soft Rock playlist. Songs not looked up yet fall back to your file tags. ANY TAG: old behaviour — any of the 3 file genre tags can match.">?</span></div>
+                <div style="display:flex;gap:.3rem">
+                  <button id="grm-gm-main" onclick="grmSetGenreMode('main')" style="flex:1;padding:.3rem .5rem;border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer;border:1px solid var(--border2);background:var(--pink);color:#000">MAIN GENRE</button>
+                  <button id="grm-gm-any"  onclick="grmSetGenreMode('any')"  style="flex:1;padding:.3rem .5rem;border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer;border:1px solid var(--border2);background:var(--surface3);color:var(--muted)">ANY TAG</button>
+                </div>
               </div>
               <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.7rem;color:var(--muted)">
                 <input type="checkbox" id="grm-ohw" onchange="grmSearch()" style="accent-color:var(--pink)"> One-hit wonders only<span class="grm-q" tabindex="0" data-tip="Artists with exactly one Top 40 Hot 100 hit — and this is it. Fun for a themed playlist; pair with a lower Min Hit Score (40–50).">?</span>
@@ -5301,6 +5325,7 @@ function grmInit() {
   _grmLoadPathSettings();
   grmLoadLibraries();
   if (!grmScanPoll) grmInitView();
+  grmLfmPoll();
 }
 
 // Genre/mood pills replaced by post-scan dropdown (grmBuildGenreDropdown)
@@ -6237,6 +6262,54 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 })();
 
+// ── M4: genre match mode ─────────────────────────────────────────
+let grmGenreMode = 'main';
+function grmSetGenreMode(m, silent) {
+  grmGenreMode = m;
+  [['main','grm-gm-main'],['any','grm-gm-any']].forEach(([k,id]) => {
+    const b = document.getElementById(id); if (!b) return;
+    b.style.background = k === m ? 'var(--pink)' : 'var(--surface3)';
+    b.style.color      = k === m ? '#000' : 'var(--muted)';
+  });
+  if (!silent && grmGetActivePills().length) grmSearch();
+}
+
+// ── M4: Last.fm online data ──────────────────────────────────────
+let _grmLfmTimer = null;
+async function grmLfmPoll() {
+  try {
+    const r = await fetch(`${API}/api/groomer/lastfm/status`, {headers:authHdrs()});
+    if (!r.ok) return;
+    const d = await r.json();
+    const st = document.getElementById('grm-lfm-state'), msg = document.getElementById('grm-lfm-msg');
+    const bar = document.getElementById('grm-lfm-bar');
+    const running = d.status === 'running';
+    const pct = d.total ? Math.round(100 * d.done / d.total) : (d.status === 'done' ? 100 : 0);
+    if (bar) bar.style.width = pct + '%';
+    const ok = (d.coverage && d.coverage.ok) || 0;
+    if (st) st.textContent = running
+      ? `${d.phase === 'artists' ? 'ARTISTS' : 'SONGS'} ${d.done.toLocaleString()}/${d.total.toLocaleString()}`
+      : `${ok.toLocaleString()} songs cached`;
+    if (st) st.style.color = running ? 'var(--teal)' : d.status === 'failed' ? 'var(--red)' : 'var(--muted2)';
+    if (msg) msg.textContent = d.message || (d.status === 'idle' ? 'Starts automatically a few minutes after ChartHound starts, and after each scan.' : '');
+    const sb = document.getElementById('grm-lfm-start'), tb = document.getElementById('grm-lfm-stop');
+    if (sb) { sb.disabled = running; sb.style.opacity = running ? '.35' : '1'; }
+    if (tb) { tb.disabled = !running; tb.style.opacity = running ? '1' : '.35'; }
+    clearTimeout(_grmLfmTimer);
+    _grmLfmTimer = setTimeout(grmLfmPoll, running ? 5000 : 30000);
+  } catch {}
+}
+async function grmLfmStart() {
+  const r = await fetch(`${API}/api/groomer/lastfm/start`, {method:'POST', headers:authHdrs()});
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) { toast(d.detail || `HTTP ${r.status}`, 'error'); return; }
+  toast('Last.fm lookup started — runs in the background', 'ok'); setTimeout(grmLfmPoll, 800);
+}
+async function grmLfmStop() {
+  await fetch(`${API}/api/groomer/lastfm/stop`, {method:'POST', headers:authHdrs()});
+  toast('Stopping after the current song — progress is saved', 'ok'); setTimeout(grmLfmPoll, 1500);
+}
+
 // ── Scan / Build views ───────────────────────────────────────────
 function grmSetView(v) {
   const lay = document.getElementById('grm-layout'); if (!lay) return;
@@ -6292,7 +6365,7 @@ async function grmSavePreset() {
   grmPresets[name] = {
     genres: grmGetActivePills(), decades: [...grmDecades],
     min_score: document.getElementById('grm-min-score').value,
-    ohw: !!document.getElementById('grm-ohw').checked,
+    ohw: !!document.getElementById('grm-ohw').checked, genre_mode: grmGenreMode,
     len: document.getElementById('grm-len').value, days: document.getElementById('grm-days').value,
     fam: document.getElementById('grm-fam').value, gap: document.getElementById('grm-gap').value,
     playlist: document.getElementById('grm-playlist-name').value,
@@ -6316,6 +6389,7 @@ function grmLoadPreset(name) {
   set('grm-fam', p.fam, 'grm-fam-display', v => v + '%');
   set('grm-gap', p.gap, 'grm-gap-display', v => v);
   document.getElementById('grm-ohw').checked = !!p.ohw;
+  grmSetGenreMode(p.genre_mode || 'main', true);
   if (p.playlist) document.getElementById('grm-playlist-name').value = p.playlist;
   grmDecades.clear(); (p.decades || []).forEach(d => grmDecades.add(parseInt(d)));
   document.querySelectorAll('.grm-dec').forEach(b => {
@@ -6348,6 +6422,7 @@ async function grmBuildPlaylist() {
     decades:      [...grmDecades],
     min_score:    parseInt(document.getElementById('grm-min-score')?.value || 0),
     ohw_only:     !!document.getElementById('grm-ohw')?.checked,
+    genre_mode:   grmGenreMode,
     minutes:      Math.round(parseFloat(document.getElementById('grm-len').value) * 60),
     days:         parseInt(document.getElementById('grm-days').value),
     familiar_pct: parseInt(document.getElementById('grm-fam').value),
@@ -6422,6 +6497,7 @@ async function grmSearch(append = false) {
   if (minScore > 0) params.set('min_score', minScore);
   if (grmDecades.size) params.set('decades', [...grmDecades].join(','));
   if (document.getElementById('grm-ohw')?.checked) params.set('ohw', 'true');
+  params.set('genre_mode', grmGenreMode);
   if (_sortKey === 'seq') { _sortKey = 'score'; _sortAsc = true; }
   grmBuiltDays = null;
   try {
@@ -6544,7 +6620,11 @@ function grmRenderResults(results, append = false) {
     const filePath  = t.file_path || '';
     const hs = t.hit_score;
     const hsColor = hs >= 85 ? 'var(--pink)' : hs >= 70 ? 'var(--amber)' : hs >= 50 ? 'var(--teal)' : 'var(--muted)';
-    const hsTip = [t.hot100_peak ? `Hot 100 #${t.hot100_peak}` : 'No Hot 100 data',
+    const fmtL = n => n >= 1e6 ? (n/1e6).toFixed(1) + 'M' : n >= 1e3 ? Math.round(n/1e3) + 'k' : String(n);
+    const hsTip = [t.never_charted ? 'Never charted — included for staying power'
+                   : (t.hot100_peak ? `Hot 100 #${t.hot100_peak}` : 'No Hot 100 data'),
+                   t.listeners ? `${fmtL(t.listeners)} Last.fm listeners` : '',
+                   t.main_genre ? `Genre: ${t.main_genre}` : '',
                    t.hot100_weeks ? `${t.hot100_weeks} wks` : '',
                    t.yearend_rank ? `Year-end #${t.yearend_rank}` : ''].filter(Boolean).join(' · ');
     const scoreHTML = (hs != null
@@ -8144,7 +8224,11 @@ async function vetLoadStaticSources() {
             }
           } catch(_) {}
         }
-        if (s.stale) {
+        if (s.archive) {
+          staleBadge = ' <span style="color:var(--teal);font-family:var(--mono);font-size:.5rem;padding:.05rem .3rem;border:1px solid var(--teal);border-radius:3px;margin-left:.25rem" title="Historical data — it does not change, so it never needs refreshing.">ARCHIVE</span>';
+        } else if (s.failing) {
+          staleBadge = ' <span style="color:var(--red);font-family:var(--mono);font-size:.5rem;padding:.05rem .3rem;border:1px solid var(--red);border-radius:3px;margin-left:.25rem" title="The last automatic refresh failed (the website may be blocking it). Existing data is still used. Auto-retry in 7 days; ↻ retries now.">✕ REFRESH FAILING</span>';
+        } else if (s.stale) {
           staleBadge = ' <span style="color:var(--amber);font-family:var(--mono);font-size:.5rem;padding:.05rem .3rem;border:1px solid var(--amber);border-radius:3px;margin-left:.25rem" title="This source was imported more than 30 days ago. Click IMPORT again to refresh.">⚠ STALE</span>';
         }
         statusHtml = '<span class="vault-row-status ok">Loaded · ' + s.entries.toLocaleString() + ' entries' + dateSuffix + '</span>' + staleBadge;

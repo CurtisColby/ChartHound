@@ -531,6 +531,7 @@ async def gap_analysis(req: GapAnalysisRequest, _=Depends(require_auth)):
             conds.append("chart_year >= ?"); params.append(req.min_year)
         if req.max_year is not None:
             conds.append("chart_year <= ?"); params.append(req.max_year)
+        conds.append("COALESCE(data_source,'') NOT IN ('lastfm_estimate','test')")   # M4: fake estimate rows baked into static DB
         where = "WHERE " + " AND ".join(conds)
 
         if has_extras:
@@ -875,7 +876,8 @@ def _build_master_list_chart_only(req: GapByGenreRequest) -> dict:
     # If no decade picked, NULL years pass through. That's intentional —
     # the 36k NULL-year genre-chart rows still contribute to the master list.
 
-    where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
+    where_clauses.append("COALESCE(data_source,'') NOT IN ('lastfm_estimate','test')")   # M4: fake estimate rows baked into static DB
+    where_sql = "WHERE " + " AND ".join(where_clauses)
 
     select_cols = ("chart_name, artist, title, artist_norm, title_norm, "
                    "peak_position, weeks_on_chart, chart_year, data_source")

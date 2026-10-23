@@ -1532,12 +1532,14 @@ _STATIC_SOURCES = [
     },
     {
         "id":       "chart2000",
+        "archive":  True,
         "label":    "Chart2000.com 2000–2024 (global)",
         "data_tag": "chart2000_monthly",
         "importer": "_import_chart2000",
     },
     {
         "id":       "tsort",
+        "archive":  True,
         "label":    "tsort.info 1900+ Historical (global)",
         "data_tag": "tsort_historical",
         "importer": "_import_tsort",
@@ -2790,6 +2792,30 @@ async def _latest_import_at(data_tag: str) -> Optional[str]:
         return None
 
 
+async def _get_setting(key: str) -> Optional[str]:
+    try:
+        async with aiosqlite.connect(_DYNAMIC_DB) as db:
+            row = await (await db.execute("SELECT value FROM app_settings WHERE key=?", (key,))).fetchone()
+            return row[0] if row else None
+    except Exception:
+        return None
+
+
+async def _set_setting(key: str, value: Optional[str]) -> None:
+    try:
+        async with aiosqlite.connect(_DYNAMIC_DB) as db:
+            if value is None:
+                await db.execute("DELETE FROM app_settings WHERE key=?", (key,))
+            else:
+                await db.execute(
+                    "INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, datetime('now')) "
+                    "ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
+                    (key, value))
+            await db.commit()
+    except Exception as e:
+        log.warning(f"setting write failed ({key}): {e}")
+
+
 def _is_stale(iso_ts: Optional[str], days: int = 30) -> bool:
     """True if the timestamp is older than `days` days. Returns False if timestamp missing."""
     if not iso_ts:
@@ -2812,13 +2838,19 @@ async def vet_static_sources(_=Depends(require_auth)):
     for src in _STATIC_SOURCES:
         count = await _count_extras(src["data_tag"])
         last_at = await _latest_import_at(src["data_tag"]) if count > 0 else None
+        archive = bool(src.get("archive"))
+        fail_at = await _get_setting(f"refresh_fail_{src['id']}")
+        failing = bool(fail_at) and _utc_epoch(fail_at) > _utc_epoch(last_at)
         out.append({
             "id":            src["id"],
             "label":         src["label"],
             "loaded":        count > 0,
             "entries":       count,
             "last_imported": last_at,
-            "stale":         _is_stale(last_at, days=30),
+            "archive":       archive,
+            "failing":       failing,
+            "last_failed":   fail_at if failing else None,
+            "stale":         (not archive) and (not failing) and _is_stale(last_at, days=30),
         })
     total_extras = await _count_extras()
     return {"sources": out, "total_extras": total_extras}
@@ -2931,6 +2963,10 @@ async def _scheduler_loop():
 
                 if not needs_refresh:
                     continue
+                # Backoff: a failed auto-refresh waits a full interval before retrying
+                fail_at = await _get_setting(f"refresh_fail_{source_id}")
+                if fail_at and (time.time() - _utc_epoch(fail_at)) < _REFRESH_INTERVAL_DAYS * 86400:
+                    continue
 
                 # Don't pile on top of a running manual import
                 if _vet_import_job.get("status") == "running":
@@ -2948,6 +2984,12 @@ async def _scheduler_loop():
                     "finished_at": None,
                 }
                 await _run_import(source_id)
+                if _vet_import_job.get("status") == "done":
+                    await _set_setting(f"refresh_fail_{source_id}", None)
+                else:
+                    await _set_setting(f"refresh_fail_{source_id}",
+                                       datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"))
+                    log.info(f"Scheduler: '{source_id}' failed — next retry in {_REFRESH_INTERVAL_DAYS} days")
 
                 # Small gap between sources so we don't hammer scrapers back-to-back
                 await asyncio.sleep(10)
@@ -2964,6 +3006,7 @@ async def groomer_startup():
     asyncio.create_task(_scheduler_loop())
     asyncio.create_task(_library_cache_scheduler())
     asyncio.create_task(_hit_score_startup())
+    asyncio.create_task(_lastfm_startup())
     log.info("Groomer scheduler started (auto-refresh every 7 days for current-week sources).")
     log.info("Library cache scheduler started (auto-sync every 24h from physical files).")
 
@@ -3023,6 +3066,10 @@ def _peak_factor(peak) -> float:
     return max(0.0, 1 - (p - 1) / 100) ** 1.6
 
 
+_YEAREND_SOURCES = {"ccm_weekly", "country_yearend", "rnb_yearend", "rock_yearend",
+                    "dance_yearend", "adultpop_yearend"}
+
+
 def _source_tier(data_source: str, chart_name: str) -> int:
     if data_source in _EXCLUDED_SOURCES or chart_name in _SKIP_CHARTS:
         return 0
@@ -3074,6 +3121,76 @@ def _score_track(rows: list, cd_peak, cd_conf: str) -> tuple:
     return int(round(max(0, min(100, score)))), year, h_peak, h_wks, yrank, n_charts
 
 
+# ── Last.fm tag → genre tree key (exact tag match; subjective tags ignored) ──
+_LFM_TAG_MAP = {
+    "rock": "rock", "classic rock": "classicrock", "hard rock": "hardrock", "soft rock": "softrock",
+    "arena rock": "arenarock", "indie rock": "indierock", "folk rock": "folkrock",
+    "southern rock": "southernrock", "punk": "punkrock", "punk rock": "punkrock",
+    "new wave": "punkrock", "post-punk": "punkrock", "alternative": "alternative",
+    "alternative rock": "alternative", "grunge": "alternative", "britpop": "alternative",
+    "blues rock": "classicrock", "heartland rock": "classicrock", "progressive rock": "classicrock",
+    "psychedelic rock": "classicrock", "pop rock": "rock", "country rock": "country",
+    "pop": "pop", "dance pop": "dancepop", "dance-pop": "dancepop", "synthpop": "synthpop",
+    "synth pop": "synthpop", "synth-pop": "synthpop", "electropop": "synthpop",
+    "teen pop": "teenpop", "power pop": "powerpop", "adult contemporary": "adultpop",
+    "easy listening": "adultpop", "indie pop": "indipop",
+    "country": "country", "classic country": "tradcountry", "traditional country": "tradcountry",
+    "country pop": "countrypop", "outlaw country": "outlawcountry", "americana": "americana",
+    "bluegrass": "americana", "red dirt": "texascountry", "texas country": "texascountry",
+    "bro-country": "brocountry",
+    "rnb": "rnb", "r&b": "rnb", "rhythm and blues": "rnb", "contemporary r&b": "rnb",
+    "soul": "soul", "neo-soul": "neosoul", "neo soul": "neosoul", "funk": "funk",
+    "motown": "motown", "quiet storm": "quietstorm", "new jack swing": "newjack",
+    "hip-hop": "hiphop", "hip hop": "hiphop", "hiphop": "hiphop", "rap": "hiphop",
+    "trap": "trap", "gangsta rap": "gangstarap", "boom bap": "boombap",
+    "metal": "metal", "heavy metal": "heavymetal", "thrash metal": "thrashmetal",
+    "death metal": "deathmetal", "doom metal": "doommetal", "stoner rock": "doommetal",
+    "glam metal": "glaemmetal", "hair metal": "glaemmetal", "glam rock": "glaemmetal",
+    "dance": "dance", "electronic": "dance", "electronica": "dance", "edm": "edm",
+    "house": "house", "techno": "techno", "trance": "trance", "disco": "disco", "eurodance": "eurodance",
+    "folk": "folk", "indie folk": "indifolk", "singer-songwriter": "singersong",
+    "jazz": "jazz", "smooth jazz": "smoothjazz", "vocal jazz": "vocaljazz", "bebop": "bebop",
+    "jazz fusion": "jazzfusion", "fusion": "jazzfusion",
+    "blues": "blues", "chicago blues": "chicagoblues", "delta blues": "deltablues", "texas blues": "texasblues",
+    "classical": "classical", "opera": "opera", "baroque": "baroque", "orchestral": "orchestral",
+    "christian": "ccm", "ccm": "ccm", "contemporary christian": "ccm", "christian rock": "ccm-rock",
+    "christian pop": "ccm-pop", "worship": "worship", "praise & worship": "worship",
+    "gospel": "gospel", "southern gospel": "sgospel",
+}
+_CLASSIC_MIN_LISTENERS = 300_000
+_NOT_CLASSIC_RE = re.compile(r"\b(live|demo|remix|karaoke|instrumental|acoustic|rehearsal|session|edit)\b", re.I)
+
+
+def _genres_from_tags(tags_json: Optional[str]) -> list:
+    try:
+        tags = json.loads(tags_json or "[]")
+    except Exception:
+        return []
+    out = []
+    for t in tags:
+        k = _LFM_TAG_MAP.get(str(t).strip().lower())
+        if k and k not in out:
+            out.append(k)
+        if len(out) == 3:
+            break
+    return out
+
+
+def _popularity_score(listeners: Optional[int]) -> float:
+    """Score from Last.fm listeners alone (capped at 85 so real chart smashes stay on top)."""
+    import math
+    if not listeners or listeners < 40_000:
+        return 0.0
+    return min(85.0, 30 * math.log10(listeners / 40_000) + 25)
+
+
+def _staying_boost(listeners: Optional[int]) -> float:
+    import math
+    if not listeners or listeners < 100_000:
+        return 0.0
+    return min(15.0, 7.5 * math.log10(listeners / 100_000))
+
+
 def _rebuild_hit_scores_sync() -> int:
     """Load chart sources into memory once, score every charted track, rewrite hit_scores."""
     t0 = time.time()
@@ -3115,13 +3232,57 @@ def _rebuild_hit_scores_sync() -> int:
                 "SELECT artist, title, chart_name, peak_position, weeks_on_chart, chart_year, data_source "
                 "FROM chart_reference_extras"
             ):
+                # Billboard year-end imports stored the YEAR-END RANK as "peak".
+                # A year-end #r song typically peaked around #r/2 on the weekly chart.
+                if src in _YEAREND_SOURCES and peak:
+                    peak = max(1, (int(peak) + 1) // 2)
                 _add(artist, title, _source_tier(src or "", chart or ""), chart, peak, wks, yr)
         except Exception:
             pass
 
+        # Last.fm data (staying power + genres), keyed like the chart index
+        lfm, lfm_art = {}, {}
+        try:
+            for ak_, tk_, lis, tags in dconn.execute(
+                    "SELECT artist_key, title_key, listeners, tags FROM lastfm_tracks WHERE status='ok'"):
+                lfm[(ak_, tk_)] = (lis or 0, tags)
+            for ak_, tags in dconn.execute("SELECT artist_key, tags FROM lastfm_artists WHERE status='ok'"):
+                lfm_art[ak_] = tags
+        except Exception:
+            pass
+
+        # Earliest known year per song (compilations carry later album years)
+        all_tracks = dconn.execute("""
+            SELECT t.track_id, COALESCE(t.tag_artist, a.name, ''), t.title, t.year
+            FROM tracks t LEFT JOIN artists a ON t.artist_id = a.artist_id
+        """).fetchall()
+        song_year: dict = {}
+        for _tid, ar, ti, yr in all_tracks:
+            if yr and 1900 < int(yr) <= 2100:
+                k = (_artist_key(ar), _title_key(ti))
+                song_year[k] = min(song_year.get(k, 9999), int(yr))
+
+        # Never-charted classics: rebuild their placeholder chart_data rows
+        dconn.execute("BEGIN")
+        dconn.execute("DELETE FROM chart_data WHERE chart_name='classic'")
+        charted = {r[0] for r in dconn.execute("SELECT DISTINCT track_id FROM chart_data")}
+        classics = []
+        for tid, ar, ti, _yr in all_tracks:
+            if tid in charted or _NOT_CLASSIC_RE.search(ti or ""):
+                continue
+            hit = lfm.get((_artist_key(ar), _title_key(ti)))
+            if hit and hit[0] >= _CLASSIC_MIN_LISTENERS:
+                classics.append((tid,))
+        dconn.executemany(
+            "INSERT INTO chart_data (track_id, chart_name, peak_position, weeks_on_chart, star_rating, "
+            "confidence, listener_count, comment_string, fetched_at) "
+            "VALUES (?, 'classic', NULL, NULL, 3, 'medium', 0, '', datetime('now'))", classics)
+        dconn.commit()
+
         tracks = dconn.execute("""
             SELECT cd.track_id, COALESCE(t.tag_artist, a.name, ''), t.title,
-                   MIN(cd.peak_position), MAX(cd.confidence = 'low'), MAX(cd.chart_year), t.year
+                   MIN(cd.peak_position), MAX(cd.confidence = 'low'), MAX(cd.chart_year), t.year,
+                   MAX(cd.chart_name = 'classic')
             FROM chart_data cd
             JOIN tracks t ON cd.track_id = t.track_id
             LEFT JOIN artists a ON t.artist_id = a.artist_id
@@ -3129,19 +3290,31 @@ def _rebuild_hit_scores_sync() -> int:
         """).fetchall()
 
         out = []
-        for tid, artist, title, cd_peak, is_low, cd_year, t_year in tracks:
+        for tid, artist, title, cd_peak, is_low, cd_year, t_year, is_classic in tracks:
             ak, tk = _artist_key(artist), _title_key(title)
-            rows = index.get((ak, tk), [])
-            score, year, h_peak, h_wks, yrank, n = _score_track(rows, cd_peak, "low" if is_low else "high")
-            ohw = 1 if (ak in top40 and len(top40[ak]) == 1 and tk in top40[ak]) else 0
-            out.append((tid, score, year or cd_year or t_year, h_peak, h_wks, yrank, ohw, n))
+            lis, ttags = lfm.get((ak, tk), (0, None))
+            genres = _genres_from_tags(ttags) or _genres_from_tags(lfm_art.get(ak))
+            if is_classic:
+                score, year, h_peak, h_wks, yrank, n, ohw = (
+                    int(round(_popularity_score(lis))), None, None, None, None, 0, 0)
+            else:
+                rows = index.get((ak, tk), [])
+                score, year, h_peak, h_wks, yrank, n = _score_track(rows, cd_peak, "low" if is_low else "high")
+                if lis:
+                    # Staying power: boost, plus a floor for heavily played songs
+                    score = int(round(min(100, max(score + _staying_boost(lis), _popularity_score(lis)))))
+                ohw = 1 if (ak in top40 and len(top40[ak]) == 1 and tk in top40[ak]) else 0
+            yr = year or (song_year.get((ak, tk)) if is_classic else None) or cd_year or t_year
+            out.append((tid, score, yr, h_peak, h_wks, yrank, ohw, n, lis or None,
+                        genres[0] if genres else None, ",".join(genres) or None, 1 if is_classic else 0))
 
         dconn.execute("BEGIN")
         dconn.execute("DELETE FROM hit_scores")
         dconn.executemany(
             "INSERT INTO hit_scores (track_id, hit_score, hit_year, hot100_peak, hot100_weeks, "
-            "yearend_rank, one_hit_wonder, charts_count, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))", out)
+            "yearend_rank, one_hit_wonder, charts_count, listeners, main_genre, genre_keys, "
+            "never_charted, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))", out)
         dconn.commit()
     finally:
         dconn.close()
@@ -3173,6 +3346,251 @@ async def _hit_score_startup():
             await _rebuild_hit_scores()
     except Exception as e:
         log.warning(f"Hit Score startup check failed: {e}")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  LAST.FM PASS (M4) — listener counts (staying power) + genre tags, whole library
+# ══════════════════════════════════════════════════════════════════════════════
+#  Cache-first: each song is looked up once, refreshed after 180 days (not-found
+#  after 60). Fixed pacing of 4 requests/second. Resumable — a restart simply
+#  continues with the songs not yet cached.
+
+_LFM_URL       = "https://ws.audioscrobbler.com/2.0/"
+_LFM_INTERVAL  = 0.25          # seconds between requests (4/s)
+_LFM_OK_DAYS   = 180
+_LFM_MISS_DAYS = 60
+_lfm_job = {"status": "idle", "phase": "", "done": 0, "total": 0, "found": 0,
+            "notfound": 0, "errors": 0, "message": "", "started_at": None}
+_lfm_stop = {"flag": False}
+_LFM_VERSION_RE = re.compile(
+    r"\s*[\(\[][^\)\]]*\b(remaster(ed)?|version|mix|edit|mono|stereo|single|radio|live|demo|bonus|deluxe|feat\.?|featuring)\b[^\)\]]*[\)\]]", re.I)
+
+
+def _lfm_clean_title(title: str) -> str:
+    t = _SUFFIX_RE.sub("", title or "")
+    return _LFM_VERSION_RE.sub("", t).strip() or (title or "")
+
+
+async def _get_lastfm_key() -> str:
+    try:
+        async with aiosqlite.connect(_DYNAMIC_DB) as db:
+            row = await (await db.execute(
+                "SELECT token_enc FROM connections WHERE service='lastfm'")).fetchone()
+        return (decrypt_token(row[0]) or "") if row and row[0] else ""
+    except Exception:
+        return ""
+
+
+def _lfm_tag_names(container) -> list:
+    tags = (container or {}).get("tag", [])
+    if isinstance(tags, dict):
+        tags = [tags]
+    return [str(t.get("name", "")).strip() for t in tags if t.get("name")]
+
+
+async def _lfm_call(client, params: dict) -> tuple:
+    """Returns (kind, json) — kind: ok | notfound | ratelimit | fatal | error."""
+    try:
+        r = await client.get(_LFM_URL, params={**params, "format": "json"})
+        j = r.json()
+    except Exception:
+        return "error", None
+    if isinstance(j, dict) and "error" in j:
+        code = j.get("error")
+        if code == 6:
+            return "notfound", j
+        if code == 29:
+            return "ratelimit", j
+        if code in (10, 26):
+            return "fatal", j
+        return "error", j
+    return ("ok", j) if r.status_code == 200 else ("error", j)
+
+
+async def _run_lastfm_job():
+    global _lfm_job
+    _lfm_stop["flag"] = False
+    _lfm_job = {"status": "running", "phase": "tracks", "done": 0, "total": 0, "found": 0,
+                "notfound": 0, "errors": 0, "message": "Preparing…",
+                "started_at": datetime.utcnow().isoformat()}
+    key = await _get_lastfm_key()
+    if not key:
+        _lfm_job.update({"status": "failed", "message": "Last.fm is not connected in The Kennel."})
+        return
+    await _migrate_chart_data()
+    now = time.time()
+
+    async with aiosqlite.connect(_DYNAMIC_DB, timeout=30) as db:
+        cache = {(a, t): (st, _utc_epoch(f)) for a, t, st, f in await (await db.execute(
+            "SELECT artist_key, title_key, status, fetched_at FROM lastfm_tracks")).fetchall()}
+        rows = await (await db.execute("""
+            SELECT COALESCE(t.tag_artist, a.name, ''), t.title
+            FROM tracks t LEFT JOIN artists a ON t.artist_id = a.artist_id
+        """)).fetchall()
+
+    work, seen = [], set()
+    for artist, title in rows:
+        ak, tk = _artist_key(artist), _title_key(title)
+        if not ak or not tk or (ak, tk) in seen:
+            continue
+        seen.add((ak, tk))
+        st, at = cache.get((ak, tk), (None, 0))
+        if st == "ok" and now - at < _LFM_OK_DAYS * 86400:
+            continue
+        if st == "notfound" and now - at < _LFM_MISS_DAYS * 86400:
+            continue
+        work.append((ak, tk, artist, title))
+    _lfm_job["total"] = len(work)
+    log.info(f"Last.fm pass: {len(work):,} songs to look up ({len(seen):,} unique in library)")
+
+    async def _flush(db, buf, sql):
+        if buf:
+            await db.executemany(sql, buf)
+            await db.commit()
+            buf.clear()
+
+    T_SQL = ("INSERT INTO lastfm_tracks (artist_key, title_key, status, listeners, playcount, tags, fetched_at) "
+             "VALUES (?, ?, ?, ?, ?, ?, datetime('now')) "
+             "ON CONFLICT(artist_key, title_key) DO UPDATE SET status=excluded.status, "
+             "listeners=excluded.listeners, playcount=excluded.playcount, tags=excluded.tags, "
+             "fetched_at=excluded.fetched_at")
+    consecutive_err = 0
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client, \
+                   aiosqlite.connect(_DYNAMIC_DB, timeout=30) as db:
+            buf = []
+            for i, (ak, tk, artist, title) in enumerate(work):
+                if _lfm_stop["flag"]:
+                    break
+                t0 = time.monotonic()
+                for attempt in range(3):
+                    kind, j = await _lfm_call(client, {
+                        "method": "track.getInfo", "api_key": key, "autocorrect": 1,
+                        "artist": _FEAT_RE.sub("", artist), "track": _lfm_clean_title(title)})
+                    if kind != "ratelimit":
+                        break
+                    _lfm_job["message"] = "Last.fm rate limit — pausing 60s…"
+                    await asyncio.sleep(60)
+                if kind == "fatal":
+                    _lfm_job.update({"status": "failed",
+                                     "message": "Last.fm rejected the API key — check The Kennel."})
+                    await _flush(db, buf, T_SQL)
+                    return
+                if kind == "ok":
+                    tr = j.get("track", {}) or {}
+                    buf.append((ak, tk, "ok", int(tr.get("listeners") or 0), int(tr.get("playcount") or 0),
+                                json.dumps(_lfm_tag_names(tr.get("toptags")))))
+                    _lfm_job["found"] += 1; consecutive_err = 0
+                elif kind == "notfound":
+                    buf.append((ak, tk, "notfound", None, None, None))
+                    _lfm_job["notfound"] += 1; consecutive_err = 0
+                else:
+                    _lfm_job["errors"] += 1; consecutive_err += 1
+                    if consecutive_err >= 20:
+                        _lfm_job.update({"status": "failed",
+                                         "message": "Last.fm unreachable (20 errors in a row) — will resume later."})
+                        await _flush(db, buf, T_SQL)
+                        return
+                _lfm_job["done"] = i + 1
+                left = (len(work) - i - 1) * _LFM_INTERVAL / 60
+                _lfm_job["message"] = f"{artist} — {title}  ·  ~{left:.0f} min left"
+                if len(buf) >= 100:
+                    await _flush(db, buf, T_SQL)
+                if (i + 1) % 5000 == 0 and _scan_job.get("status") != "running":
+                    await _flush(db, buf, T_SQL)
+                    await _rebuild_hit_scores()
+                await asyncio.sleep(max(0.0, _LFM_INTERVAL - (time.monotonic() - t0)))
+            await _flush(db, buf, T_SQL)
+
+            # ── Phase 2: artist tags for songs that have no usable song-level genre ──
+            if not _lfm_stop["flag"]:
+                _lfm_job.update({"phase": "artists", "message": "Looking up artist genres…"})
+                acache = {a: (st, _utc_epoch(f)) for a, st, f in await (await db.execute(
+                    "SELECT artist_key, status, fetched_at FROM lastfm_artists")).fetchall()}
+                need = {}
+                for a, t, st, tags in await (await db.execute(
+                        "SELECT artist_key, title_key, status, tags FROM lastfm_tracks")).fetchall():
+                    if st != "ok" or not _genres_from_tags(tags):
+                        need.setdefault(a, None)
+                names = {}
+                for artist, _t in rows:
+                    names.setdefault(_artist_key(artist), _FEAT_RE.sub("", artist))
+                todo = [a for a in need
+                        if a in names and not (acache.get(a, (None, 0))[0]
+                                               and now - acache[a][1] < _LFM_OK_DAYS * 86400)]
+                _lfm_job.update({"done": 0, "total": len(todo)})
+                A_SQL = ("INSERT INTO lastfm_artists (artist_key, status, tags, fetched_at) "
+                         "VALUES (?, ?, ?, datetime('now')) ON CONFLICT(artist_key) DO UPDATE SET "
+                         "status=excluded.status, tags=excluded.tags, fetched_at=excluded.fetched_at")
+                for i, a in enumerate(todo):
+                    if _lfm_stop["flag"]:
+                        break
+                    t0 = time.monotonic()
+                    kind, j = await _lfm_call(client, {"method": "artist.getTopTags", "api_key": key,
+                                                       "autocorrect": 1, "artist": names[a]})
+                    if kind == "ok":
+                        buf.append((a, "ok", json.dumps(_lfm_tag_names(j.get("toptags")))))
+                    elif kind == "notfound":
+                        buf.append((a, "notfound", None))
+                    _lfm_job["done"] = i + 1
+                    _lfm_job["message"] = f"Artist genres: {names[a]}  ·  ~{(len(todo)-i-1)*_LFM_INTERVAL/60:.0f} min left"
+                    if len(buf) >= 100:
+                        await _flush(db, buf, A_SQL)
+                    await asyncio.sleep(max(0.0, _LFM_INTERVAL - (time.monotonic() - t0)))
+                await _flush(db, buf, A_SQL)
+    except Exception as e:
+        log.exception("Last.fm pass failed")
+        _lfm_job.update({"status": "failed", "message": f"Error: {e}"})
+        return
+
+    stopped = _lfm_stop["flag"]
+    if _scan_job.get("status") != "running":
+        _lfm_job["message"] = "Updating Hit Scores…"
+        await _rebuild_hit_scores()
+    _lfm_job.update({"status": "stopped" if stopped else "done", "phase": "",
+                     "message": (f"{'Stopped' if stopped else 'Done'} — {_lfm_job['found']:,} found, "
+                                 f"{_lfm_job['notfound']:,} not on Last.fm, {_lfm_job['errors']:,} errors")})
+    log.info(f"Last.fm pass {_lfm_job['status']}: {_lfm_job['message']}")
+
+
+def _maybe_start_lastfm():
+    if _lfm_job.get("status") != "running":
+        asyncio.create_task(_run_lastfm_job())
+
+
+async def _lastfm_startup():
+    await asyncio.sleep(180)   # let the app (and any scheduler imports) settle first
+    if await _get_lastfm_key():
+        _maybe_start_lastfm()
+
+
+@router.get("/lastfm/status")
+async def lastfm_status(_=Depends(require_auth)):
+    cov = {"songs": 0, "ok": 0}
+    try:
+        async with aiosqlite.connect(_DYNAMIC_DB) as db:
+            cov["ok"] = (await (await db.execute(
+                "SELECT COUNT(*) FROM lastfm_tracks WHERE status='ok'")).fetchone())[0]
+            cov["cached"] = (await (await db.execute("SELECT COUNT(*) FROM lastfm_tracks")).fetchone())[0]
+    except Exception:
+        pass
+    return {**_lfm_job, "coverage": cov}
+
+
+@router.post("/lastfm/start")
+async def lastfm_start(_=Depends(require_auth)):
+    if _lfm_job.get("status") == "running":
+        raise HTTPException(409, "Already running.")
+    if not await _get_lastfm_key():
+        raise HTTPException(400, "Connect Last.fm in The Kennel first.")
+    _maybe_start_lastfm()
+    return {"ok": True}
+
+
+@router.post("/lastfm/stop")
+async def lastfm_stop(_=Depends(require_auth)):
+    _lfm_stop["flag"] = True
+    return {"ok": True}
 
 
 @router.post("/hitscore/rebuild")
@@ -3306,6 +3724,31 @@ async def _migrate_chart_data():
                     one_hit_wonder  INTEGER NOT NULL DEFAULT 0,
                     charts_count    INTEGER NOT NULL DEFAULT 0,
                     updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+                )
+            """)
+            hs_cols = [row[1] async for row in await db.execute("PRAGMA table_info(hit_scores)")]
+            for col, typ in (("listeners", "INTEGER"), ("main_genre", "TEXT"),
+                             ("genre_keys", "TEXT"), ("never_charted", "INTEGER NOT NULL DEFAULT 0")):
+                if col not in hs_cols:
+                    await db.execute(f"ALTER TABLE hit_scores ADD COLUMN {col} {typ}")
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS lastfm_tracks (
+                    artist_key  TEXT NOT NULL,
+                    title_key   TEXT NOT NULL,
+                    status      TEXT NOT NULL,          -- ok | notfound | error
+                    listeners   INTEGER,
+                    playcount   INTEGER,
+                    tags        TEXT,                   -- JSON list, most popular first
+                    fetched_at  TEXT NOT NULL DEFAULT (datetime('now')),
+                    PRIMARY KEY (artist_key, title_key)
+                )
+            """)
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS lastfm_artists (
+                    artist_key  TEXT PRIMARY KEY,
+                    status      TEXT NOT NULL,
+                    tags        TEXT,
+                    fetched_at  TEXT NOT NULL DEFAULT (datetime('now'))
                 )
             """)
             await db.execute("CREATE INDEX IF NOT EXISTS idx_hs_score ON hit_scores(hit_score)")
@@ -3566,10 +4009,11 @@ async def _run_scan(req: ScanRequest):
                             "duration_sec=COALESCE(?, duration_sec), "
                             "plex_rating_key=COALESCE(NULLIF(?, ''), plex_rating_key), "
                             "emby_id=COALESCE(NULLIF(?, ''), emby_id), "
-                            "jf_id=COALESCE(NULLIF(?, ''), jf_id) WHERE track_id=?",
+                            "jf_id=COALESCE(NULLIF(?, ''), jf_id), "
+                            "year=COALESCE(year, ?) WHERE track_id=?",
                             (track.get("tag_artist") or "", track.get("duration_sec"),
                              track.get("plex_rating_key") or "", track.get("emby_id") or "",
-                             track.get("jf_id") or "", track_id))
+                             track.get("jf_id") or "", track.get("year"), track_id))
                     except Exception:
                         pass
 
@@ -3806,6 +4250,7 @@ async def _run_scan(req: ScanRequest):
 
         _scan_job["message"] = "Calculating Hit Scores…"
         await _rebuild_hit_scores()
+        _maybe_start_lastfm()     # look up any new songs in the background
         elapsed = time.time() - (_scan_job["started_at"] or time.time())
         _scan_job.update({
             "status":  "done",
@@ -4245,6 +4690,7 @@ async def _fetch_local(folder: str) -> list:
                 "album":     str(mf.get("album",  [""])[0]),
                 "track_id":  None,
                 "duration_sec": int(mf.info.length) if getattr(mf, "info", None) and mf.info.length else None,
+                "year": (lambda d: int(d[:4]) if d[:4].isdigit() else None)(str((mf.get("date") or [""])[0])),
             }
         except Exception:
             return None
@@ -4357,6 +4803,7 @@ async def _fetch_plex_tracks(base: str, token: str, library_id: str = None) -> l
                         tracks.append({
                             "track_id":        None,
                             "duration_sec":    int(item["duration"] / 1000) if item.get("duration") else None,
+                            "year":            item.get("parentYear") or item.get("year"),
                             "plex_rating_key": item.get("ratingKey", ""),
                             "artist":          artist,
                             "title":           item.get("title", ""),
@@ -4398,6 +4845,7 @@ async def _fetch_emby_tracks(base: str, token: str, user_id: str, library_id: st
                         "track_id":  None,
                         "emby_id":   item.get("Id",""),
                         "duration_sec": int(item["RunTimeTicks"] / 10_000_000) if item.get("RunTimeTicks") else None,
+                        "year":      item.get("ProductionYear"),
                         "artist":    (item.get("Artists") or [""])[0],
                         "title":     item.get("Name",""),
                         "album":     item.get("Album",""),
@@ -4437,6 +4885,7 @@ async def _fetch_jellyfin_tracks(base: str, token: str, user_id: str, library_id
                         "track_id": None,
                         "jf_id":    item.get("Id",""),
                         "duration_sec": int(item["RunTimeTicks"] / 10_000_000) if item.get("RunTimeTicks") else None,
+                        "year":     item.get("ProductionYear"),
                         "artist":   (item.get("Artists") or [""])[0],
                         "title":    item.get("Name",""),
                         "album":    item.get("Album",""),
@@ -4470,6 +4919,7 @@ async def get_results(
     min_score:   Optional[int] = None,
     decades:     Optional[str] = None,   # "1980,1990"
     ohw:         bool = False,           # one-hit wonders only
+    genre_mode:  str = "main",           # main = online main genre; any = any file tag
     limit:       int = 500,
     offset:      int = 0,
     _=Depends(require_auth),
@@ -4485,9 +4935,9 @@ async def get_results(
     # charts param removed — genre filtering now by file tags via genre param
 
     if min_peak is not None:
-        conditions.append("cd.peak_position >= ?"); params.append(min_peak)
+        conditions.append("(cd.peak_position >= ? OR cd.chart_name = 'classic')"); params.append(min_peak)
     if max_peak is not None:
-        conditions.append("cd.peak_position <= ?"); params.append(max_peak)
+        conditions.append("(cd.peak_position <= ? OR cd.chart_name = 'classic')"); params.append(max_peak)
     if min_weeks is not None:
         conditions.append("cd.weeks_on_chart >= ?"); params.append(min_weeks)
     if confidence:
@@ -4514,6 +4964,7 @@ async def get_results(
         # No active genre filter (ALL) = no condition added = return everything.
         genre_list = [g.strip() for g in genre.split(",") if g.strip()]
         if genre_list:
+            _genre_param_start = len(params)
             genre_clauses = []
             for g in genre_list:
                 keywords = _GENRE_FILTER_KEYWORDS.get(g, set()) or set()
@@ -4546,8 +4997,20 @@ async def get_results(
                     genre_clauses.append(f"({no_tag} AND cd.chart_name = ?)")
                     params.append(g)
 
+            if not genre_clauses and genre_mode == "main":
+                ph = ",".join("?" * len(genre_list))
+                conditions.append(f"hs.main_genre IN ({ph})")
+                params += genre_list
             if genre_clauses:
-                conditions.append("(" + " OR ".join(genre_clauses) + ")")
+                loose = "(" + " OR ".join(genre_clauses) + ")"
+                if genre_mode == "main":
+                    # Online main genre wins; file tags only for songs with no online genre yet
+                    ph = ",".join("?" * len(genre_list))
+                    conditions.append(f"(hs.main_genre IN ({ph}) OR (hs.main_genre IS NULL AND {loose}))")
+                    # main-genre params go before the loose-clause params added above
+                    params[_genre_param_start:_genre_param_start] = genre_list
+                else:
+                    conditions.append(loose)
 
     where        = ("WHERE " + " AND ".join(conditions)) if conditions else ""
     # Keep filter_params separate — reused for COUNT query without limit/offset
@@ -4590,6 +5053,7 @@ async def get_results(
                         COALESCE(hs.hit_year, cd.chart_year, t.year) AS chart_year,
                         hs.hit_score, hs.one_hit_wonder, hs.hot100_peak,
                         hs.hot100_weeks, hs.yearend_rank, t.duration_sec,
+                        hs.listeners, hs.main_genre, hs.never_charted,
                         t.title, t.file_path, t.file_format,
                         t.plex_rating_key, t.emby_id, t.jf_id,
                         t.track_id, t.genre_1, t.genre_2, t.genre_3,
@@ -4645,6 +5109,7 @@ async def get_results(
 
 class PlaylistBuildRequest(BaseModel):
     genre:        Optional[str] = None          # same keys as /results genre filter
+    genre_mode:   str = "main"
     decades:      List[int] = []                # [1980, 1990]
     min_score:    int = 0
     ohw_only:     bool = False
@@ -4662,7 +5127,7 @@ async def playlist_build(req: PlaylistBuildRequest, _=Depends(require_auth)):
         min_year=None, max_year=None, confidence=None, genre=req.genre,
         min_score=req.min_score or None,
         decades=",".join(str(d) for d in req.decades) or None,
-        ohw=req.ohw_only, limit=50000, offset=0, _=None,
+        ohw=req.ohw_only, genre_mode=req.genre_mode, limit=50000, offset=0, _=None,
     )
     # One version per song (strip "(Remastered)", "feat." etc.)
     best: dict = {}
