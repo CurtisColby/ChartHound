@@ -37,6 +37,24 @@ body::before{content:'';position:fixed;inset:0;background-image:url("data:image/
 .help-btn:hover{border-color:var(--gold);color:var(--gold);}
 .tooltip{display:none;position:absolute;left:20px;top:-4px;background:var(--surface3);border:1px solid var(--border2);border-radius:6px;padding:.6rem .8rem;font-family:var(--mono);font-size:.58rem;color:var(--text);line-height:1.7;width:280px;z-index:1000;box-shadow:0 4px 20px rgba(0,0,0,.5);}
 .help-wrap:hover .tooltip{display:block;}
+.grm-q{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;background:var(--surface3);border:1px solid var(--border2);color:var(--muted);font-size:.5rem;font-family:var(--mono);cursor:help;margin-left:.3rem;vertical-align:middle;flex-shrink:0}
+.grm-q:hover,.grm-q:focus{border-color:var(--gold);color:var(--gold);outline:none}
+#grm-tip{position:fixed;display:none;max-width:270px;background:var(--surface3);border:1px solid var(--border2);border-radius:6px;padding:.6rem .8rem;font-family:var(--mono);font-size:.58rem;color:var(--text);line-height:1.7;z-index:5000;box-shadow:0 4px 20px rgba(0,0,0,.5);pointer-events:none}
+#grm-layout[data-view="scan"] .v-build{display:none!important}
+#grm-layout[data-view="build"] .v-scan{display:none!important}
+#grm-layout[data-view="build"] .grm-logblk{order:50}
+.grm-viewtoggle{display:flex;gap:.35rem;position:sticky;top:0;z-index:5;background:var(--surface);padding-bottom:.25rem}
+.grm-viewtoggle button{flex:1;padding:.55rem .3rem;background:var(--surface2);color:var(--muted);border:1px solid var(--border2);border-radius:6px;font-family:var(--display);font-size:.85rem;letter-spacing:1.5px;cursor:pointer;transition:all .15s;white-space:nowrap}
+.grm-viewtoggle button.on{background:var(--pink);color:#000;border-color:var(--pink)}
+.grm-qs{background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.3);border-radius:8px;padding:.6rem .75rem}
+.grm-qs summary{cursor:pointer;font-family:var(--mono);font-size:.6rem;letter-spacing:2px;color:var(--amber);list-style:none}
+.grm-qs summary::-webkit-details-marker{display:none}
+.grm-qs ol{margin:.5rem 0 .3rem 1rem;padding:0;font-family:var(--mono);font-size:.58rem;color:var(--muted);line-height:1.75}
+.grm-qs b{color:var(--text);font-weight:normal}
+.grm-adv{border:1px solid var(--border);border-radius:8px;padding:.55rem .7rem}
+.grm-adv>summary{cursor:pointer;font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--muted);list-style:none}
+.grm-adv>summary::-webkit-details-marker{display:none}
+.grm-adv[open]>summary{margin-bottom:.65rem;color:var(--pink)}
 .field-hint{font-family:var(--mono);font-size:.58rem;color:var(--muted);line-height:1.7;margin-top:-.45rem;margin-bottom:.6rem;}
 .field-hint a{color:var(--gold);text-decoration:none;}
 .field-hint a:hover{text-decoration:underline;}
@@ -1535,7 +1553,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
 
     <!-- TOP DOGS -->
     <div class="tab-panel" id="panel-groomer">
-      <div class="grm-layout" id="grm-layout">
+      <div class="grm-layout" id="grm-layout" data-view="build">
 
         <!-- PANE 1: CONFIG -->
         <div class="grm-config-panel" id="grm-config-panel">
@@ -1547,9 +1565,31 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
           <!-- Panel content -->
           <div class="grm-config-inner" style="display:flex;flex-direction:column;gap:1rem;flex:1;overflow-y:auto;overflow-x:hidden">
 
+          <!-- VIEW TOGGLE -->
+          <div class="grm-viewtoggle">
+            <button id="grm-vbtn-scan"  onclick="grmSetView('scan')">① SCAN</button>
+            <button id="grm-vbtn-build" onclick="grmSetView('build')" class="on">② BUILD</button>
+          </div>
+
+          <!-- QUICK START -->
+          <details class="grm-qs" id="grm-qs" open>
+            <summary>❔ HOW TO USE</summary>
+            <ol class="v-scan">
+              <li><b>Pick a source</b> — Media Server → Plex (recommended) and your music library.</li>
+              <li><b>Start Scan</b> — finds which songs were chart hits and scores them. Only needed after adding music or new chart data; repeat scans are fast.</li>
+              <li><b>Done</b> — Top Dogs switches to ② BUILD automatically when the scan finishes.</li>
+            </ol>
+            <ol class="v-build">
+              <li><b>Choose songs</b> — Genre tree (middle panel), then HITS: Min Hit Score, Decades, One-hit wonders.</li>
+              <li><b>Build</b> — set Length, Days, Familiar %, Artist spacing → 🚗 Build Playlist.</li>
+              <li><b>Push</b> — check the list, then ↑ PLEX. Save your settings as a Preset.</li>
+            </ol>
+            <div style="font-family:var(--mono);font-size:.52rem;color:var(--muted2);line-height:1.6">Tip: 8 hours ≈ 120 songs. <a href="#" onclick="openHelpGuide('groomer');return false" style="color:var(--amber)">Full guide →</a></div>
+          </details>
+
           <!-- MODE TOGGLE -->
-          <div>
-            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--pink);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">SCAN MODE<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
+          <div class="v-scan">
+            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--pink);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">SCAN MODE<span class="grm-q" tabindex="0" data-tip="MEDIA SERVER is recommended — it records Plex/Emby/Jellyfin IDs so pushes are exact. LOCAL FOLDER reads files directly (for M3U-only use).">?</span><span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
             <div style="display:flex;gap:.5rem">
               <button id="grm-mode-server" onclick="grmSetMode('server')" style="flex:1;padding:.5rem;background:var(--pink);color:#000;border:none;border-radius:5px;font-family:var(--mono);font-size:.65rem;letter-spacing:1px;cursor:pointer;transition:all .2s">📡 MEDIA SERVER</button>
               <button id="grm-mode-local" onclick="grmSetMode('local')" style="flex:1;padding:.5rem;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:5px;font-family:var(--mono);font-size:.65rem;letter-spacing:1px;cursor:pointer;transition:all .2s">📁 LOCAL FOLDER</button>
@@ -1557,13 +1597,13 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
           </div>
 
           <!-- SCAN BUTTONS — directly under mode so always visible -->
-          <div style="display:flex;flex-direction:column;gap:.5rem">
+          <div class="v-scan" style="display:flex;flex-direction:column;gap:.5rem">
             <button id="grm-btn-scan" onclick="grmStartScan()" style="width:100%;padding:.65rem;background:var(--pink);color:#000;border:none;border-radius:6px;font-family:var(--display);font-size:1.1rem;letter-spacing:2px;cursor:pointer;transition:all .2s">▶ START SCAN</button>
             <button id="grm-btn-stop" onclick="grmStopScan()" disabled style="width:100%;padding:.45rem;background:transparent;color:var(--red);border:1px solid var(--red);border-radius:5px;font-family:var(--mono);font-size:.65rem;letter-spacing:1px;cursor:pointer;opacity:.4;transition:all .2s">⏹ STOP SCAN</button>
           </div>
 
           <!-- ACTIVITY LOG -->
-          <div style="display:flex;flex-direction:column;min-height:0;max-height:160px">
+          <div class="grm-logblk" style="display:flex;flex-direction:column;min-height:0;max-height:160px">
             <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--pink);margin-bottom:.5rem;display:flex;align-items:center;gap:.5rem">
               ACTIVITY LOG
               <span style="flex:1;height:1px;background:var(--border);display:block"></span>
@@ -1573,7 +1613,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
           </div>
 
           <!-- SERVER SELECTOR (server mode) -->
-          <div id="grm-server-section">
+          <div class="v-scan" id="grm-server-section">
             <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--pink);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">MEDIA SERVER<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
             <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem;display:flex;flex-direction:column;gap:.45rem">
               <label style="display:flex;align-items:center;gap:.6rem;cursor:pointer;font-size:.78rem"><input type="radio" name="grm-server" value="plex" checked onchange="grmLoadLibraries()" style="accent-color:#e5a00d"><span style="color:#e5a00d;font-weight:600">● Plex</span></label>
@@ -1590,7 +1630,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
           </div>
 
           <!-- LOCAL FOLDER (local mode) -->
-          <div id="grm-local-section" style="display:none">
+          <div class="v-scan" id="grm-local-section" style="display:none">
             <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--pink);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">LOCAL FOLDER<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
             <div style="background:rgba(255,160,0,.06);border:1px solid rgba(255,160,0,.25);border-radius:6px;padding:.6rem;margin-bottom:.5rem">
               <p style="font-family:var(--mono);font-size:.55rem;color:var(--amber);line-height:1.7;margin:0">📁 Local mode outputs M3U only.<br>No media server push available.</p>
@@ -1612,7 +1652,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
           </div>
 
           <!-- CHART DATA STATUS -->
-          <div>
+          <div class="v-scan">
             <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--pink);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">CHART DATABASE<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
             <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem">
               <div id="grm-ref-static-row" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.35rem">
@@ -1631,9 +1671,89 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
             </div>
           </div>
 
+          <!-- SCAN OPTIONS -->
+          <div class="v-scan">
+            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--pink);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">SCAN OPTIONS<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
+            <div style="display:flex;flex-direction:column;gap:.6rem">
+              <label style="display:flex;align-items:flex-start;gap:.6rem;cursor:pointer;font-size:.72rem">
+                <input type="checkbox" id="grm-write-tags" style="accent-color:var(--pink);margin-top:.1rem">
+                <span style="color:var(--muted);line-height:1.6">Write chart data to file COMMENT tags<span class="grm-q" tabindex="0" data-tip="Writes e.g. &quot;Hot 100: #4 (12 wks)&quot; and a star rating into each matched file during the scan. Not needed for playlists. Leave OFF unless you want chart info visible in other players — it modifies your files.">?</span><br><span style="color:var(--muted2);font-size:.6rem">Survives a database wipe. Peak + weeks written permanently.</span></span>
+              </label>
+              <label style="display:flex;align-items:flex-start;gap:.6rem;cursor:pointer;font-size:.72rem">
+                <input type="checkbox" id="grm-use-estimates" style="accent-color:var(--amber);margin-top:.1rem">
+                <span style="color:var(--muted);line-height:1.6">Use Last.fm estimates for unmatched tracks<span class="grm-q" tabindex="0" data-tip="Guesses chart strength from Last.fm listener counts for songs with no chart data. Makes scans much slower and estimated songs score 25 or less, so they rarely reach good playlists. Leave OFF.">?</span><br><span style="color:var(--muted2);font-size:.6rem">⚠ Slower — adds ~0.2s per track. Use for CCM or when static DB misses too many. Charts with <span style="color:var(--amber)">~ estimates</span> badge always use this.</span></span>
+              </label>
+            </div>
+          </div>
+
+
+            <!-- M2: HITS filters -->
+            <div class="v-build" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem;display:flex;flex-direction:column;gap:.6rem;margin-bottom:.5rem">
+              <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted);letter-spacing:1px">HITS<span class="grm-q" tabindex="0" data-tip="Filters used by both the results table and the Playlist Builder.">?</span></div>
+              <div>
+                <div style="display:flex;justify-content:space-between;margin-bottom:.3rem">
+                  <label style="font-size:.7rem;color:var(--muted)">Min Hit Score<span class="grm-q" tabindex="0" data-tip="0–100 from real Billboard Hot 100 data: peak, weeks on chart and year-end rank, plus strong genre-chart placings. 70+ = songs most people know. 80+ = the biggest hits. Lower it if a build comes up short.">?</span></label>
+                  <span style="font-family:var(--display);font-size:1.05rem;color:var(--amber)" id="grm-score-display">Any</span>
+                </div>
+                <input type="range" id="grm-min-score" min="0" max="90" step="5" value="0" oninput="document.getElementById('grm-score-display').textContent=this.value>0?this.value+'+':'Any'" onchange="grmSearch()" style="width:100%">
+                <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted2);margin-top:.2rem;line-height:1.6">70+ = big hits everyone knows · 85+ = all-time smashes</div>
+              </div>
+              <div>
+                <div style="font-size:.7rem;color:var(--muted);margin-bottom:.35rem">Decades<span class="grm-q" tabindex="0" data-tip="Based on the year the song first charted (Bohemian Rhapsody = 1976, not its 1992 re-release). Pick several to mix eras. None selected = all.">?</span> <span style="font-size:.55rem;color:var(--muted2)">(none = all)</span></div>
+                <div style="display:flex;flex-wrap:wrap;gap:.3rem"><button class="grm-dec" data-dec="1950" onclick="grmToggleDecade(1950)" style="padding:.3rem .45rem;background:var(--surface3);color:var(--muted);border:1px solid var(--border2);border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer">50s</button><button class="grm-dec" data-dec="1960" onclick="grmToggleDecade(1960)" style="padding:.3rem .45rem;background:var(--surface3);color:var(--muted);border:1px solid var(--border2);border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer">60s</button><button class="grm-dec" data-dec="1970" onclick="grmToggleDecade(1970)" style="padding:.3rem .45rem;background:var(--surface3);color:var(--muted);border:1px solid var(--border2);border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer">70s</button><button class="grm-dec" data-dec="1980" onclick="grmToggleDecade(1980)" style="padding:.3rem .45rem;background:var(--surface3);color:var(--muted);border:1px solid var(--border2);border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer">80s</button><button class="grm-dec" data-dec="1990" onclick="grmToggleDecade(1990)" style="padding:.3rem .45rem;background:var(--surface3);color:var(--muted);border:1px solid var(--border2);border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer">90s</button><button class="grm-dec" data-dec="2000" onclick="grmToggleDecade(2000)" style="padding:.3rem .45rem;background:var(--surface3);color:var(--muted);border:1px solid var(--border2);border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer">00s</button><button class="grm-dec" data-dec="2010" onclick="grmToggleDecade(2010)" style="padding:.3rem .45rem;background:var(--surface3);color:var(--muted);border:1px solid var(--border2);border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer">10s</button><button class="grm-dec" data-dec="2020" onclick="grmToggleDecade(2020)" style="padding:.3rem .45rem;background:var(--surface3);color:var(--muted);border:1px solid var(--border2);border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer">20s</button></div>
+              </div>
+              <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.7rem;color:var(--muted)">
+                <input type="checkbox" id="grm-ohw" onchange="grmSearch()" style="accent-color:var(--pink)"> One-hit wonders only<span class="grm-q" tabindex="0" data-tip="Artists with exactly one Top 40 Hot 100 hit — and this is it. Fun for a themed playlist; pair with a lower Min Hit Score (40–50).">?</span>
+              </label>
+            </div>
+
+          <!-- M2: ROAD TRIP BUILDER -->
+          <div class="v-build">
+            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--pink);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">PLAYLIST BUILDER<span class="grm-q" tabindex="0" data-tip="Makes a sequenced playlist from the filters above. Each build is a fresh random mix from the top songs, one version per song.">?</span><span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
+            <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem;display:flex;flex-direction:column;gap:.6rem">
+              <div style="font-family:var(--mono);font-size:.52rem;color:var(--muted2);line-height:1.6">Uses the Genre, Decades, Hit Score and One-hit filters. Ignores the peak sliders.</div>
+              <div style="display:flex;gap:.3rem">
+                <select id="grm-preset" onchange="grmLoadPreset(this.value)" style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:.62rem;padding:.35rem .45rem;outline:none"><option value="">— Presets —</option></select>
+                <button onclick="grmSavePreset()" title="Save current settings as a preset" style="padding:.3rem .5rem;background:var(--surface3);color:var(--teal);border:1px solid var(--border2);border-radius:5px;font-family:var(--mono);font-size:.55rem;cursor:pointer">SAVE</button>
+                <button onclick="grmDeletePreset()" title="Delete selected preset" style="padding:.3rem .5rem;background:var(--surface3);color:var(--red);border:1px solid var(--border2);border-radius:5px;font-family:var(--mono);font-size:.55rem;cursor:pointer">✕</button>
+              </div>
+              <div>
+                <div style="display:flex;justify-content:space-between;margin-bottom:.3rem"><label style="font-size:.7rem;color:var(--muted)">Length<span class="grm-q" tabindex="0" data-tip="Running time of each playlist. Lengths come from your library; songs not yet measured count as 4 minutes until the next scan.">?</span></label><span style="font-family:var(--display);font-size:1.05rem;color:var(--amber)" id="grm-len-display">4h</span></div>
+                <input type="range" id="grm-len" min="0.5" max="12" step="0.5" value="4" oninput="document.getElementById('grm-len-display').textContent=grmFmtHours(this.value*60)" style="width:100%">
+              </div>
+              <div>
+                <div style="display:flex;justify-content:space-between;margin-bottom:.3rem"><label style="font-size:.7rem;color:var(--muted)">Playlists (days)<span class="grm-q" tabindex="0" data-tip="Creates separate playlists named “— Day 1”, “— Day 2”… No song repeats across them, and each day gets an equal share of the biggest hits. One push sends them all.">?</span></label><span style="font-family:var(--display);font-size:1.05rem;color:var(--amber)" id="grm-days-display">1</span></div>
+                <input type="range" id="grm-days" min="1" max="7" step="1" value="1" oninput="document.getElementById('grm-days-display').textContent=this.value" style="width:100%">
+                <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted2);margin-top:.2rem">Length is per playlist · no song repeats across days</div>
+              </div>
+              <div>
+                <div style="display:flex;justify-content:space-between;margin-bottom:.3rem"><label style="font-size:.7rem;color:var(--muted)">Familiar hits<span class="grm-q" tabindex="0" data-tip="Share of the playlist drawn from your highest-scoring songs. 90% = 9 of 10 songs are big hits; the rest are lesser-known chart songs for variety. 100% = only the top.">?</span></label><span style="font-family:var(--display);font-size:1.05rem;color:var(--amber)" id="grm-fam-display">90%</span></div>
+                <input type="range" id="grm-fam" min="50" max="100" step="5" value="90" oninput="document.getElementById('grm-fam-display').textContent=this.value+'%'" style="width:100%">
+                <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted2);margin-top:.2rem">The rest are lesser-known chart songs</div>
+              </div>
+              <div>
+                <div style="display:flex;justify-content:space-between;margin-bottom:.3rem"><label style="font-size:.7rem;color:var(--muted)">Artist spacing<span class="grm-q" tabindex="0" data-tip="Minimum songs before the same artist can play again. 12–15 works well for long drives.">?</span></label><span style="font-family:var(--display);font-size:1.05rem;color:var(--amber)" id="grm-gap-display">12</span></div>
+                <input type="range" id="grm-gap" min="0" max="30" step="1" value="12" oninput="document.getElementById('grm-gap-display').textContent=this.value" style="width:100%">
+                <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted2);margin-top:.2rem">Songs before the same artist can play again</div>
+              </div>
+              <button id="grm-btn-build" onclick="grmBuildPlaylist()" style="width:100%;padding:.6rem;background:var(--amber);color:#000;border:none;border-radius:6px;font-family:var(--display);font-size:1rem;letter-spacing:2px;cursor:pointer">🚗 BUILD PLAYLIST</button>
+              <button onclick="grmRecalcScores(this)" style="width:100%;padding:.35rem;background:transparent;color:var(--muted);border:1px solid var(--border2);border-radius:5px;font-family:var(--mono);font-size:.55rem;cursor:pointer">↻ Recalculate Hit Scores</button>
+            </div>
+          </div>
+
+          <!-- PLAYLIST NAME -->
+          <div class="v-build">
+            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--pink);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">PLAYLIST NAME<span class="grm-q" tabindex="0" data-tip="Pushing replaces any existing playlist with the same name on the server. Multi-day builds add “— Day N”.">?</span><span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
+            <input type="text" id="grm-playlist-name" value="Chart Hits" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:.76rem;padding:.55rem .7rem;outline:none;box-sizing:border-box">
+          </div>
+
+          <!-- ADVANCED (collapsed) -->
+          <details class="v-build grm-adv">
+            <summary>▸ ADVANCED</summary>
+            <div style="display:flex;flex-direction:column;gap:.75rem">
             <!-- CHART CRITERIA sliders -->
             <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem;display:flex;flex-direction:column;gap:.65rem;margin-bottom:.5rem">
-              <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted);letter-spacing:1px;margin-bottom:-.1rem">CHART CRITERIA</div>
+              <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted);letter-spacing:1px;margin-bottom:-.1rem">RESULTS TABLE FILTERS<span class="grm-q" tabindex="0" data-tip="These only filter the results table. The Playlist Builder ignores them.">?</span></div>
               <div>
                 <div style="display:flex;justify-content:space-between;margin-bottom:.3rem">
                   <label style="font-size:.7rem;color:var(--muted)">Peak Position — From</label>
@@ -1660,26 +1780,6 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
               </div>
             </div>
 
-            <!-- M2: HITS filters -->
-            <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem;display:flex;flex-direction:column;gap:.6rem;margin-bottom:.5rem">
-              <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted);letter-spacing:1px">HITS</div>
-              <div>
-                <div style="display:flex;justify-content:space-between;margin-bottom:.3rem">
-                  <label style="font-size:.7rem;color:var(--muted)">Min Hit Score</label>
-                  <span style="font-family:var(--display);font-size:1.05rem;color:var(--amber)" id="grm-score-display">Any</span>
-                </div>
-                <input type="range" id="grm-min-score" min="0" max="90" step="5" value="0" oninput="document.getElementById('grm-score-display').textContent=this.value>0?this.value+'+':'Any'" onchange="grmSearch()" style="width:100%">
-                <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted2);margin-top:.2rem;line-height:1.6">70+ = big hits everyone knows · 85+ = all-time smashes</div>
-              </div>
-              <div>
-                <div style="font-size:.7rem;color:var(--muted);margin-bottom:.35rem">Decades <span style="font-size:.55rem;color:var(--muted2)">(none = all)</span></div>
-                <div style="display:flex;flex-wrap:wrap;gap:.3rem"><button class="grm-dec" data-dec="1950" onclick="grmToggleDecade(1950)" style="padding:.3rem .45rem;background:var(--surface3);color:var(--muted);border:1px solid var(--border2);border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer">50s</button><button class="grm-dec" data-dec="1960" onclick="grmToggleDecade(1960)" style="padding:.3rem .45rem;background:var(--surface3);color:var(--muted);border:1px solid var(--border2);border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer">60s</button><button class="grm-dec" data-dec="1970" onclick="grmToggleDecade(1970)" style="padding:.3rem .45rem;background:var(--surface3);color:var(--muted);border:1px solid var(--border2);border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer">70s</button><button class="grm-dec" data-dec="1980" onclick="grmToggleDecade(1980)" style="padding:.3rem .45rem;background:var(--surface3);color:var(--muted);border:1px solid var(--border2);border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer">80s</button><button class="grm-dec" data-dec="1990" onclick="grmToggleDecade(1990)" style="padding:.3rem .45rem;background:var(--surface3);color:var(--muted);border:1px solid var(--border2);border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer">90s</button><button class="grm-dec" data-dec="2000" onclick="grmToggleDecade(2000)" style="padding:.3rem .45rem;background:var(--surface3);color:var(--muted);border:1px solid var(--border2);border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer">00s</button><button class="grm-dec" data-dec="2010" onclick="grmToggleDecade(2010)" style="padding:.3rem .45rem;background:var(--surface3);color:var(--muted);border:1px solid var(--border2);border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer">10s</button><button class="grm-dec" data-dec="2020" onclick="grmToggleDecade(2020)" style="padding:.3rem .45rem;background:var(--surface3);color:var(--muted);border:1px solid var(--border2);border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer">20s</button></div>
-              </div>
-              <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.7rem;color:var(--muted)">
-                <input type="checkbox" id="grm-ohw" onchange="grmSearch()" style="accent-color:var(--pink)"> One-hit wonders only
-              </label>
-            </div>
-
             <!-- Confidence filter -->
             <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem">
               <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted);letter-spacing:1px;margin-bottom:.5rem">CONFIDENCE</div>
@@ -1692,60 +1792,8 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
               <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted2);margin-top:.45rem;line-height:1.7">HIGH = real Billboard data · MED = LBZ popularity data · LOW = Last.fm estimate</div>
             </div>
 
-          <!-- M2: ROAD TRIP BUILDER -->
-          <div>
-            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--pink);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">PLAYLIST BUILDER<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
-            <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem;display:flex;flex-direction:column;gap:.6rem">
-              <div style="font-family:var(--mono);font-size:.52rem;color:var(--muted2);line-height:1.6">Uses the Genre, Decades, Hit Score and One-hit filters. Ignores the peak sliders.</div>
-              <div style="display:flex;gap:.3rem">
-                <select id="grm-preset" onchange="grmLoadPreset(this.value)" style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:.62rem;padding:.35rem .45rem;outline:none"><option value="">— Presets —</option></select>
-                <button onclick="grmSavePreset()" title="Save current settings as a preset" style="padding:.3rem .5rem;background:var(--surface3);color:var(--teal);border:1px solid var(--border2);border-radius:5px;font-family:var(--mono);font-size:.55rem;cursor:pointer">SAVE</button>
-                <button onclick="grmDeletePreset()" title="Delete selected preset" style="padding:.3rem .5rem;background:var(--surface3);color:var(--red);border:1px solid var(--border2);border-radius:5px;font-family:var(--mono);font-size:.55rem;cursor:pointer">✕</button>
-              </div>
-              <div>
-                <div style="display:flex;justify-content:space-between;margin-bottom:.3rem"><label style="font-size:.7rem;color:var(--muted)">Length</label><span style="font-family:var(--display);font-size:1.05rem;color:var(--amber)" id="grm-len-display">4h</span></div>
-                <input type="range" id="grm-len" min="0.5" max="12" step="0.5" value="4" oninput="document.getElementById('grm-len-display').textContent=grmFmtHours(this.value*60)" style="width:100%">
-              </div>
-              <div>
-                <div style="display:flex;justify-content:space-between;margin-bottom:.3rem"><label style="font-size:.7rem;color:var(--muted)">Playlists (days)</label><span style="font-family:var(--display);font-size:1.05rem;color:var(--amber)" id="grm-days-display">1</span></div>
-                <input type="range" id="grm-days" min="1" max="7" step="1" value="1" oninput="document.getElementById('grm-days-display').textContent=this.value" style="width:100%">
-                <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted2);margin-top:.2rem">Length is per playlist · no song repeats across days</div>
-              </div>
-              <div>
-                <div style="display:flex;justify-content:space-between;margin-bottom:.3rem"><label style="font-size:.7rem;color:var(--muted)">Familiar hits</label><span style="font-family:var(--display);font-size:1.05rem;color:var(--amber)" id="grm-fam-display">90%</span></div>
-                <input type="range" id="grm-fam" min="50" max="100" step="5" value="90" oninput="document.getElementById('grm-fam-display').textContent=this.value+'%'" style="width:100%">
-                <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted2);margin-top:.2rem">The rest are lesser-known chart songs</div>
-              </div>
-              <div>
-                <div style="display:flex;justify-content:space-between;margin-bottom:.3rem"><label style="font-size:.7rem;color:var(--muted)">Artist spacing</label><span style="font-family:var(--display);font-size:1.05rem;color:var(--amber)" id="grm-gap-display">12</span></div>
-                <input type="range" id="grm-gap" min="0" max="30" step="1" value="12" oninput="document.getElementById('grm-gap-display').textContent=this.value" style="width:100%">
-                <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted2);margin-top:.2rem">Songs before the same artist can play again</div>
-              </div>
-              <button id="grm-btn-build" onclick="grmBuildPlaylist()" style="width:100%;padding:.6rem;background:var(--amber);color:#000;border:none;border-radius:6px;font-family:var(--display);font-size:1rem;letter-spacing:2px;cursor:pointer">🚗 BUILD PLAYLIST</button>
-              <button onclick="grmRecalcScores(this)" style="width:100%;padding:.35rem;background:transparent;color:var(--muted);border:1px solid var(--border2);border-radius:5px;font-family:var(--mono);font-size:.55rem;cursor:pointer">↻ Recalculate Hit Scores</button>
             </div>
-          </div>
-
-          <!-- PLAYLIST NAME -->
-          <div>
-            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--pink);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">PLAYLIST NAME<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
-            <input type="text" id="grm-playlist-name" value="Chart Hits" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:.76rem;padding:.55rem .7rem;outline:none;box-sizing:border-box">
-          </div>
-
-          <!-- OPTIONS -->
-          <div>
-            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--pink);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">OPTIONS<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
-            <div style="display:flex;flex-direction:column;gap:.6rem">
-              <label style="display:flex;align-items:flex-start;gap:.6rem;cursor:pointer;font-size:.72rem">
-                <input type="checkbox" id="grm-write-tags" style="accent-color:var(--pink);margin-top:.1rem">
-                <span style="color:var(--muted);line-height:1.6">Write chart data to file COMMENT tags<br><span style="color:var(--muted2);font-size:.6rem">Survives a database wipe. Peak + weeks written permanently.</span></span>
-              </label>
-              <label style="display:flex;align-items:flex-start;gap:.6rem;cursor:pointer;font-size:.72rem">
-                <input type="checkbox" id="grm-use-estimates" style="accent-color:var(--amber);margin-top:.1rem">
-                <span style="color:var(--muted);line-height:1.6">Use Last.fm estimates for unmatched tracks<br><span style="color:var(--muted2);font-size:.6rem">⚠ Slower — adds ~0.2s per track. Use for CCM or when static DB misses too many. Charts with <span style="color:var(--amber)">~ estimates</span> badge always use this.</span></span>
-              </label>
-            </div>
-          </div>
+          </details>
 
           </div><!-- /grm-config-inner -->
         </div><!-- /grm-config-panel -->
@@ -1754,7 +1802,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
         <div class="grm-divider" id="grm-divider-1"></div>
 
         <!-- PANE 2: GENRE TREE -->
-        <div class="grm-tree-panel" id="grm-tree-panel">
+        <div class="grm-tree-panel v-build" id="grm-tree-panel">
           <!-- Collapsed strip -->
           <div class="grm-collapsed-tab" onclick="grmToggleTree()" title="Expand genre filter">
             <span class="gct-arrow">▶</span>
@@ -1789,13 +1837,13 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
         </div><!-- /grm-tree-panel -->
 
         <!-- DIVIDER 2 -->
-        <div class="grm-divider" id="grm-divider-2"></div>
+        <div class="grm-divider v-build" id="grm-divider-2"></div>
 
         <!-- PANE 3: RESULTS (always visible) -->
         <div class="grm-results-panel">
 
           <!-- SCAN PROGRESS (always visible at top) -->
-          <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1rem 1.5rem">
+          <div class="v-scan" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1rem 1.5rem">
             <!-- Status title -->
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem">
               <div style="font-family:var(--display);font-size:1.1rem;letter-spacing:1.5px" id="grm-status-title">READY TO SCAN</div>
@@ -1875,7 +1923,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
           </div>
 
           <!-- Push Bar — sticky at top of results -->
-          <div id="grm-push-bar" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:.9rem 1.25rem;display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;position:sticky;top:70px;z-index:100;box-shadow:0 4px 16px rgba(0,0,0,.4)">
+          <div id="grm-push-bar" class="v-build" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:.9rem 1.25rem;display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;position:sticky;top:70px;z-index:100;box-shadow:0 4px 16px rgba(0,0,0,.4)">
             <div style="flex:1;min-width:160px">
               <div style="font-family:var(--display);font-size:.95rem;letter-spacing:1px" id="grm-bar-title">Playlist: Chart Hits</div>
               <div style="font-family:var(--mono);font-size:.6rem;color:var(--muted);margin-top:.15rem" id="grm-bar-sub">0 matched songs ready to push · <span style="color:var(--amber)">Push capped at 15,000 tracks</span> · Use ⬇ M3U for full results</div>
@@ -5252,6 +5300,7 @@ function grmInit() {
   grmLoadStats();
   _grmLoadPathSettings();
   grmLoadLibraries();
+  if (!grmScanPoll) grmInitView();
 }
 
 // Genre/mood pills replaced by post-scan dropdown (grmBuildGenreDropdown)
@@ -5667,6 +5716,7 @@ async function grmPollScan() {
     document.getElementById('grm-s-failed').textContent  = failed.toLocaleString();
 
     if (d.status === 'running') {
+      grmScanBadge(processed > 0 ? `${pct}%` : 'reading');
       const banner = document.getElementById('grm-phase-banner');
       const phTitle = document.getElementById('grm-phase-title');
       const phSub  = document.getElementById('grm-phase-sub');
@@ -5728,6 +5778,8 @@ async function grmPollScan() {
 
     if (['done','stopped','failed'].includes(d.status)) {
       clearInterval(grmScanPoll); grmScanPoll = null;
+      grmScanBadge('');
+      if (d.status === 'done') grmSetView('build');
       clearInterval(grmLivePoll); grmLivePoll = null;
       grmScanDone(d.status === 'done');
       if (d.status === 'done') {
@@ -6160,6 +6212,50 @@ document.addEventListener('DOMContentLoaded', () => {
     if (el) el.addEventListener('change', () => { if (grmResults.length) grmSearch(); });
   });
 });
+
+// ── Top Dogs tooltips (fixed-position so the narrow panel never clips them) ──
+(function () {
+  let tip;
+  const show = el => {
+    if (!tip) { tip = document.createElement('div'); tip.id = 'grm-tip'; document.body.appendChild(tip); }
+    tip.textContent = el.dataset.tip; tip.style.display = 'block';
+    const r = el.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight;
+    let x = r.right + 8, y = r.top - 4;
+    if (x + w > innerWidth - 8) x = Math.max(8, r.left - w - 8);
+    if (y + h > innerHeight - 8) y = innerHeight - h - 8;
+    tip.style.left = x + 'px'; tip.style.top = Math.max(8, y) + 'px';
+  };
+  const hide = () => { if (tip) tip.style.display = 'none'; };
+  document.addEventListener('mouseover', e => { const q = e.target.closest?.('.grm-q'); if (q) show(q); });
+  document.addEventListener('mouseout',  e => { if (e.target.closest?.('.grm-q')) hide(); });
+  document.addEventListener('focusin',   e => { if (e.target.classList?.contains('grm-q')) show(e.target); });
+  document.addEventListener('focusout',  e => { if (e.target.classList?.contains('grm-q')) hide(); });
+  document.addEventListener('DOMContentLoaded', () => {
+    const qs = document.getElementById('grm-qs'); if (!qs) return;
+    try { if (localStorage.getItem('ch_grm_qs') === 'closed') qs.open = false; } catch {}
+    qs.addEventListener('toggle', () => { try { localStorage.setItem('ch_grm_qs', qs.open ? 'open' : 'closed'); } catch {} });
+  });
+})();
+
+// ── Scan / Build views ───────────────────────────────────────────
+function grmSetView(v) {
+  const lay = document.getElementById('grm-layout'); if (!lay) return;
+  lay.dataset.view = v;
+  document.getElementById('grm-vbtn-scan')?.classList.toggle('on', v === 'scan');
+  document.getElementById('grm-vbtn-build')?.classList.toggle('on', v === 'build');
+  if (v === 'build' && !grmResults.length && typeof grmSearch === 'function') grmSearch();
+}
+function grmScanBadge(text) {
+  const b = document.getElementById('grm-vbtn-scan'); if (b) b.textContent = text ? `① SCAN · ${text}` : '① SCAN';
+}
+async function grmInitView() {
+  // Open on BUILD when scored results exist, otherwise SCAN
+  try {
+    const r = await fetch(`${API}/api/groomer/results?limit=1&min_peak=1&max_peak=100`, {headers:authHdrs()});
+    const d = r.ok ? await r.json() : {};
+    grmSetView((d.total || 0) > 0 ? 'build' : 'scan');
+  } catch { grmSetView('scan'); }
+}
 
 // ── M2: Hits filters + playlist builder ─────────────────────────
 const grmDecades = new Set();
@@ -9067,31 +9163,62 @@ const _HG_CONTENT = {
   `,
   groomer: `
     <div class="hg-section-title">🏆 TOP DOGS</div>
-    <div class="hg-section-sub">PLAYLIST BUILDER — BUILD SMART PLAYLISTS FROM CHART HITS YOU OWN</div>
+    <div class="hg-section-sub">ROAD-TRIP PLAYLISTS FROM THE BIGGEST HITS YOU OWN</div>
     <div class="hg-block">
       <div class="hg-block-title">WHAT IT DOES</div>
-      <p>Top Dogs scans your library against the chart reference database and writes chart performance data into the COMMENT tag of your music files (e.g. "Hot 100: #4 (12 wks)"). It then lets you build smart playlists filtered by genre, decade, peak position, and weeks on chart — and push those playlists directly to Plex, Emby, or Jellyfin.</p>
+      <p>Top Dogs checks every song in your library against Billboard chart history, gives each charted song a <strong>Hit Score</strong> (0–100), and builds playlists of the songs most people know — then pushes them to Plex, Emby or Jellyfin, or exports M3U.</p>
     </div>
     <div class="hg-block">
-      <div class="hg-block-title">CONNECTIONS REQUIRED</div>
+      <div class="hg-block-title">THE 4 STEPS</div>
       <ul>
-        <li><strong>Plex, Emby, or Jellyfin</strong> — to scan your library and push playlists</li>
-        <li><strong>Last.fm</strong> — provides the popularity signal for tracks not in the static chart database</li>
+        <li><strong>1 · Scan</strong> — Media Server → pick server and library → Start Scan. The first scan takes a while; later scans only check new songs. Re-scan after adding music or importing chart data in The Veterinarian. The genre tree does <em>not</em> affect the scan.</li>
+        <li><strong>2 · Choose songs</strong> — Genre tree (middle panel) and the HITS box: Min Hit Score, Decades, One-hit wonders.</li>
+        <li><strong>3 · Build</strong> — Playlist Builder: Length, Playlists (days), Familiar hits, Artist spacing → 🚗 Build Playlist. Check the list in the results table.</li>
+        <li><strong>4 · Push</strong> — ↑ PLEX / EMBY / JELLYFIN or ↓ M3U. Save your settings as a Preset to rebuild in one click.</li>
       </ul>
     </div>
     <div class="hg-block">
-      <div class="hg-block-title">THE GENRE TREE FILTER</div>
-      <p>After a scan, the left Genre Tree panel lets you filter results by genre. Parent genres (Rock, Pop, Country, etc.) include all their sub-genres automatically — click a parent to select everything under it, or expand it to pick specific sub-genres. The genre filter reads directly from the physical file tags written by The Retriever, so tagging your files in The Retriever first makes this significantly more accurate.</p>
+      <div class="hg-block-title">HIT SCORE</div>
+      <p>Built mainly from real Billboard Hot 100 data — best peak, weeks on the chart and year-end rank — plus a bonus for strong placings on genre charts (country, R&amp;B, rock, AC…). Sources known to list almost everything as #1 count for very little.</p>
+      <ul>
+        <li><strong>85+</strong> — all-time smashes (Beat It, Like a Virgin)</li>
+        <li><strong>70–84</strong> — big hits most people know</li>
+        <li><strong>50–69</strong> — solid chart songs, genre-chart #1s</li>
+        <li><strong>under 50</strong> — minor hits and estimates</li>
+      </ul>
+      <p>Hover a score to see its Hot 100 peak, weeks and year-end rank. Scores recalculate automatically after every scan.</p>
     </div>
     <div class="hg-block">
-      <div class="hg-block-title">SKIP CACHE — SCANS GET FASTER OVER TIME</div>
-      <p>Re-scanning a large library is expensive. Top Dogs remembers which tracks have already been processed and skips them on subsequent runs unless something changed. The first scan of your library takes a while — every scan after that is significantly faster. The cache is automatically invalidated when a track's path or metadata changes. You can reset it manually in The Veterinarian if you need to force a full rescan.</p>
+      <div class="hg-block-title">BUILDER OPTIONS</div>
+      <ul>
+        <li><strong>Length</strong> — per playlist. 8 hours ≈ 120 songs.</li>
+        <li><strong>Playlists (days)</strong> — 1–7 separate playlists named "— Day 1", "— Day 2"…; no song repeats, and each day gets an equal share of the biggest hits.</li>
+        <li><strong>Familiar hits</strong> — 90% means 9 of 10 songs come from your top scorers; the rest are lesser-known chart songs. Each build is a fresh random mix.</li>
+        <li><strong>Artist spacing</strong> — songs before an artist can repeat. 12–15 for long drives.</li>
+      </ul>
+      <p>If the log says the build came up short, lower Min Hit Score or add a decade. A 4-day × 8-hour trip needs about 480 matching songs — the log shows how many candidates matched.</p>
     </div>
     <div class="hg-block">
-      <div class="hg-block-title">ALBUM BATCHING</div>
-      <p>When Top Dogs scans your library, it groups tracks by album folder and makes one API call per album instead of one per track. For a 33,000-track library, that's the difference between ~33,000 API calls and ~3,000. Same data, an order of magnitude less work — and far less chance of hitting rate limits.</p>
+      <div class="hg-block-title">RECIPES</div>
+      <ul>
+        <li><strong>80s Road Trip</strong> — 80s · Min 70 · 4 days × 8h · 90% familiar · spacing 15</li>
+        <li><strong>Decades Mix</strong> — 70s + 80s + 90s · Min 75 · 4 days × 8h</li>
+        <li><strong>One-Hit Wonders</strong> — 70s–90s · One-hit only · Min 50 · 1 day × 3h</li>
+      </ul>
     </div>
-    <div class="hg-tip">💡 <strong>Best practice:</strong> Run The Retriever on your library first so files have genre tags. Then scan Top Dogs — genre filtering will be significantly more accurate. Use the Genre Tree to narrow to one genre, set your peak/weeks filters, and push a tight playlist.</div>
+    <div class="hg-block">
+      <div class="hg-block-title">ADVANCED (COLLAPSED)</div>
+      <ul>
+        <li><strong>Results table filters</strong> — peak range, min weeks, confidence. Only filter the table; the builder ignores them.</li>
+        <li><strong>Write chart data to COMMENT tags</strong> — writes chart info into your files during the scan. Not needed for playlists; leave off.</li>
+        <li><strong>Last.fm estimates</strong> — guesses for songs with no chart data. Slow, low scores; leave off.</li>
+      </ul>
+    </div>
+    <div class="hg-block">
+      <div class="hg-block-title">PUSHING SAFELY</div>
+      <p>Songs are sent in exact playlist order. A song is only added if both title and artist match — if it can't be found on the server it's skipped and listed in the log, never replaced with a different song. Pushing replaces any playlist with the same name.</p>
+    </div>
+    <div class="hg-tip">💡 <strong>Best practice:</strong> Run The Retriever first so files have genre tags — genre filtering gets much more accurate. Scan with Media Server mode so pushes use exact server IDs.</div>
   `,
   bloodhound: `
     <div class="hg-section-title">🔍 THE BLOODHOUND</div>
