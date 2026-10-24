@@ -2,7 +2,9 @@
 
 **A self-hosted music *and media* library management engine built for power users.**
 
-Tag your music with real Billboard chart data, discover missing chart hits, hunt albums by any artist — *and* automatically find missing movies and TV episodes from your Radarr/Sonarr libraries. All from a single Dockerized dashboard that never exposes your API keys.
+Score every song in your library by its real chart history, tag genres into your files, build road-trip playlists from your biggest hits, discover the hits and essential albums you're missing — *and* automatically find missing movies and TV episodes from your Radarr/Sonarr libraries. All from a single Dockerized dashboard that never exposes your API keys.
+
+**New here?** ChartHound opens on a **🧭 Start Here** page that walks you through every step in order and tells you what to do next.
 
 **Developed by Colby R. Curtis** · [Buy Me a Coffee](https://buymeacoffee.com/colbycurtis)
 
@@ -32,6 +34,7 @@ If ChartHound saves you time, [a coffee](https://buymeacoffee.com/colbycurtis) i
 ## Table of Contents
 
 - [Why ChartHound?](#why-charthound)
+- [What's New](#whats-new)
 - [Security Model](#security-model)
 - [Requirements](#requirements)
 - [Quick Start](#quick-start)
@@ -54,6 +57,19 @@ If ChartHound saves you time, [a coffee](https://buymeacoffee.com/colbycurtis) i
 Most music tools focus on one thing — tagging, or searching, or playlist building. Most media tools focus only on movies and TV. ChartHound combines all of them into a single self-hosted application that understands your entire media ecosystem — music, movies, and TV all in one place.
 
 ChartHound knows which songs in your library were Billboard #1 hits, which albums you're missing from an artist's discography, and which movies and TV episodes in your Radarr/Sonarr watchlists still haven't been found. It writes real chart performance data directly into your music file metadata so your media server can display it. It hunts down missing media in the background while you sleep. And it does all of this without ever sending your API keys or tokens outside your local network.
+
+---
+
+## What's New
+
+The October 2026 update is the biggest release since ChartHound went public:
+
+- **🧭 Start Here** — a guided first page with six numbered steps, live ✅/⚠️ status from your own data, **GO** buttons, and an "After new music arrives" routine. Plus an **A / A / A text-size control** in the sidebar.
+- **Top Dogs** (formerly The Groomer) — every song gets a **Hit Score (0–100)** from its Hot 100 peak, weeks, year-end rank and genre-chart breadth, boosted by Last.fm staying power. Build playlists by decade, genre and *hours of music*, with one-hit wonders, crossovers, presets and multi-day sets.
+- **Genre Engine** (The Retriever) — one genre family plus up to three styles per song, decided by a weighted vote of Discogs, MusicBrainz and Last.fm, reviewed by you before anything is written.
+- **🏆 Big Hits** (The Sniffer) and **⭐ Essential Albums** (The Bloodhound) — the biggest songs and Billboard 200 albums you don't own yet.
+- **Smarter Tracker** — newest releases first, back-off for titles that keep missing, auto-skip for long-lost old titles, and real "did it grab anything?" checks.
+- **Fixes** — Billboard renamed several genre charts in 2026 (Christian, Country, R&B/Hip-Hop, Dance) and ChartHound now follows the new names; torrents grabbed with qBittorrent 5.x no longer land as 0-byte "seeding".
 
 ---
 
@@ -91,9 +107,10 @@ ChartHound connects to your existing media stack. You don't need all of these �
 - Docker and Docker Compose
 - A music library on a local or network drive
 
-**For metadata tagging (Retriever & Groomer):**
-- Plex, Emby, or Jellyfin (to scan your library)
-- **Last.fm API key** — *strongly recommended.* Crucial for popularity lookups on tracks not in the static Billboard chart database. ChartHound's metadata waterfall works without it, but you'll see significantly weaker chart estimation for non-static-DB tracks (independent releases, deep cuts, international hits, anything outside major US charts). Free, takes 30 seconds.
+**For scoring, genres and playlists (Top Dogs & Retriever):**
+- Plex, Emby, or Jellyfin (to read your library). Navidrome users can download M3U playlists.
+- **Last.fm API key** — *strongly recommended.* Adds the "staying power" boost to Hit Scores, finds never-charted classics everyone still plays, and is one of the three Genre Engine sources. Free, takes 30 seconds.
+- **Discogs personal access token** — *strongly recommended* for the Genre Engine (it carries the most weight in the genre vote).
 
 **For music discovery (Sniffer & Bloodhound):**
 - Prowlarr (indexer manager)
@@ -107,8 +124,6 @@ ChartHound connects to your existing media stack. You don't need all of these �
 - Sonarr (TV management)
 - Prowlarr connected to Radarr/Sonarr (ChartHound tells Radarr/Sonarr to search — they handle Prowlarr internally)
 
-**Optional but recommended:**
-- Discogs personal access token (excellent genre and style metadata, especially for classic rock, jazz, soul, and any artist where MusicBrainz tags are sparse)
 
 ---
 
@@ -158,7 +173,7 @@ docker compose up --build -d
 
 ### 5. Open ChartHound
 
-Navigate to `http://YOUR-SERVER-IP:8585` in your browser. Create your admin account, then head to **The Kennel** to connect your services. A full **User Guide** is available inside the app — look for the **OPEN USER GUIDE** button in The Kennel's left panel.
+Navigate to `http://YOUR-SERVER-IP:8585` in your browser and create your admin account. ChartHound opens on **🧭 Start Here** — follow the numbered steps, using each **GO** button. A full **User Guide** is also built in (**OPEN USER GUIDE** in The Kennel's left panel).
 
 ---
 
@@ -186,7 +201,7 @@ Navigate to `http://YOUR-SERVER-IP:8585` in your browser. Create your admin acco
 
 When you first open ChartHound, you'll see a login screen. Since no users exist yet, click **"Create Account"** to register your admin account. After registration, the signup option is permanently hidden (auto-lockdown — see [Security Model](#security-model) for details).
 
-Once logged in, head straight to **The Kennel** to connect your services. Each service card has fields for the server URL and API key/token. When you click Save, the credentials are encrypted and stored. When you click Test, ChartHound verifies the connection actually works. The [Getting API Keys](#getting-api-keys) section below walks you through how to obtain each one.
+Once logged in you land on **Start Here**. Step 1 sends you to **The Kennel** to connect your services. Each service card has fields for the server URL and API key/token. When you click Save, the credentials are encrypted and stored. When you click Test, ChartHound verifies the connection actually works. The [Getting API Keys](#getting-api-keys) section below walks you through how to obtain each one.
 
 > 📖 **A full User Guide is built into ChartHound.** Once logged in, find the **OPEN USER GUIDE** button in The Kennel's left panel under "HELP & DOCS". It covers every tab — what it does, what needs to be connected, and best practices — including step-by-step first-time setup instructions.
 
@@ -198,7 +213,7 @@ Most of ChartHound's features rely on free third-party APIs. None of them requir
 
 ### Last.fm API Key (strongly recommended)
 
-Last.fm is **crucial for popularity lookups on tracks that aren't in the static chart database.** ChartHound ships with over 108,000 real Billboard chart entries pre-loaded, but for any track outside that set — independent releases, deep cuts, international hits, anything not on a major US chart — Last.fm provides the popularity signal that lets the Sniffer, Groomer, and Retriever do their best work. **The waterfall metadata system works without it, but you'll see significantly weaker chart estimation for non-static-DB tracks.**
+ChartHound ships with over 108,000 real Billboard chart entries pre-loaded, and imports more from the Veterinarian. Last.fm adds what charts can't: how much people **still** listen to a song today. ChartHound uses it for the Hit Score "staying power" boost, to find **never-charted classics** (songs with 300,000+ listeners that never made a chart), for the Sniffer's Big Hits, and as one of the three Genre Engine sources. Everything works without it — just with less insight. Lookups are cached for 180 days, so a whole library only costs one pass.
 
 It's free and takes 30 seconds.
 
@@ -216,7 +231,7 @@ In ChartHound, open **The Kennel**, find the Last.fm card, paste the key, **Save
 
 ### Discogs Personal Access Token (recommended for genre data)
 
-Discogs provides excellent genre and style metadata, especially for classic rock, jazz, soul, and any artist where MusicBrainz tags are sparse. It's optional but noticeably improves the metadata waterfall.
+Discogs provides the best genre and style data available for free — it carries the most weight in the Genre Engine's vote. ChartHound looks up each **album** once (not every track), so even a 40,000-song library is a manageable first run.
 
 **Step 1 — Create a Discogs account**
 
@@ -252,7 +267,9 @@ For all three, the API key is in **Settings → General → API Key**. Copy it f
 
 ChartHound supports four download clients. You only need the ones relevant to your setup — a torrent client, a Usenet client, or both.
 
-**qBittorrent** — uses username/password authentication, not an API key. Open the qBittorrent Web UI settings and confirm Web UI is enabled, then put the URL (`http://your-server:8080`), username (default `admin`), and password into ChartHound's qBittorrent card. ChartHound logs in once per session and uses the cookie.
+**qBittorrent** — uses username/password authentication, not an API key. Open the qBittorrent Web UI settings and confirm Web UI is enabled, then put the URL (`http://your-server:8080`), username (default `admin`), and password into ChartHound's qBittorrent card. ChartHound logs in once per session and uses the cookie. Works with qBittorrent 4.x and 5.x, including the "bypass authentication for whitelisted IPs" setup common behind Gluetun. After each grab, ChartHound makes sure every file in the torrent is ticked and started — waiting up to 15 minutes for slow magnet links to fetch their file list.
+
+> **Important:** the **ChartHound Download Path** in The Kennel must be a folder your *download client* can see (its own container path), and that folder should be inside a library your media server scans.
 
 **Deluge** — uses the Deluge WebUI password. Make sure the WebUI plugin is enabled in Deluge preferences. Enter the WebUI URL (`http://your-server:8112`) and the WebUI password into ChartHound's Deluge card. ChartHound authenticates via Deluge's JSON-RPC interface.
 
@@ -270,90 +287,123 @@ ChartHound has no Spotify integration — and that's deliberate. Spotify changed
 
 ## The Tabs
 
+### 🧭 Start Here — Your Guided Path
+*Step-by-step guide & what to do next*
+
+![Start Here](screenshots/StartHere.png)
+
+The first page you see. Six numbered steps — **Connect → Scan → Tag Genres → Build Playlists → Fill the Gaps → Movies & TV** — each with a plain-English explanation, a live status from your own data (✅ done, ⚠️ needs attention), and **GO** buttons that take you straight to the right tab and view. The first unfinished step is highlighted **▶ DO THIS NEXT**.
+
+Below the steps is the **🔁 After new music arrives** routine — the four things to do whenever downloads finish, so new songs get Hit Scores and genres. If you haven't opened ChartHound in months, start here.
+
+The sidebar's **TEXT SIZE A / A / A** control makes the whole app larger or smaller and remembers your choice.
+
 ### The Kennel — Connection Vault
 🔑 *Connections & Encrypted API Vault*
 
 ![The Kennel](screenshots/Kennel.png)
 
-This is where you connect ChartHound to your media stack. Each service gets a card with fields for the server URL and API key/token. When you click Save, the credentials are encrypted with your SECRET_KEY and stored in the database. When you click Test, ChartHound decrypts the key server-side, makes a test API call, and reports back whether the connection succeeded.
+Connect ChartHound to your media stack. Each service has a card: enter the URL and key, **SAVE** (encrypted immediately with your SECRET_KEY), then **TEST** (decrypted server-side, one live API call). Verified cards collapse to a single green line.
 
-**Supported services:** Plex, Emby, Jellyfin, Last.fm, Prowlarr, Radarr, Sonarr, qBittorrent, Deluge, Transmission, SABnzbd, Discogs
+**Supported services:** Plex, Emby, Jellyfin, Last.fm, Discogs, Prowlarr, Radarr, Sonarr, qBittorrent, Deluge, Transmission, SABnzbd
 
-**Path Translator:** At the bottom of The Kennel, the Path Translator helps ChartHound convert between your media server's file paths and Docker's `/music` mount point. Enter your server's music library prefix (the path you see in Plex/Emby/JF file info) and ChartHound handles the rest.
+**Path Translator:** converts between your media server's file paths and Docker's `/music` mount, and sets the Navidrome music path for M3U playlists. **ChartHound Download Path** (Download Client card) sets where Sniffer/Bloodhound grabs are saved — as your download client sees it.
 
-### The Retriever — Metadata Tagger
-🏷 *Write Metadata to Physical Files*
+### Top Dogs — Hit Scores & Road-Trip Playlists
+🏆 *Road-trip playlists from your biggest hits* (formerly **The Groomer**)
+
+![Top Dogs](screenshots/TopDogs.png)
+
+Two views: **① SCAN** and **② BUILD**.
+
+**① SCAN** reads your library from Plex, Emby or Jellyfin and matches every song against the chart database. Re-scans are incremental — only new songs are looked up. Each song gets a **Hit Score from 0 to 100** built from its Hot 100 peak, weeks on the chart, year-end rank and how many genre charts it reached, plus a Last.fm "staying power" boost. A 100 is rare; 70+ is "everyone knows it", 85+ is an all-time smash. Songs that never charted but have 300,000+ Last.fm listeners are included as **never-charted classics**. Optionally writes the chart history into each file's COMMENT tag with a star rating.
+
+**② BUILD** turns scores into playlists:
+- **Genre tree** — pick families and styles (from the Genre Engine), with **crossovers** and a 🌙 **Mellow / Easy Listening** vibe
+- **Hits filters** — minimum Hit Score, decades, one-hit wonders only
+- **Playlist builder** — set the length in *hours*, split into multiple days, choose how familiar it should be and how far apart the same artist can repeat
+- **Presets** — save a set of choices and reload it later
+- **Push** — sends the playlist to Plex, Emby or Jellyfin *in order* (strict artist+title matching, never a wrong song), or download an **M3U / Navidrome M3U**
+
+Duplicate copies of the same song across albums and libraries are collapsed so a playlist never repeats a track.
+
+### The Retriever — Genre Engine
+🏷 *Write genres to your physical files*
 
 ![The Retriever](screenshots/Retriever.png)
 
-The Retriever scans your music library through your media server (Plex, Emby, or Jellyfin) and writes genre, mood, and year tags directly to your physical audio files using Mutagen. It uses a multi-source waterfall to find the best metadata: MusicBrainz → Last.fm → ListenBrainz → Deezer → Discogs → iTunes.
+The **Genre Engine** gives every song **one family plus up to three styles** — e.g. `Rock; Classic Rock; Folk Rock` — by a weighted vote:
 
-You can scan by genre to target specific parts of your library, or scan with no genre filter at all to process every track regardless of genre — useful for a full library pass or for catching untagged tracks that don't have genre metadata yet.
+| Source | Weight |
+|---|---|
+| Discogs album styles | 3 |
+| Discogs album genres, MusicBrainz, Last.fm track tags | 2 |
+| Last.fm artist tags | 1 |
 
-Tags are written to the actual file on disk before refreshing your media server — this is the "File-First" principle. Your metadata survives even if you switch media servers.
+Lookups are batched **one per album** and cached, so the first run takes 1–3 hours for a large library and later runs only look up new music. Songs where sources disagree are marked **⚠ CONFLICT**; songs few sources know are **? LITTLE DATA**. Broad families win over obscure community tags, and subjective tags ("awesome", "favorites") are ignored.
+
+1. **▶ RUN ENGINE** — look everything up and vote. **RE-VOTE** re-decides from the cache in seconds, no lookups.
+2. **REVIEW & WRITE** — page through every change, filter by family, folder or conflicts, edit any song or a whole artist, then write selected or all. Your edits are saved as **manual** and never overwritten.
+
+**Folder rules** let a folder decide the family (e.g. `FULL CHRISTIAN ALBUMS → Christian`) or be skipped entirely. Only the **GENRE tag** is written — and always to the file first. The original one-song-at-a-time **Legacy Retriever** is still available, collapsed at the top.
+
+> **Lidarr users:** set Lidarr → Settings → Metadata → "Tag Audio Files with Metadata" to **Never**, or Lidarr will overwrite ChartHound's genres.
 
 ### The Sniffer — Chart Hit Finder
 📡 *Find Missing Chart Hits & Grab Them*
 
 ![The Sniffer](screenshots/Sniffer.png)
 
-The Sniffer cross-references your music library against a master list of chart hits and popular tracks, showing you what you own and what you're missing. It uses your connected media server (Plex first, then Emby, then Jellyfin) for the library comparison — meaning it sees your entire library, not just folders you've scanned in The Retriever. Two modes:
+Cross-references your library against the chart database and shows what you're missing. Three modes:
 
-- **Chart Gap Fill** — Select genres, decades, and a notability tier (Essential/Notable/Deep Cuts), and see every charting song you don't own. Narrowing to a single genre gives you up to 1,000 of that genre's biggest hits. Add a decade filter to go even deeper.
-- **Trending** — Browse top tracks by genre using Last.fm data.
+- **🏆 Big Hits** — the highest Hit Score songs you don't own, ranked the same way as Top Dogs, filtered by genre, decade and minimum score. Last.fm listener counts fill in quietly in the background.
+- **Chart Gap Fill** — every charting song you don't own by genre, decade and tier (Essential / Notable / Deep Cuts).
+- **Trending** — top tracks by genre from Last.fm.
 
-For any missing track, click to search Prowlarr for album releases. Results show seeders/size for torrents and size for NZBs. One-click grab sends the release to your connected download client — torrents go to qBittorrent, Deluge, or Transmission; NZBs go to SABnzbd. All downloads are tagged with a `charthound-music` category.
-
-### The Groomer — Playlist Builder
-✂️ *Build Playlists from What You Own*
-
-![The Groomer](screenshots/Groomer.png)
-
-The Groomer scans your library, looks up each track against the chart reference database, and writes chart performance data into the COMMENT tag of your music files. A track that peaked at #4 on the Hot 100 for 12 weeks gets a comment like: `Hot 100: #4 (12 wks) | Adult Pop: #1 (18 wks)`.
-
-It also generates star ratings (1–5) based on chart performance and can build smart playlists that you push directly to Plex, Emby, or Jellyfin.
-
-Features a skip cache system so re-scans skip tracks that have already been checked, making 33,000+ track libraries manageable. The Groomer is also where Last.fm shows its true value — for tracks not in the static Billboard database, the Last.fm popularity score becomes the primary signal for chart estimation. Without a Last.fm key, those tracks fall back to weaker heuristics.
+For any missing song, **SEARCH** queries Prowlarr (album-first, like Lidarr) and shows seeders and size. One click sends a torrent to qBittorrent/Deluge/Transmission or an NZB to SABnzbd, tagged `charthound-music`. After a Top Dogs build, a shortcut shows how many big hits in that playlist's style you don't own yet.
 
 ### The Bloodhound — Album Hunter
 🔍 *Hunt Every Album by Any Artist*
 
 ![The Bloodhound](screenshots/Bloodhound.png)
 
-Four search modes powered by MusicBrainz:
+Five search modes:
 
-- **Artist Search** — Find an artist, then browse their complete discography filtered by release type (Albums, Compilations, Singles, All). Results are sortable by Artist, Title, Year, or Owned/Missing status.
-- **Album Search** — Search for any album by name across all of MusicBrainz.
-- **Compilation Search** — 31 preset compilation series (Now That's What I Call Music, WOW Hits, Grammy Nominees, etc.) plus custom search.
-- **Genre Browse** — Browse by primary genre (Rock, Pop, Country, R&B, Hip-Hop, Electronic, Jazz, Blues, Metal, Alternative, Folk, Classical, CCM/Gospel). Selecting a genre automatically pulls in all its sub-genres behind the scenes.
+- **⭐ Essential** — the biggest albums on the **Billboard 200** since 1967 (38,000+ albums, refreshed weekly), ranked by peak and weeks on chart, filterable by decade and "only albums I'm missing".
+- **Artist** — an artist's complete discography from MusicBrainz, filtered by release type. Albums that hit the Billboard 200 get a **B200** badge, and the essential ones are marked ⭐.
+- **Album** — search any album by name.
+- **Compilations** — 31 preset series (Now That's What I Call Music, WOW Hits, Grammy Nominees…) plus custom search.
+- **Genre Browse** — by primary genre, sub-genres included automatically.
 
-Every result shows whether you already own it (cross-referenced against your library). Missing releases can be searched on Prowlarr and grabbed to your download client — torrents to qBittorrent, Deluge, or Transmission; NZBs to SABnzbd — directly from the results table.
+Every result shows **Owned** or **Missing**, and missing releases can be searched on Prowlarr and grabbed directly.
 
-### The Tracker — Missing Media Hunter
-🎯 *Radarr / Sonarr Automatic Search*
+### The Tracker — Missing Movies & TV
+🎯 *Radarr / Sonarr missing & cutoff hunter*
 
-The Tracker monitors your Radarr and Sonarr libraries for missing movies and TV episodes, then automatically tells them to search for downloads. ChartHound never touches Prowlarr directly — it fires search commands through Radarr/Sonarr's own API, so they handle indexer selection, category tagging, and download client handoff exactly as they normally would.
+![The Tracker](screenshots/Tracker.png)
 
-**Key features:**
+Watches Radarr and Sonarr for missing movies and episodes and asks them to search — slowly and politely, in the background, even with the browser closed. ChartHound never talks to your indexers directly; Radarr and Sonarr handle that as they normally do.
 
-- **Default OFF** — must be explicitly enabled from the Tracker page
-- **Smart TV ordering** — searches for the earliest missing season first; won't look for season 3 if season 2 is still missing
-- **Season search** — when an entire season is missing, fires a single SeasonSearch instead of individual episode searches
-- **Cooldown system** — won't re-search the same unfindable item until the cooldown expires (default 7 days)
-- **Daily cap** — limits total searches per day to prevent overloading (Moderate preset = 60/day)
-- **Manual override** — skip a stuck season to allow later seasons to be searched, or manually trigger a search for any specific item
-- **Activity log** — tracks every search, sync, and error with timestamps
-- **Runs in background** — continues hunting even when the browser is closed, survives container restarts
-- **Request jitter** — small randomized delay between searches so your indexers see human-like patterns instead of bot bursts
+- **Off by default** — turn it on from the Tracker page
+- **Newest first** — anything released in the last 90 days, then the last 2 years, then older titles (fewest tries first)
+- **Back-off** — each miss doubles the wait before the next try (per-source base cooldown, capped at 30 days); old titles that keep missing drop to monthly
+- **Auto-skip** — titles older than 2 years that miss 12 times are marked *Skipped (auto)*; **UNSKIP** gives them a fresh start. New releases are never auto-skipped.
+- **Grab check** — 15 minutes after each search, ChartHound asks Radarr/Sonarr's history whether anything was actually grabbed and logs **GRABBED** or a miss
+- **TV-weighted** — three TV searches for every movie search, matching the typical backlog
+- **Season-aware** — season searches instead of single episodes; an earlier missing season waits, except the newest season and fresh releases. Skip a stuck season to unblock later ones.
+- **Gentle timing** — about one search every 40 minutes with ±25% random jitter; auto-sync every 6 hours (if one series fails to sync, its history is kept rather than reset)
+- **Manual control** — search now, skip, unskip, and a full activity log
 
-### The Veterinarian — Database Admin
+### The Veterinarian — Database & Chart Sources
 🩺 *Database Health & Admin Tools*
 
 ![The Veterinarian](screenshots/Veterinarian.png)
 
-The Veterinarian is where you check on ChartHound's internal database — track counts, artist counts, album counts, skip cache statistics, dynamic vs. static DB sizes, and maintenance tools (VACUUM, integrity checks). Includes an in-tab debug console (off by default, 1,000-line cap) for troubleshooting scans without polluting Docker logs.
+**Chart Data Sources** lists every chart ChartHound knows: the read-only static database that ships with it, plus dynamic sources you can import and refresh — utdata Hot 100 (post-2018), Billboard genre charts (Christian, Country, R&B/Hip-Hop, Rock, Dance/Electronic, Pop — year-end since 1990 plus the current week), Chart2000 and tsort.info global charts, Kworb iTunes, UK Official Singles and ListenBrainz historical. Each shows its entry count and last refresh, with ↻ to refresh and ✕ to remove; a red **REFRESH FAILING** badge means the website changed and the existing data is being kept. Historical sources that no longer change are marked **ARCHIVE**. (The Billboard 200 album data behind Essential albums refreshes itself weekly.)
 
-The Veterinarian also hosts the **Clear Full Database** button — and it's in the danger zone for a reason. ChartHound's database accumulates valuable scan knowledge over time (see [The Little Things](#the-little-things) for why). Clearing it sends you back to first-scan speeds and discards weeks of learned data. Only use it if the database is corrupted or you want a genuinely fresh start. For routine maintenance, use VACUUM and integrity check instead — they tidy up without wiping anything.
+Also here: track/album/artist counts, skip-cache stats, library cache sync, **VACUUM** and **INTEGRITY CHECK**, and an in-tab debug console (off by default, 1,000-line cap).
+
+The **Clear Full Database** button lives in the danger zone for a reason — ChartHound's database accumulates months of lookups (see [The Little Things](#the-little-things)). For routine maintenance use VACUUM and integrity check instead. To refresh only the Retriever's lookups, use **CLEAR METADATA CACHE** on The Retriever — your tracks, Hit Scores and hand edits are kept.
 
 ---
 
@@ -361,17 +411,17 @@ The Veterinarian also hosts the **Clear Full Database** button — and it's in t
 
 Software like this lives or dies on the details. ChartHound has spent a lot of time on the things you'd never notice — until they save you from a problem you didn't know you had.
 
-### The Sniffer's deduplication logic
+### Song-level deduplication
 
-When the Sniffer builds a playlist of missing chart hits, it doesn't just throw every match into the result list. It dedupes by track identity (artist + title, normalized) and — when you have multiple copies of the same song in your library — picks the highest-quality version automatically. A 320kbps MP3 wins over a 128kbps one. A FLAC wins over both. You don't see the lower-quality dupes; the playlist gets the best of what you own.
+The same song often lives in your library three times — the original album, a greatest-hits set, and a compilation. Top Dogs collapses them to one song (normalized artist + title) so a playlist never repeats a track, and the Sniffer counts you as owning a song no matter which album it's on.
 
 ### The Tracker's request jitter
 
-When the Tracker fires search commands at Radarr or Sonarr, it doesn't blast them out at predictable intervals. Each search has a small randomized delay (jitter) added before it goes out, so the request pattern looks more like a human clicking buttons than a bot pounding an API. This keeps your indexers happier and reduces the chance of getting rate-limited mid-batch.
+When the Tracker fires search commands at Radarr or Sonarr, it doesn't blast them out at predictable intervals. Searches are about 40 minutes apart with ±25% random jitter, so the request pattern looks more like a human clicking buttons than a bot pounding an API. This keeps your indexers happier and reduces the chance of getting rate-limited mid-batch.
 
-### The Groomer's skip cache
+### Top Dogs' skip cache
 
-Re-scanning a 33,000-track library is expensive. The Groomer remembers which tracks have already been processed and skips them on subsequent runs unless something changed. The first scan takes a while; every scan after that is fast. The cache is automatically invalidated when a track's path or metadata changes.
+Re-scanning a 40,000-track library is expensive. Top Dogs remembers which tracks have already been processed and skips them on subsequent runs unless something changed. The first scan takes a while; every scan after that is fast. The cache is automatically invalidated when a track's path or metadata changes.
 
 ### Your library gets faster the longer you use it
 
@@ -387,9 +437,13 @@ Every metadata update goes to the *physical file* via Mutagen *before* ChartHoun
 
 The Veterinarian's debug console (and other in-tab consoles) are capped at 1,000 lines and turned off by default. Debug output can pile up fast — a long-running scan can generate thousands of log lines per minute. The cap and opt-in behavior keep the UI snappy and the noise out of your way unless you explicitly ask for it.
 
-### Album batching for chart lookups
+### Album batching
 
-When the Groomer scans your library, it groups tracks by album folder and makes one API call per album instead of one per track. For a 33,000-track library, that's the difference between ~33,000 API calls and ~3,000. Same data, an order of magnitude less work.
+The Genre Engine groups tracks by album and makes one Discogs lookup per album instead of one per track. For a 40,000-track library, that's the difference between ~40,000 API calls and ~3,000. Same data, an order of magnitude less work. MusicBrainz is held to one request per second, as its rules ask.
+
+### Torrents that actually start
+
+Some torrents arrive in qBittorrent with every file unticked, which makes qBittorrent mark them "complete" and seeding with 0 bytes. ChartHound tracks the exact torrent it added, ticks every file, and starts it — waiting up to 15 minutes for slow magnets to find their file list.
 
 ### Aggressive caching everywhere
 
@@ -463,7 +517,7 @@ git pull
 docker compose up --build -d
 ```
 
-Your dynamic database (`charthound.db`) is stored in a Docker named volume and survives rebuilds. Your connections, scan history, and user account are preserved.
+Your dynamic database (`charthound.db`) is stored in a Docker named volume and survives rebuilds. Your connections, scan history, and user account are preserved. After updating, hard-refresh your browser (**Ctrl+Shift+R**) so it loads the new interface files.
 
 ---
 
@@ -495,6 +549,18 @@ You haven't replaced the placeholder key in your `docker-compose.yml`. Generate 
 
 **Download client on a different machine:**
 ChartHound and your download client don't need to be on the same server. Enter the download client machine's LAN IP and port in The Kennel (e.g., `http://192.168.1.100:8080` for qBittorrent, `http://192.168.1.100:8112` for Deluge, `http://192.168.1.100:9091` for Transmission, `http://192.168.1.100:8080` for SABnzbd).
+
+**A torrent shows 0 B and "Seeding" right after a grab:**
+Its files were added unticked. Current versions fix this automatically; on an older version, open the torrent's **Content** tab in qBittorrent, tick all files, and **Force Resume**.
+
+**A grab never shows up in your library:**
+Check that **ChartHound Download Path** in The Kennel is a path your download client can see *inside its own container*, and that the folder is inside a library your media server scans.
+
+**A chart source shows "REFRESH FAILING":**
+The website changed. Your existing chart data is kept and still used; update ChartHound to pick up fixes.
+
+**Genres from ChartHound keep disappearing:**
+Lidarr is rewriting your tags. Set Lidarr → Settings → Metadata → "Tag Audio Files with Metadata" to **Never**.
 
 **Session expired banner appears unexpectedly:**
 ChartHound sessions last 7 days. After that you'll see a clear "session expired" banner on the login screen — log back in and you're good. Your data, settings, and connections are all preserved.
@@ -549,7 +615,7 @@ ChartHound is a library management tool. Any downloading functionality is intend
 
 This software is licensed for **personal, non-commercial use only**. You may view the source code and run the software for personal use. Modification, redistribution, forking (beyond local personal use), and commercial use are strictly prohibited without prior written consent. See [LICENSE.md](LICENSE.md) for full terms.
 
-**ChartHound** and all tab names (The Kennel, The Retriever, The Sniffer, The Groomer, The Bloodhound, The Tracker, The Veterinarian) are protected identifiers of this project.
+**ChartHound** and all tab names (Start Here, The Kennel, The Retriever, The Sniffer, Top Dogs / The Groomer, The Bloodhound, The Tracker, The Veterinarian) are protected identifiers of this project.
 
 ---
 
