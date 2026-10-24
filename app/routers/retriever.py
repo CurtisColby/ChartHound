@@ -2745,8 +2745,37 @@ GE_TAGS = {
     "orchestral": "orchestral", "opera": "opera", "baroque": "baroque",
     "christian rock": "ccm-rock", "christian pop": "ccm-pop", "worship": "worship",
     "praise & worship": "worship", "southern gospel": "sgospel",
+    "christian hip hop": "ccm-pop", "christian rap": "ccm-pop", "christian metal": "ccm-rock",
+    "christian alternative": "ccm-rock", "christian alternative rock": "ccm-rock",
+    "christian contemporary": "ccm", "worship music": "worship", "religious": "ccm",
 }
-GE_WEIGHTS = {"discogs": 3.0, "discogs_g": 2.0, "mb": 2.0, "lfm_track": 2.0, "lfm_artist": 1.0}
+GE_WEIGHTS = {"discogs": 3.0, "discogs_g": 2.0, "mb": 2.0, "lfm_track": 2.0, "lfm_artist": 1.0,
+              "mine": 5.0}   # your own Christian/Gospel tags — the strongest voice
+GE_SACRED = {"ccm", "gospel"}
+GE_DEFAULT_RULES = [{"prefix": "/music/FULL CHRISTIAN ALBUMS", "family": "ccm"}]
+
+
+def _ge_family_of(k: str) -> tuple:
+    if k in GE_FAMILIES:
+        return (k,)
+    if k in GE_STYLES:
+        return GE_STYLES[k][1]
+    return ()
+
+
+def _ge_apply_rule(family: str, vote: Optional[dict]) -> tuple:
+    """Folder rule wins on family; translate the voted sound into fitting styles."""
+    vf = vote["family"] if vote else None
+    vs = vote["styles"] if vote else []
+    keep = [st for st in vs if family in GE_STYLES[st][1]]
+    if family == "ccm" and not keep:
+        if vf in ("rock", "metal") or any(GE_STYLES[st][1][0] in ("rock", "metal") for st in vs):
+            keep = ["ccm-rock"]
+        elif vf in ("pop", "dance", "hiphop", "rnb"):
+            keep = ["ccm-pop"]
+        elif vf == "gospel":
+            keep = []
+    return family, keep[:3]
 # Discogs lists an album's genres alphabetically, so their order carries no meaning
 _GE_FLAT = {"discogs_g"}
 _ge_job = {"status": "idle", "phase": "", "albums_done": 0, "albums_total": 0,
@@ -3046,6 +3075,17 @@ async def _run_genre_engine():
                 "SELECT artist_key, title_key, tags FROM lastfm_tracks WHERE status='ok'")).fetchall()}
             la = {a: json.loads(g or "[]") for a, g in await (await db.execute(
                 "SELECT artist_key, tags FROM lastfm_artists WHERE status='ok'")).fetchall()}
+            # Your own tags: the genre each file had BEFORE ChartHound first wrote it
+            mine = {tid: [x.strip() for x in (old or "").split(";") if x.strip()]
+                    for tid, old in await (await db.execute(
+                        "SELECT track_id, old_value FROM write_log WHERE field_changed='genre' "
+                        "AND log_id IN (SELECT MIN(log_id) FROM write_log WHERE field_changed='genre' "
+                        "GROUP BY track_id)")).fetchall()}
+            for tid, g1, g2, g3 in await (await db.execute(
+                    "SELECT track_id, genre_1, genre_2, genre_3 FROM tracks")).fetchall():
+                if tid not in mine:
+                    mine[tid] = [g for g in (g1, g2, g3) if g]
+            rules = sorted(await _ge_get_rules(), key=lambda r: -len(r["prefix"]))
             out, n_check = [], 0
             for tid, artist, title, fp, alb in tracks:
                 ak, tk = _artist_key(artist), _title_key(title)
@@ -3058,6 +3098,22 @@ async def _run_genre_engine():
                     ("lfm_artist", _ge_tag_keys(la.get(ak))),
                 ]
                 v = _ge_vote(sources)
+                # Your own Christian/Gospel tags and folder rules decide the family outright;
+                # the online sources then only choose the style.
+                my_sacred = [k for k in _ge_tag_keys(mine.get(tid)) if set(_ge_family_of(k)) & GE_SACRED]
+                rule = next((r for r in rules if fp and (fp == r["prefix"] or fp.startswith(r["prefix"] + "/"))), None)
+                forced, why = None, None
+                if rule:
+                    forced, why = rule["family"], "rule"
+                elif my_sacred:
+                    forced = next(f for f in _ge_family_of(my_sacred[0]) if f in GE_SACRED)
+                    why = "your tags"
+                if forced:
+                    fam, sty = _ge_apply_rule(forced, v)
+                    own = [k for k in my_sacred if k in GE_STYLES and forced in GE_STYLES[k][1]]
+                    sty = (own + [x for x in sty if x not in own])[:3]
+                    v = {"family": fam, "styles": sty, "confidence": "high",
+                         "sources": (v["sources"] if v else []) + [why]}
                 if not v:
                     continue
                 n_check += v["confidence"] == "check"
@@ -3104,6 +3160,47 @@ async def genre_engine_stop(user: dict = Depends(require_auth)):
 async def genre_engine_status(user: dict = Depends(require_auth)):
     return _ge_job
 
+
+
+def _ge_norm_prefix(p: str) -> str:
+    p = (p or "").strip().rstrip("/")
+    msp, dmp = settings.media_server_music_prefix, settings.docker_music_prefix
+    if msp and dmp and p.startswith(msp):
+        p = dmp + p[len(msp):]
+    return p
+
+
+async def _ge_get_rules() -> list:
+    async with aiosqlite.connect(settings.database_url) as db:
+        row = await (await db.execute("SELECT value FROM app_settings WHERE key='ge_folder_rules'")).fetchone()
+    try:
+        rules = json.loads(row[0]) if row and row[0] else GE_DEFAULT_RULES
+    except Exception:
+        rules = GE_DEFAULT_RULES
+    return [{"prefix": _ge_norm_prefix(r.get("prefix", "")), "family": r.get("family")}
+            for r in rules if r.get("prefix") and r.get("family") in GE_FAMILIES]
+
+
+class GenreRules(BaseModel):
+    rules: List[dict]
+
+
+@router.get("/genre-engine/rules")
+async def genre_engine_rules_get(user: dict = Depends(require_auth)):
+    return {"rules": await _ge_get_rules()}
+
+
+@router.put("/genre-engine/rules")
+async def genre_engine_rules_put(req: GenreRules, user: dict = Depends(require_auth)):
+    clean = [{"prefix": _ge_norm_prefix(r.get("prefix", "")), "family": r.get("family")}
+             for r in req.rules[:50] if r.get("prefix") and r.get("family") in GE_FAMILIES]
+    async with aiosqlite.connect(settings.database_url) as db:
+        await db.execute(
+            "INSERT INTO app_settings (key, value, updated_at) VALUES ('ge_folder_rules', ?, datetime('now')) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
+            (json.dumps(clean),))
+        await db.commit()
+    return {"ok": True, "rules": clean}
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  ONLINE GENRES (M5a) — write Last.fm genres to files, GENRE field only

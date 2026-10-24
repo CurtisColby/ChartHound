@@ -1054,6 +1054,15 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
               <button class="btn btn-outline" id="og-btn-preview" onclick="geOpenReview()" style="flex:1;font-size:.65rem;font-family:var(--mono)">📋 REVIEW &amp; WRITE</button>
               <button class="btn btn-outline" id="og-btn-stop" onclick="ogStop()" style="font-size:.65rem;font-family:var(--mono);display:none;color:var(--red);border-color:var(--red)">■ STOP</button>
             </div>
+            <details style="margin-top:.45rem;border:1px solid var(--border);border-radius:6px;padding:.45rem .55rem" ontoggle="if(this.open)geLoadRules()">
+              <summary style="cursor:pointer;font-family:var(--mono);font-size:.58rem;color:var(--muted);letter-spacing:1px">📁 FOLDER RULES</summary>
+              <div style="font-family:var(--mono);font-size:.52rem;color:var(--muted2);line-height:1.6;margin:.4rem 0">Everything inside a listed folder gets that family (e.g. FULL CHRISTIAN ALBUMS → Christian). The online sources then only pick the style. Click RE-VOTE after saving.</div>
+              <div id="ge-rules"></div>
+              <div style="display:flex;gap:.3rem;margin-top:.35rem">
+                <button class="btn btn-outline" onclick="geAddRule()" style="flex:1;font-size:.55rem;font-family:var(--mono)">+ ADD</button>
+                <button class="btn btn-outline" onclick="geSaveRules()" style="flex:1;font-size:.55rem;font-family:var(--mono);color:var(--teal);border-color:var(--teal)">SAVE</button>
+              </div>
+            </details>
             <button class="btn btn-outline" onclick="geRevote(this)" title="Recalculate genres and CHECK flags from saved lookups — no internet lookups, takes seconds. Your manual edits are kept." style="width:100%;margin-top:.35rem;font-size:.58rem;font-family:var(--mono);color:var(--muted)">↻ RE-VOTE (no lookups)</button>
             <div id="og-status" style="font-family:var(--mono);font-size:.55rem;color:var(--muted2);line-height:1.6;margin-top:.4rem;word-break:break-word"></div>
           </div>
@@ -5201,6 +5210,31 @@ async function geWrite(selectedOnly) {
   toast('Writing genres in the background — progress shows in the left panel', 'ok');
   ogPoll();
 }
+let _geRules = [];
+async function geLoadRules() {
+  await geTaxonomy();
+  const r = await fetch(`${API}/api/retriever/genre-engine/rules`, {headers:authHdrs()});
+  _geRules = (await r.json()).rules || [];
+  geRenderRules();
+}
+function geRenderRules() {
+  const box = document.getElementById('ge-rules'); if (!box) return;
+  const fam = f => Object.entries(_geTax.families).map(([k, v]) => `<option value="${k}" ${k === f ? 'selected' : ''}>${esc(v)}</option>`).join('');
+  box.innerHTML = _geRules.map((r, i) => `<div style="display:flex;gap:.25rem;margin-bottom:.25rem">
+      <input value="${esc(r.prefix)}" oninput="_geRules[${i}].prefix=this.value" placeholder="/music/Folder" style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--border2);border-radius:4px;color:var(--text);font-family:var(--mono);font-size:.55rem;padding:.3rem">
+      <select onchange="_geRules[${i}].family=this.value" style="background:var(--bg);border:1px solid var(--border2);border-radius:4px;color:var(--text);font-family:var(--mono);font-size:.55rem">${fam(r.family)}</select>
+      <button onclick="_geRules.splice(${i},1);geRenderRules()" style="background:none;border:1px solid var(--border2);border-radius:4px;color:var(--red);cursor:pointer;font-size:.6rem">✕</button></div>`).join('')
+    || '<div style="font-family:var(--mono);font-size:.55rem;color:var(--muted2)">No rules.</div>';
+}
+function geAddRule() { _geRules.push({prefix: '/music/', family: 'ccm'}); geRenderRules(); }
+async function geSaveRules() {
+  const r = await fetch(`${API}/api/retriever/genre-engine/rules`, {method:'PUT', headers:authHdrs(), body:JSON.stringify({rules:_geRules})});
+  const d = await r.json();
+  if (!r.ok) { toast(d.detail || `HTTP ${r.status}`, 'error'); return; }
+  _geRules = d.rules; geRenderRules();
+  toast(`${d.rules.length} folder rule${d.rules.length === 1 ? '' : 's'} saved — click RE-VOTE to apply`, 'success');
+}
+
 async function geRevote(btn) {
   btn.disabled = true; const t = btn.textContent; btn.textContent = 'RE-VOTING…';
   try {
