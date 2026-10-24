@@ -63,7 +63,7 @@ async function stLoad() {
     return;
   }
   const c = d.connect, sc = d.scan, g = d.genres, p = d.playlists, gp = d.gaps, t = d.tracker;
-  const names = (c.verified || []).map(s => _ST_NAMES[s] || s);
+  const names = (c.verified || []).filter(s => _ST_NAMES[s]).map(s => _ST_NAMES[s]);
   const steps = [
     { n: 1, title: 'CONNECT YOUR SERVICES', go: [['GO → THE KENNEL', 'kennel']],
       what: 'Tell ChartHound where your media server (Plex, Emby or Jellyfin), chart sources and downloaders are. Save, then TEST each one.',

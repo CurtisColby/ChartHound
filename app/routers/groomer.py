@@ -2263,6 +2263,7 @@ async def _import_billboard_yearend(
     chart_name: str,
     label: str,
     start_year: int = 1990,
+    fallback_slug: str = "",
 ) -> None:
     """
     Shared helper: fetch Billboard year-end charts (start_year → current) + current
@@ -2279,17 +2280,23 @@ async def _import_billboard_yearend(
     current_year = datetime.utcnow().year
     songs: dict = {}
 
+    slugs = [s for s in (billboard_slug, fallback_slug) if s]   # Billboard renamed some charts in 2026
+
+    def _fetch(path_fmt: str):
+        for s in slugs:
+            try:
+                c = bb.ChartData(path_fmt.format(s), timeout=25)
+                if c and len(c):
+                    return c
+            except Exception:
+                pass
+        return None
+
     def _fetch_yearend(year: int):
-        try:
-            return bb.ChartData(f"year-end/{year}/{billboard_slug}", timeout=25)
-        except Exception:
-            return None
+        return _fetch(f"year-end/{year}/{{}}")
 
     def _fetch_current():
-        try:
-            return bb.ChartData(billboard_slug, timeout=25)
-        except Exception:
-            return None
+        return _fetch("{}")
 
     # ── Year-end loop ─────────────────────────────────────────────────────────
     for year in range(start_year, current_year + 1):
@@ -2370,7 +2377,8 @@ async def _import_billboard_yearend(
 
 async def _import_ccm():
     await _import_billboard_yearend(
-        billboard_slug="christian-songs",
+        billboard_slug="hot-christian-songs",
+        fallback_slug="christian-songs",
         data_tag="ccm_weekly",
         chart_name="ccm",
         label="Billboard Christian Songs",
@@ -2380,7 +2388,8 @@ async def _import_ccm():
 
 async def _import_country():
     await _import_billboard_yearend(
-        billboard_slug="country-songs",
+        billboard_slug="hot-country-songs",
+        fallback_slug="country-songs",
         data_tag="country_yearend",
         chart_name="country",
         label="Billboard Hot Country Songs",
@@ -2390,7 +2399,8 @@ async def _import_country():
 
 async def _import_rnb():
     await _import_billboard_yearend(
-        billboard_slug="r-b-hip-hop-songs",
+        billboard_slug="hot-r-and-b-hip-hop-songs",
+        fallback_slug="r-b-hip-hop-songs",
         data_tag="rnb_yearend",
         chart_name="rnb",
         label="Billboard R&B/Hip-Hop Songs",
@@ -2410,7 +2420,8 @@ async def _import_rock():
 
 async def _import_dance():
     await _import_billboard_yearend(
-        billboard_slug="dance-electronic-songs",
+        billboard_slug="hot-dance-electronic-songs",
+        fallback_slug="dance-electronic-songs",
         data_tag="dance_yearend",
         chart_name="dance",
         label="Billboard Dance/Electronic Songs",
