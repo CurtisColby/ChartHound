@@ -1918,12 +1918,23 @@ async def _background_checkmark(base: str, password: str, extra: dict,
 
 
 async def _qbt_login(client: httpx.AsyncClient, base: str, extra: dict, password: str) -> str:
+    """
+    Log in to qBittorrent. Same rules as The Kennel's TEST:
+      "Ok."            → logged in (SID cookie)
+      204 / empty 200  → whitelisted-IP bypass (Gluetun setups) — no cookie needed
+    """
     username = extra.get("username", "admin")
     r = await client.post(f"{base}/api/v2/auth/login",
         data={"username": username, "password": password})
-    if r.text.strip() != "Ok.":
-        raise HTTPException(502, "qBittorrent login failed.")
-    return r.cookies.get("SID", "")
+    body = r.text.strip()
+    if body == "Ok." or r.status_code == 204 or (r.status_code == 200 and body == ""):
+        return r.cookies.get("SID", "")
+    if r.status_code == 403:
+        raise HTTPException(502, "qBittorrent temporarily banned ChartHound's IP after failed logins — "
+                                 "wait 30 minutes or restart qBittorrent.")
+    if body == "Fails.":
+        raise HTTPException(502, "qBittorrent login failed — wrong username or password (check The Kennel).")
+    raise HTTPException(502, f"qBittorrent login failed (HTTP {r.status_code}).")
 
 
 async def _deluge_add_torrent(base: str, password: str, download_url: str, save_path: str = "") -> str:
