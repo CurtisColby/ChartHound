@@ -1902,8 +1902,8 @@ async def _background_checkmark(base: str, password: str, extra: dict,
     Phase 1 — Metadata wait: if files list is empty, force-resume to trigger
               metadata fetch from peers, retry until files appear.
     Phase 2 — Checkmark: set all files to priority 1 (Normal) and force-resume.
-    Retries every 5 seconds for up to 60 seconds (12 attempts).
-    If metadata never resolves, logs a warning so the user knows it's dead.
+    Checks every 5s for the first minute, then every 30s up to 15 minutes
+    (slow magnets over VPN). If metadata never resolves, logs a warning.
     """
     label = title or t_hash[:12] or "unknown"
 
@@ -1911,8 +1911,10 @@ async def _background_checkmark(base: str, password: str, extra: dict,
         log.warning(f"Checkmark: no hash captured for '{label}' — cannot track")
         return
 
-    for attempt in range(12):
-        await asyncio.sleep(5)
+    delays = [5] * 12 + [30] * 28                      # ≈ 15 minutes total
+    n = len(delays)
+    for attempt, wait in enumerate(delays):
+        await asyncio.sleep(wait)
         try:
             async with httpx.AsyncClient(timeout=15.0, verify=False) as client:
                 sid = await _qbt_login(client, base, extra, password)
@@ -1922,7 +1924,9 @@ async def _background_checkmark(base: str, password: str, extra: dict,
                 tr = await client.get(f"{base}/api/v2/torrents/info",
                     params={"hashes": t_hash}, cookies=cookies)
                 if not (tr.is_success and tr.json()):
-                    log.info(f"Checkmark: torrent {t_hash[:8]} not found, attempt {attempt+1}/12")
+                    log.info(f"Checkmark: torrent {t_hash[:8]} not found, attempt {attempt+1}/{n}")
+                    if attempt >= 2:                       # removed from qBittorrent — stop
+                        return
                     continue
 
                 torrent = tr.json()[0]
@@ -1936,8 +1940,9 @@ async def _background_checkmark(base: str, password: str, extra: dict,
                 if not files:
                     # No metadata yet — force resume to trigger peer connection
                     await _qbt_start(client, base, t_hash, cookies)
-                    log.info(f"Checkmark: '{label}' ({t_hash[:8]}) no files yet (metadata pending), "
-                             f"force-resumed, attempt {attempt+1}/12")
+                    if attempt < 3 or attempt % 10 == 0:
+                        log.info(f"Checkmark: '{label}' ({t_hash[:8]}) no files yet (metadata pending), "
+                                 f"force-resumed, attempt {attempt+1}/{n}")
                     continue
 
                 # Files exist — set all to priority 1
@@ -1961,7 +1966,7 @@ async def _background_checkmark(base: str, password: str, extra: dict,
         except Exception as e:
             log.warning(f"Checkmark attempt {attempt+1} error for '{label}': {e}")
 
-    log.warning(f"Checkmark: '{label}' ({t_hash[:8]}) failed to resolve metadata after 60s "
+    log.warning(f"Checkmark: '{label}' ({t_hash[:8]}) failed to resolve metadata after 15 min "
                 f"— torrent may be dead/fake. Remove it from qBittorrent manually.")
 
 
