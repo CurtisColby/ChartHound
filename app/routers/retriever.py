@@ -2852,7 +2852,7 @@ async def _ge_discogs_phase(albums: dict, artists_for_fallback: dict, token: str
     todo = list(albums.items()) + [(k, (a, None)) for k, a in artists_for_fallback.items()]
     _ge_job["albums_total"] = len(todo)
     async with httpx.AsyncClient(timeout=20.0) as client, \
-               aiosqlite.connect(settings.database_url, timeout=30) as db:
+               aiosqlite.connect(settings.database_url, timeout=120) as db:
         for i, (key, (artist, album)) in enumerate(todo):
             if _ge_stop["flag"]:
                 break
@@ -2901,10 +2901,9 @@ async def _ge_discogs_phase(albums: dict, artists_for_fallback: dict, token: str
                 st = [x for x, _ in sorted(cs.items(), key=lambda kv: -kv[1])]
             if status != "error":
                 await db.execute(SQL, (key, status, json.dumps(g), json.dumps(st)))
+                await db.commit()   # short write — never blocks the MusicBrainz side
             _ge_job["albums_done"] = i + 1
             _ge_job["message"] = f"Discogs: {artist}{' — ' + album if album else ''}"
-            if (i + 1) % 25 == 0:
-                await db.commit()
             await asyncio.sleep(max(0.0, 1.05 - (time.monotonic() - t0)))
         await db.commit()
 
@@ -2916,7 +2915,7 @@ async def _ge_mb_phase(artists: dict):
     _ge_job["artists_total"] = len(artists)
     hdr = {"User-Agent": "ChartHound/1.0 (https://github.com/CurtisColby/ChartHound)"}
     async with httpx.AsyncClient(timeout=20.0) as client, \
-               aiosqlite.connect(settings.database_url, timeout=30) as db:
+               aiosqlite.connect(settings.database_url, timeout=120) as db:
         for i, (ak, name) in enumerate(artists.items()):
             if _ge_stop["flag"]:
                 break
@@ -2936,9 +2935,8 @@ async def _ge_mb_phase(artists: dict):
                 pass
             if status != "error":
                 await db.execute(SQL, (ak, status, json.dumps(tags)))
+                await db.commit()   # short write — never blocks the Discogs side
             _ge_job["artists_done"] = i + 1
-            if (i + 1) % 25 == 0:
-                await db.commit()
         await db.commit()
 
 
@@ -3003,16 +3001,23 @@ async def _run_genre_engine():
 
         # Discogs (if connected) and MusicBrainz run side by side — different services
         _ge_job["phase"] = "lookups"
-        jobs = [_ge_mb_phase(mb_todo)]
+        async def _guard(name, coro):
+            # One source failing must never kill (or orphan) the other
+            try:
+                await coro
+            except Exception as e:
+                log.exception(f"Genre Engine: {name} lookups failed — continuing with other sources")
+                _ge_job.setdefault("warnings", []).append(f"{name}: {e}")
+        jobs = [_guard("MusicBrainz", _ge_mb_phase(mb_todo))]
         if token:
-            jobs.append(_ge_discogs_phase(albums, art_fallback, token))
+            jobs.append(_guard("Discogs", _ge_discogs_phase(albums, art_fallback, token)))
         else:
             _ge_job["message"] = "Discogs not connected — using MusicBrainz + Last.fm only."
         await asyncio.gather(*jobs)
 
         # ── Vote ──
         _ge_job.update({"phase": "voting", "message": "Voting on genres…"})
-        async with aiosqlite.connect(settings.database_url, timeout=30) as db:
+        async with aiosqlite.connect(settings.database_url, timeout=120) as db:
             disc = {k: (json.loads(g or "[]"), json.loads(s or "[]")) for k, g, s in await (await db.execute(
                 "SELECT lookup_key, genres, styles FROM ge_discogs WHERE status='ok'")).fetchall()}
             mb = {k: json.loads(t or "[]") for k, t in await (await db.execute(
@@ -3046,18 +3051,24 @@ async def _run_genre_engine():
         _ge_job.update({"status": "stopped" if stopped else "done", "phase": "", "scored": len(out),
                         "check": n_check,
                         "message": (f"{'Stopped — partial results saved' if stopped else 'Done'}: "
-                                    f"{len(out):,} songs have a genre, {n_check:,} marked to check")})
+                                    f"{len(out):,} songs have a genre, {n_check:,} marked to check"
+                                    + (f" · ⚠ {'; '.join(_ge_job.get('warnings', []))[:200]}"
+                                       if _ge_job.get("warnings") else ""))})
         log.info(f"Genre Engine: {_ge_job['message']}")
     except Exception as e:
         log.exception("Genre Engine failed")
         _ge_job.update({"status": "failed", "message": f"Error: {e}"})
 
 
+_ge_task = {"task": None}
+
+
 @router.post("/genre-engine/start")
-async def genre_engine_start(background_tasks: BackgroundTasks, user: dict = Depends(require_auth)):
-    if _ge_job.get("status") == "running":
+async def genre_engine_start(user: dict = Depends(require_auth)):
+    t = _ge_task["task"]
+    if t is not None and not t.done():
         raise HTTPException(409, "Already running.")
-    background_tasks.add_task(_run_genre_engine)
+    _ge_task["task"] = asyncio.create_task(_run_genre_engine())
     return {"ok": True}
 
 
