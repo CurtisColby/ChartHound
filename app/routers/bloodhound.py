@@ -196,6 +196,18 @@ async def artist_releases(req: ArtistReleasesRequest, _=Depends(require_auth)):
         rel["in_library"] = owned
         rel["track_id"] = tid
 
+    # M6: Billboard 200 peak / weeks → "essential" albums float to the top
+    try:
+        import asyncio as _aio
+        from app.routers.groomer import album_chart_info_sync
+        info = await _aio.get_event_loop().run_in_executor(
+            None, album_chart_info_sync, artist_name, [r["title"] for r in releases])
+        for rel in releases:
+            rel.update(info.get(rel["title"], {}))
+            rel["essential"] = bool(rel.get("b200_peak") and (rel["b200_peak"] <= 20 or (rel.get("b200_weeks") or 0) >= 52))
+    except Exception as e:
+        log.warning(f"Billboard 200 lookup failed: {e}")
+
     owned_ct = sum(1 for r in releases if r["in_library"])
     return {
         "results": releases,

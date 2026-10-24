@@ -1437,6 +1437,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
             <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--gold);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">SEARCH MODE<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
             <div style="display:flex;gap:.5rem">
               <button id="snf-mode-gap" onclick="snfSetMode('gap')" style="flex:1;padding:.5rem;background:var(--gold);color:#000;border:none;border-radius:5px;font-family:var(--mono);font-size:.65rem;letter-spacing:1px;cursor:pointer;transition:all .2s">📊 CHART GAP FILL</button>
+              <button id="snf-mode-bighits" onclick="snfSetMode('bighits')" style="flex:1;padding:.5rem;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:5px;font-family:var(--mono);font-size:.65rem;letter-spacing:1px;cursor:pointer;transition:all .2s">🏆 BIG HITS</button>
               <button id="snf-mode-trending" onclick="snfSetMode('trending')" style="flex:1;padding:.5rem;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:5px;font-family:var(--mono);font-size:.65rem;letter-spacing:1px;cursor:pointer;transition:all .2s">🔥 TRENDING</button>
             </div>
           </div>
@@ -1455,6 +1456,16 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
           </div>
 
           <!-- GAP FILL OPTIONS -->
+          <div id="snf-bighits-section" style="display:none;margin-bottom:1rem">
+            <div style="background:rgba(245,166,35,.06);border:1px solid rgba(245,166,35,.3);border-radius:8px;padding:.7rem;display:flex;flex-direction:column;gap:.55rem">
+              <div style="font-family:var(--mono);font-size:.56rem;color:var(--muted);line-height:1.7">The biggest chart hits you <b>don't own</b>, ranked by the same <b>Hit Score</b> as Top Dogs. Uses the genres and decades below; the tier and peak filters aren't used here.</div>
+              <div>
+                <div style="display:flex;justify-content:space-between;margin-bottom:.3rem"><label style="font-size:.7rem;color:var(--muted)">Min Hit Score<span class="grm-q" tabindex="0" data-tip="70+ = songs most people know. 80+ = the biggest hits. Lower it to see more.">?</span></label><span id="snf-bh-score-display" style="font-family:var(--display);font-size:1.05rem;color:var(--amber)">70+</span></div>
+                <input type="range" id="snf-bh-score" min="30" max="95" step="5" value="70" oninput="document.getElementById('snf-bh-score-display').textContent=this.value+'+'" style="width:100%">
+              </div>
+              <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.7rem;color:var(--muted)"><input type="checkbox" id="snf-bh-ohw" style="accent-color:var(--gold)"> One-hit wonders only</label>
+            </div>
+          </div>
           <div id="snf-gap-section">
             <!-- GENRES -->
             <div>
@@ -1845,6 +1856,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
                 <input type="range" id="grm-gap" min="0" max="30" step="1" value="12" oninput="document.getElementById('grm-gap-display').textContent=this.value" style="width:100%">
                 <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted2);margin-top:.2rem">Songs before the same artist can play again</div>
               </div>
+              <div id="grm-missing-hint" style="display:none;cursor:pointer;font-family:var(--mono);font-size:.6rem;line-height:1.6;color:var(--gold);background:rgba(245,166,35,.07);border:1px solid rgba(245,166,35,.3);border-radius:6px;padding:.45rem .55rem"></div>
               <button id="grm-btn-build" onclick="grmBuildPlaylist()" style="width:100%;padding:.6rem;background:var(--amber);color:#000;border:none;border-radius:6px;font-family:var(--display);font-size:1rem;letter-spacing:2px;cursor:pointer">🚗 BUILD PLAYLIST</button>
               <button onclick="grmRecalcScores(this)" style="width:100%;padding:.35rem;background:transparent;color:var(--muted);border:1px solid var(--border2);border-radius:5px;font-family:var(--mono);font-size:.55rem;cursor:pointer">↻ Recalculate Hit Scores</button>
             </div>
@@ -2062,6 +2074,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
               <button id="bh-mode-artist" onclick="bhSetMode('artist')" style="flex:1;padding:.5rem;background:var(--orange);color:#000;border:none;border-radius:5px;font-family:var(--mono);font-size:.6rem;letter-spacing:1px;cursor:pointer;transition:all .2s">🎤 ARTIST</button>
               <button id="bh-mode-album" onclick="bhSetMode('album')" style="flex:1;padding:.5rem;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:5px;font-family:var(--mono);font-size:.6rem;letter-spacing:1px;cursor:pointer;transition:all .2s">💿 ALBUM</button>
               <button id="bh-mode-comp" onclick="bhSetMode('comp')" style="flex:1;padding:.5rem;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:5px;font-family:var(--mono);font-size:.6rem;letter-spacing:1px;cursor:pointer;transition:all .2s">📀 COMPS</button>
+              <button id="bh-mode-essential" onclick="bhSetMode('essential')" style="flex:1;padding:.5rem;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:5px;font-family:var(--mono);font-size:.6rem;letter-spacing:1px;cursor:pointer;transition:all .2s">⭐ ESSENTIAL</button>
               <button id="bh-mode-genre" onclick="bhSetMode('genre')" style="flex:1;padding:.5rem;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:5px;font-family:var(--mono);font-size:.6rem;letter-spacing:1px;cursor:pointer;transition:all .2s">🎵 GENRE</button>
             </div>
           </div>
@@ -2152,6 +2165,12 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
           </div>
 
           <!-- GENRE BROWSE -->
+          <div id="bh-essential-section" style="display:none">
+            <div style="font-family:var(--mono);font-size:.56rem;color:var(--muted);line-height:1.7;margin-bottom:.6rem">The biggest albums on the <b>Billboard 200</b> since 1967, ranked by peak and weeks on the chart. <span id="bh-b200-status" style="color:var(--muted2)"></span></div>
+            <div style="display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:.6rem"><label style="display:flex;align-items:center;gap:.3rem;font-size:.65rem;color:var(--muted);cursor:pointer"><input type="checkbox" class="bh-ess-dec" value="1960" style="accent-color:var(--orange)">60s</label><label style="display:flex;align-items:center;gap:.3rem;font-size:.65rem;color:var(--muted);cursor:pointer"><input type="checkbox" class="bh-ess-dec" value="1970" style="accent-color:var(--orange)">70s</label><label style="display:flex;align-items:center;gap:.3rem;font-size:.65rem;color:var(--muted);cursor:pointer"><input type="checkbox" class="bh-ess-dec" value="1980" style="accent-color:var(--orange)">80s</label><label style="display:flex;align-items:center;gap:.3rem;font-size:.65rem;color:var(--muted);cursor:pointer"><input type="checkbox" class="bh-ess-dec" value="1990" style="accent-color:var(--orange)">90s</label><label style="display:flex;align-items:center;gap:.3rem;font-size:.65rem;color:var(--muted);cursor:pointer"><input type="checkbox" class="bh-ess-dec" value="2000" style="accent-color:var(--orange)">00s</label><label style="display:flex;align-items:center;gap:.3rem;font-size:.65rem;color:var(--muted);cursor:pointer"><input type="checkbox" class="bh-ess-dec" value="2010" style="accent-color:var(--orange)">10s</label><label style="display:flex;align-items:center;gap:.3rem;font-size:.65rem;color:var(--muted);cursor:pointer"><input type="checkbox" class="bh-ess-dec" value="2020" style="accent-color:var(--orange)">20s</label></div>
+            <label style="display:flex;align-items:center;gap:.4rem;font-size:.65rem;color:var(--muted);cursor:pointer;margin-bottom:.6rem"><input type="checkbox" id="bh-ess-missing" style="accent-color:var(--orange)"> Only albums I'm missing</label>
+            <button onclick="bhEssential()" style="width:100%;padding:.6rem;background:var(--orange);color:#000;border:none;border-radius:6px;font-family:var(--display);font-size:.95rem;letter-spacing:2px;cursor:pointer">⭐ SHOW ESSENTIAL ALBUMS</button>
+          </div>
           <div id="bh-genre-section" style="display:none">
             <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--orange);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">SELECT GENRE<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
             <div style="display:flex;flex-wrap:wrap;gap:.4rem">
@@ -6661,6 +6680,40 @@ function grmPlaylistJobs() {
   return ids.length ? [{name, ids}] : [];
 }
 
+// ── M6: "N big hits you don't own" after a build ─────────────────
+async function grmMissingHint(body) {
+  const el = document.getElementById('grm-missing-hint'); if (!el) return;
+  el.style.display = 'none';
+  const minScore = Math.max(70, body.min_score || 0);
+  try {
+    const r = await fetch(`${API}/api/groomer/big-hits`, {method:'POST', headers:authHdrs(),
+      body: JSON.stringify({decades: body.decades, genres: (body.genre || '').split(',').filter(Boolean),
+                            min_score: minScore, ohw_only: body.ohw_only, crossovers: body.crossovers, limit: 0})});
+    const d = await r.json();
+    if (!r.ok || !d.total) return;
+    const dec = (body.decades || []).map(x => `${String(x).slice(2)}s`).join('+');
+    el.innerHTML = `🎯 <b>${d.total.toLocaleString()}</b> big ${dec ? dec + ' ' : ''}hits (score ${minScore}+) you don't own → <u>find them in The Sniffer</u>`;
+    el.onclick = () => grmOpenSnifferGaps(body, minScore);
+    el.style.display = '';
+  } catch {}
+}
+function grmOpenSnifferGaps(body, minScore) {
+  switchTab('sniffer');
+  setTimeout(() => {
+    snfSetMode('bighits');
+    const all = document.getElementById('snf-decade-all');
+    const decs = (body.decades || []).map(d => `${d}s`);
+    if (all) all.checked = !decs.length;
+    document.querySelectorAll('.snf-decade').forEach(cb => cb.checked = decs.includes(cb.value));
+    const fams = (body.genre || '').split(',');
+    document.querySelectorAll('.snf-genre').forEach(cb => cb.checked = fams.includes(cb.value));
+    document.getElementById('snf-bh-score').value = minScore;
+    document.getElementById('snf-bh-score-display').textContent = minScore + '+';
+    document.getElementById('snf-bh-ohw').checked = !!body.ohw_only;
+    snfRunAnalysis();
+  }, 300);
+}
+
 // ── Presets ──────────────────────────────────────────────────────
 let grmPresets = {};
 async function grmLoadPresets() {
@@ -6775,6 +6828,7 @@ async function grmBuildPlaylist() {
     if (grmBuiltDays) msg += ' · ' + grmBuiltDays.map(x => `Day ${x.day}: ${grmFmtHours(x.minutes)}`).join(', ');
     if (d.unknown_durations) msg += ` · ${d.unknown_durations} lengths estimated (rescan fills these in)`;
     grmLog(msg, 'ok');
+    grmMissingHint(body);
     if (d.short) toast('Not enough matching songs to fill the full length — loosen the filters.', 'warn');
     else toast(`Playlist built — ${d.count} songs`, 'success');
   } catch (e) {
@@ -7333,18 +7387,20 @@ let _snfTrendingPage = 1;
 
 function snfSetMode(mode) {
   snfCurrentMode = mode;
-  const isGap = mode === 'gap';
-  document.getElementById('snf-mode-gap').style.background = isGap ? 'var(--gold)' : 'var(--surface2)';
-  document.getElementById('snf-mode-gap').style.color = isGap ? '#000' : 'var(--muted)';
-  document.getElementById('snf-mode-gap').style.border = isGap ? 'none' : '1px solid var(--border)';
-  document.getElementById('snf-mode-trending').style.background = isGap ? 'var(--surface2)' : 'var(--gold)';
-  document.getElementById('snf-mode-trending').style.color = isGap ? 'var(--muted)' : '#000';
-  document.getElementById('snf-mode-trending').style.border = isGap ? '1px solid var(--border)' : 'none';
-  document.getElementById('snf-gap-section').style.display = isGap ? 'flex' : 'none';
-  document.getElementById('snf-gap-section').style.flexDirection = 'column';
-  document.getElementById('snf-gap-section').style.gap = '1rem';
-  document.getElementById('snf-trending-section').style.display = isGap ? 'none' : 'block';
-  document.getElementById('snf-btn-search').textContent = isGap ? '\ud83d\udd0d FIND MISSING TRACKS' : '\ud83d\udd25 FIND TRENDING';
+  const on  = 'background:var(--gold);color:#000;border:none';
+  const off = 'background:var(--surface2);color:var(--muted);border:1px solid var(--border)';
+  ['gap','bighits','trending'].forEach(function(m) {
+    const b = document.getElementById('snf-mode-' + m); if (!b) return;
+    const st = (m === mode ? on : off).split(';');
+    st.forEach(function(kv){ const p = kv.split(':'); b.style[p[0].trim()] = p.slice(1).join(':').trim(); });
+  });
+  const showGap = mode === 'gap' || mode === 'bighits';
+  const gs = document.getElementById('snf-gap-section');
+  gs.style.display = showGap ? 'flex' : 'none'; gs.style.flexDirection = 'column'; gs.style.gap = '1rem';
+  document.getElementById('snf-bighits-section').style.display = mode === 'bighits' ? 'block' : 'none';
+  document.getElementById('snf-trending-section').style.display = mode === 'trending' ? 'block' : 'none';
+  document.getElementById('snf-btn-search').textContent =
+    mode === 'gap' ? '\ud83d\udd0d FIND MISSING TRACKS' : mode === 'bighits' ? '\ud83c\udfc6 FIND BIG HITS I DON\u2019T OWN' : '\ud83d\udd25 FIND TRENDING';
 }
 
 function snfLog(msg, type='') {
@@ -7406,7 +7462,44 @@ function snfUpdatePeak(v) {
 
 async function snfRunAnalysis() {
   if (snfCurrentMode === 'gap') await snfGapAnalysis();
+  else if (snfCurrentMode === 'bighits') await snfBigHits();
   else await snfTrending();
+}
+
+// ── M6: Big hits you don't own (Hit Score) ───────────────────────
+const _SNF_GENRE_KEY = {alternative:'alternative', indie:'indierock', electronic:'dance'};
+async function snfBigHits() {
+  const genres  = snfGetSelectedGenres().map(function(g){ return _SNF_GENRE_KEY[g] || g; });
+  const decades = snfGetSelectedDecades().map(function(d){ return parseInt(d); }).filter(function(d){ return d > 0; });
+  const minScore = parseInt(document.getElementById('snf-bh-score').value);
+  const ohw = document.getElementById('snf-bh-ohw').checked;
+  snfResults = []; snfOffset = 0;
+  snfLog('Finding big hits you don\u2019t own \u00b7 score ' + minScore + '+' + (decades.length ? ' \u00b7 ' + decades.map(function(d){return d+'s'}).join(', ') : '') + (genres.length ? ' \u00b7 ' + genres.join(', ') : '') + '\u2026', 'info');
+  document.getElementById('snf-status-title').textContent = 'SEARCHING\u2026'; document.getElementById('snf-pulse-bar').style.display = 'block';
+  document.getElementById('snf-btn-search').disabled = true;
+  try {
+    const r = await fetch(API + '/api/groomer/big-hits', {method:'POST', headers:authHdrs(),
+      body: JSON.stringify({decades: decades, genres: genres, min_score: minScore, ohw_only: ohw, crossovers: true, limit: 1000})});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || 'HTTP ' + r.status);
+    snfResults = (d.results || []).map(function(x) {
+      return {artist: x.artist, title: x.title, chart_year: x.year, peak_position: x.hot100_peak,
+              hit_score: x.hit_score, listeners: x.listeners, in_library: false,
+              primary_chart_label: 'SCORE ' + x.hit_score + (x.one_hit_wonder ? ' \u00b7 1-HIT' : '') + (x.yearend_rank ? ' \u00b7 year-end #' + x.yearend_rank : ''),
+              sources: x.families || []};
+    });
+    _snfSortKey = 'score'; _snfSortAsc = true;
+    snfTotal = d.total || 0;
+    document.getElementById('snf-s-total').textContent = snfTotal.toLocaleString();
+    document.getElementById('snf-s-owned').textContent = '0';
+    document.getElementById('snf-s-missing').textContent = snfTotal.toLocaleString();
+    document.getElementById('snf-status-title').textContent = 'BIG HITS YOU DON\u2019T OWN';
+    document.getElementById('snf-status-sub').textContent = snfTotal.toLocaleString() + ' songs' + (snfTotal > snfResults.length ? ' \u00b7 showing top ' + snfResults.length : '');
+    snfRenderResults(); snfUpdateLoadMore();
+    snfLog('\u2713 ' + snfTotal.toLocaleString() + ' big hits missing from your library', 'ok');
+    if (d.lookups_pending) snfLog('\u23f3 Looking up how much ' + d.lookups_pending + ' of these are still played today (Last.fm, in the background). Click FIND again in a few minutes for sharper scores.', 'info');
+  } catch(e) { snfLog('\u2717 ' + e.message, 'err'); document.getElementById('snf-status-title').textContent = 'ERROR'; }
+  document.getElementById('snf-btn-search').disabled = false; document.getElementById('snf-pulse-bar').style.display = 'none';
 }
 
 async function snfGapAnalysis(append) {
@@ -7517,7 +7610,7 @@ function snfRenderResults() {
   tbody.innerHTML = '';
   let data = snfResults.slice();
   data.forEach(function(r, i) { r._origIdx = i; });
-  const sortFns = { artist: function(r){return (r.artist||'').toLowerCase()}, title: function(r){return (r.title||'').toLowerCase()}, year: function(r){return r.chart_year||0}, peak: function(r){return r.peak_position||999}, status: function(r){return r.in_library?1:0} };
+  const sortFns = { artist: function(r){return (r.artist||'').toLowerCase()}, title: function(r){return (r.title||'').toLowerCase()}, year: function(r){return r.chart_year||0}, peak: function(r){return r.peak_position||999}, status: function(r){return r.in_library?1:0}, score: function(r){return -(r.hit_score||0)} };
   const fn = sortFns[_snfSortKey] || sortFns.peak;
   data.sort(function(a,b) { const av=fn(a), bv=fn(b); if(av<bv)return _snfSortAsc?-1:1; if(av>bv)return _snfSortAsc?1:-1; return 0; });
   if (!data.length) { empty.style.display = 'block'; return; }
@@ -7922,7 +8015,7 @@ function bhLog(msg, type) {
 
 function bhSetMode(mode) {
   _bhMode = mode;
-  ['artist','album','comp','genre'].forEach(function(m) {
+  ['artist','album','comp','essential','genre'].forEach(function(m) {
     var btn = document.getElementById('bh-mode-' + m);
     if (!btn) return;
     if (m === mode) {
@@ -7935,6 +8028,38 @@ function bhSetMode(mode) {
   document.getElementById('bh-album-section').style.display  = mode === 'album'  ? 'block' : 'none';
   document.getElementById('bh-comp-section').style.display   = mode === 'comp'   ? 'block' : 'none';
   document.getElementById('bh-genre-section').style.display  = mode === 'genre'  ? 'block' : 'none';
+  document.getElementById('bh-essential-section').style.display = mode === 'essential' ? 'block' : 'none';
+  if (mode === 'essential') bhB200Status();
+}
+
+// ── M6: Essential albums (Billboard 200) ──
+async function bhB200Status() {
+  try {
+    const d = await (await fetch(API + '/api/groomer/albums/status', {headers:authHdrs()})).json();
+    const el = document.getElementById('bh-b200-status');
+    if (el) el.textContent = d.albums ? '(' + d.albums.toLocaleString() + ' albums · updated ' + (d.imported_at || '').slice(0,10) + ')'
+                                      : (d.status === 'running' ? '(downloading chart history…)' : '(chart history downloads automatically a few minutes after startup)');
+  } catch(e) {}
+}
+async function bhEssential() {
+  const decades = Array.from(document.querySelectorAll('.bh-ess-dec:checked')).map(function(c){ return parseInt(c.value); });
+  bhLog('⭐ Loading essential albums…', 'info');
+  document.getElementById('bh-status-title').textContent = 'LOADING…'; document.getElementById('bh-pulse-bar').style.display = 'block';
+  try {
+    const r = await fetch(API + '/api/groomer/albums/essential', {method:'POST', headers:authHdrs(),
+      body: JSON.stringify({decades: decades, include_owned: !document.getElementById('bh-ess-missing').checked, limit: 400})});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || 'HTTP ' + r.status);
+    _bhResults = (d.results || []).map(function(a) {
+      return {artist: a.artist, title: a.album, type: 'Album', year: a.year ? String(a.year) : '', secondary: [],
+              in_library: a.in_library, b200_peak: a.b200_peak, b200_weeks: a.b200_weeks, essential: true};
+    });
+    document.getElementById('bh-s-total').textContent = d.total.toLocaleString();
+    document.getElementById('bh-status-title').textContent = 'ESSENTIAL ALBUMS';
+    document.getElementById('bh-status-sub').textContent = d.total.toLocaleString() + ' albums · ' + d.owned.toLocaleString() + ' owned' + (d.total > _bhResults.length ? ' · showing top ' + _bhResults.length : '');
+    if (!d.total) bhLog('No album chart data yet — it downloads automatically a few minutes after ChartHound starts.', 'warn');
+    bhRenderResults();
+  } catch(e) { bhLog('✗ ' + e.message, 'err'); document.getElementById('bh-status-title').textContent = 'ERROR'; document.getElementById('bh-pulse-bar').style.display = 'none'; }
 }
 
 // ── Artist Search ──
@@ -8016,7 +8141,8 @@ async function bhLoadReleases() {
     var d = await r.json();
     if (!r.ok) throw new Error(d.detail || 'HTTP ' + r.status);
     _bhResults = (d.results || []).map(function(rg) {
-      return { artist: d.artist_name || _bhSelectedArtist.name, title: rg.title, type: rg.primary_type || '', year: (rg.first_release||'').substring(0,4), mbid: rg.mbid, secondary: rg.secondary_types || [], in_library: rg.in_library || false };
+      return { artist: d.artist_name || _bhSelectedArtist.name, title: rg.title, type: rg.primary_type || '', year: (rg.first_release||'').substring(0,4), mbid: rg.mbid, secondary: rg.secondary_types || [], in_library: rg.in_library || false,
+               b200_peak: rg.b200_peak, b200_weeks: rg.b200_weeks, essential: rg.essential };
     });
     bhLog('✓ Found ' + _bhResults.length + ' release(s)', 'ok');
     document.getElementById('bh-s-total').textContent = _bhResults.length;
@@ -8206,6 +8332,7 @@ function bhRenderResults() {
   var ownedCt = 0, missingCt = 0;
   _bhResults.forEach(function(r, idx) {
     var owned = r.in_library || false;
+    var b200 = r.b200_peak ? ' <span title="Billboard 200: peak #' + r.b200_peak + ', ' + (r.b200_weeks||0) + ' weeks" style="font-size:.5rem;padding:.08rem .35rem;border-radius:8px;border:1px solid var(--gold);color:var(--gold);white-space:nowrap">' + (r.essential ? '⭐ ' : '') + 'B200 #' + r.b200_peak + ' · ' + (r.b200_weeks||0) + 'w</span>' : '';
     if (owned) ownedCt++; else missingCt++;
     var tr = document.createElement('tr');
     tr.dataset.text = ((r.artist||'') + ' ' + (r.title||'')).toLowerCase();
@@ -8218,7 +8345,7 @@ function bhRenderResults() {
     var typeColor = r.type === 'Album' ? 'var(--teal)' : r.type === 'Single' ? 'var(--purple)' : 'var(--amber)';
     var statusHTML = owned ? '<span style="color:var(--green)">\u2705 Owned</span>' : '<span style="color:var(--red)">\u274c Missing</span>';
     tr.innerHTML = '<td style="padding:.45rem .75rem;color:var(--muted)">' + esc(r.artist||'') + '</td>'
-      + '<td style="padding:.45rem .75rem;color:var(--text)">' + esc(r.title||'') + '</td>'
+      + '<td style="padding:.45rem .75rem;color:var(--text)">' + esc(r.title||'') + b200 + '</td>'
       + '<td style="padding:.45rem .75rem"><span style="font-size:.55rem;padding:.1rem .35rem;border-radius:8px;background:rgba(251,146,60,.1);border:1px solid rgba(251,146,60,.25);color:' + typeColor + ';white-space:nowrap">' + esc(typeLabel) + '</span></td>'
       + '<td style="padding:.45rem .75rem;color:var(--muted)">' + esc(r.year||'\u2014') + '</td>'
       + '<td style="padding:.45rem .75rem">' + statusHTML + '</td>'

@@ -3007,6 +3007,7 @@ async def groomer_startup():
     asyncio.create_task(_library_cache_scheduler())
     asyncio.create_task(_hit_score_startup())
     asyncio.create_task(_lastfm_startup())
+    asyncio.create_task(_b200_startup())
     log.info("Groomer scheduler started (auto-refresh every 7 days for current-week sources).")
     log.info("Library cache scheduler started (auto-sync every 24h from physical files).")
 
@@ -3193,17 +3194,43 @@ def _staying_boost(listeners: Optional[int]) -> float:
     return min(15.0, 7.5 * math.log10(listeners / 100_000))
 
 
-def _rebuild_hit_scores_sync() -> int:
-    """Load chart sources into memory once, score every charted track, rewrite hit_scores."""
-    t0 = time.time()
+_CHART_INDEX = {"stamp": None, "data": None}
+
+
+def _chart_index_sync(force: bool = False) -> tuple:
+    """
+    Every chart song in one dict: (artist_key, title_key) → [(tier, chart, peak, weeks, year, yrank)].
+    Also top40 (artist_key → set of Top-40 Hot 100 titles) and display names.
+    Cached in memory; rebuilt when chart data changes (or force=True).
+    """
+    stamp = None
+    try:
+        dconn0 = sqlite3.connect(_DYNAMIC_DB, check_same_thread=False)
+        try:
+            stamp = dconn0.execute(
+                "SELECT COUNT(*), MAX(added_at) FROM chart_reference_extras").fetchone()
+        except Exception:
+            stamp = (0, None)
+        finally:
+            dconn0.close()
+        stamp = (stamp, os.path.getmtime(_STATIC_DB) if os.path.exists(_STATIC_DB) else 0)
+    except Exception:
+        pass
+    if not force and _CHART_INDEX["data"] is not None and _CHART_INDEX["stamp"] == stamp:
+        return _CHART_INDEX["data"]
+
     index: dict = {}
     top40: dict = {}
+    names: dict = {}
 
     def _add(artist, title, tier, chart, peak, weeks, year, yrank=None):
         if not tier or not artist or not title:
             return
         ak, tk = _artist_key(artist), _title_key(title)
-        index.setdefault((ak, tk), []).append((tier, chart, peak, weeks, year, yrank))
+        key = (ak, tk)
+        index.setdefault(key, []).append((tier, chart, peak, weeks, year, yrank))
+        if key not in names or tier == 1:
+            names[key] = (artist, title)
         if tier == 1 and peak and peak <= 40:
             top40.setdefault(ak, set()).add(tk)
 
@@ -3241,7 +3268,118 @@ def _rebuild_hit_scores_sync() -> int:
                 _add(artist, title, _source_tier(src or "", chart or ""), chart, peak, wks, yr)
         except Exception:
             pass
+    finally:
+        dconn.close()
+    _CHART_INDEX.update(stamp=stamp, data=(index, top40, names))
+    return index, top40, names
 
+
+# Chart name → family, for songs you don't own (no Genre Engine data for those)
+_CHART_FAMILY_HINTS = (
+    ("christian", "ccm"), ("ccm", "ccm"), ("gospel", "gospel"), ("country", "country"),
+    ("c&w", "country"), ("r&b", "rnb"), ("rnb", "rnb"), ("soul", "rnb"), ("rap", "hiphop"),
+    ("hip", "hiphop"), ("rock", "rock"), ("alternative", "rock"), ("dance", "dance"),
+    ("club", "dance"), ("electronic", "dance"), ("adult", "pop"), ("pop", "pop"),
+)
+
+
+def _chart_families(rows: list) -> set:
+    fams = set()
+    for r in rows:
+        c = str(r[1] or "").lower()
+        if r[0] == 1:          # Hot 100 says nothing about genre
+            continue
+        for hint, fam in _CHART_FAMILY_HINTS:
+            if hint in c:
+                fams.add(fam)
+                break
+    return fams
+
+
+def _big_hits_sync(decades: list, genres: list, min_score: int, ohw_only: bool,
+                   crossovers: bool, limit: int) -> dict:
+    """
+    Chart songs you DON'T own, ranked by the same Hit Score Top Dogs uses.
+    Genre for unowned songs: Last.fm tags (if cached) + which genre charts the song was on.
+    """
+    from app.routers import retriever as _ret
+    index, top40, names = _chart_index_sync()
+    dconn = sqlite3.connect(_DYNAMIC_DB, check_same_thread=False)
+    try:
+        owned = set()
+        for ar, ti in dconn.execute(
+                "SELECT COALESCE(tag_artist, ''), title FROM tracks WHERE COALESCE(missing, 0) = 0"):
+            owned.add((_artist_key(ar), _title_key(ti)))
+        try:
+            for ar, ti in dconn.execute("SELECT artist_norm, title_norm FROM library_cache"):
+                owned.add((_artist_key(ar or ""), _title_key(ti or "")))
+        except Exception:
+            pass
+        lfm = {}
+        try:
+            for ak_, tk_, lis, tags in dconn.execute(
+                    "SELECT artist_key, title_key, listeners, tags FROM lastfm_tracks WHERE status='ok'"):
+                lfm[(ak_, tk_)] = (lis or 0, tags)
+        except Exception:
+            pass
+        looked = set()
+        try:
+            looked = {(a, t) for a, t in dconn.execute("SELECT artist_key, title_key FROM lastfm_tracks")}
+        except Exception:
+            pass
+    finally:
+        dconn.close()
+
+    ranges = [(int(d), int(d) + 9) for d in decades or []]
+    sel = set(genres or [])
+    sel_fams = {g for g in sel if g in _ret.GE_FAMILIES}
+    for g in sel:   # a style picked → its family counts for unowned songs
+        if g in _ret.GE_STYLES:
+            sel_fams |= set(_ret.GE_STYLES[g][1][:1 if not crossovers else 2])
+    if "mellow" in sel:
+        sel_fams |= {"pop", "jazz"}
+
+    out = []
+    for key, rows in index.items():
+        if key in owned or not any(r[0] == 1 and r[2] for r in rows) and not any(r[0] == 2 for r in rows):
+            continue
+        score, year, h_peak, h_wks, yrank, n = _score_track(rows, None, "high")
+        lis, ttags = lfm.get(key, (0, None))
+        if lis:
+            room = max(0.0, 100 - score) / 50
+            score = int(round(min(100, max(score + _staying_boost(lis) * min(1.0, room),
+                                           _popularity_score(lis)))))
+        if score < (min_score or 0):
+            continue
+        if ranges and not (year and any(lo <= int(year) <= hi for lo, hi in ranges)):
+            continue
+        ak, tk = key
+        ohw = ak in top40 and len(top40[ak]) == 1 and tk in top40[ak]
+        if ohw_only and not ohw:
+            continue
+        fams = _chart_families(rows)
+        tag_keys = _genres_from_tags(ttags)
+        for k in tag_keys:
+            fams |= set(_ret.GE_STYLES[k][1]) if k in _ret.GE_STYLES else ({k} if k in _ret.GE_FAMILIES else set())
+        if sel and not (fams & sel_fams or set(tag_keys) & sel):
+            continue
+        artist, title = names.get(key, key)
+        out.append({"artist": artist, "title": title, "year": year, "hit_score": score,
+                    "hot100_peak": h_peak, "hot100_weeks": h_wks, "yearend_rank": yrank,
+                    "one_hit_wonder": 1 if ohw else 0, "listeners": lis or None,
+                    "families": sorted(fams), "needs_lookup": key not in looked})
+    out.sort(key=lambda r: -r["hit_score"])
+    need = [(r["artist"], r["title"]) for r in out[:300] if r["needs_lookup"]]
+    return {"total": len(out), "results": out[:max(0, limit)], "pending_lookups": need}
+
+
+def _rebuild_hit_scores_sync() -> int:
+    """Load chart sources into memory once, score every charted track, rewrite hit_scores."""
+    t0 = time.time()
+    index, top40, _names = _chart_index_sync(force=True)
+
+    dconn = sqlite3.connect(_DYNAMIC_DB, check_same_thread=False)
+    try:
         # Last.fm data (staying power + genres), keyed like the chart index
         lfm, lfm_art = {}, {}
         try:
@@ -5832,3 +5970,240 @@ async def _push_to_jellyfin(base: str, token: str, user_id: str, name: str, trac
     added = len(jf_ids)
     return {"ok":True,"server":"jellyfin","playlist":name,
             "added":added,"not_found":not_found,"playlist_id":pl_id}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  BIG HITS YOU DON'T OWN (M6) — shared by Top Dogs + The Sniffer
+# ══════════════════════════════════════════════════════════════════════════════
+
+class BigHitsRequest(BaseModel):
+    decades:    List[int] = []
+    genres:     List[str] = []
+    min_score:  int = 70
+    ohw_only:   bool = False
+    crossovers: bool = True
+    limit:      int = 500
+
+
+_bh_lookup = {"running": False, "done": 0, "total": 0}
+
+
+async def _lfm_lookup_pairs(pairs: list):
+    """Background: staying-power lookups for missing songs (cached in lastfm_tracks)."""
+    if _bh_lookup["running"] or not pairs:
+        return
+    key = await _get_lastfm_key()
+    if not key:
+        return
+    _bh_lookup.update(running=True, done=0, total=len(pairs))
+    SQL = ("INSERT INTO lastfm_tracks (artist_key, title_key, status, listeners, playcount, tags, fetched_at) "
+           "VALUES (?, ?, ?, ?, ?, ?, datetime('now')) ON CONFLICT(artist_key, title_key) DO UPDATE SET "
+           "status=excluded.status, listeners=excluded.listeners, playcount=excluded.playcount, "
+           "tags=excluded.tags, fetched_at=excluded.fetched_at")
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client, \
+                   aiosqlite.connect(_DYNAMIC_DB, timeout=60) as db:
+            for i, (artist, title) in enumerate(pairs):
+                t0 = time.monotonic()
+                kind, j = await _lfm_call(client, {"method": "track.getInfo", "api_key": key, "autocorrect": 1,
+                                                   "artist": _FEAT_RE.sub("", artist),
+                                                   "track": _lfm_clean_title(title)})
+                ak, tk = _artist_key(artist), _title_key(title)
+                if kind == "ok":
+                    tr = j.get("track", {}) or {}
+                    await db.execute(SQL, (ak, tk, "ok", int(tr.get("listeners") or 0),
+                                           int(tr.get("playcount") or 0),
+                                           json.dumps(_lfm_tag_names(tr.get("toptags")))))
+                elif kind == "notfound":
+                    await db.execute(SQL, (ak, tk, "notfound", None, None, None))
+                elif kind == "fatal":
+                    break
+                await db.commit()
+                _bh_lookup["done"] = i + 1
+                await asyncio.sleep(max(0.0, _LFM_INTERVAL - (time.monotonic() - t0)))
+    except Exception as e:
+        log.warning(f"Big-hits Last.fm lookups stopped: {e}")
+    finally:
+        _bh_lookup["running"] = False
+
+
+@router.post("/big-hits")
+async def big_hits(req: BigHitsRequest, _=Depends(require_auth)):
+    await _migrate_chart_data()
+    res = await asyncio.get_event_loop().run_in_executor(
+        None, _big_hits_sync, req.decades, req.genres, req.min_score, req.ohw_only,
+        req.crossovers, max(0, min(req.limit, 2000)))
+    pending = res.pop("pending_lookups")
+    if pending and not _bh_lookup["running"]:
+        asyncio.create_task(_lfm_lookup_pairs(pending))
+    res["lookups_pending"] = len(pending)
+    res["lookups_running"] = _bh_lookup["running"] or bool(pending)
+    return res
+
+
+@router.get("/big-hits/status")
+async def big_hits_status(_=Depends(require_auth)):
+    return _bh_lookup
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  BILLBOARD 200 ALBUMS (M6) — for The Bloodhound
+# ══════════════════════════════════════════════════════════════════════════════
+_B200_URL = "https://raw.githubusercontent.com/utdata/rwd-billboard-data/main/data-out/billboard-200-current.csv"
+_b200_job = {"status": "idle", "message": ""}
+
+
+async def _b200_migrate():
+    async with aiosqlite.connect(_DYNAMIC_DB) as db:
+        await db.execute("""CREATE TABLE IF NOT EXISTS album_charts (
+            artist_key TEXT NOT NULL, album_key TEXT NOT NULL, artist TEXT, album TEXT,
+            peak INTEGER, weeks INTEGER, first_year INTEGER,
+            PRIMARY KEY (artist_key, album_key))""")
+        await db.commit()
+
+
+async def _import_b200() -> int:
+    """Download the weekly Billboard 200 history and keep one row per album (best peak, most weeks)."""
+    import csv, io
+    _b200_job.update(status="running", message="Downloading Billboard 200 history…")
+    try:
+        async with httpx.AsyncClient(timeout=120.0, follow_redirects=True) as client:
+            r = await client.get(_B200_URL)
+            r.raise_for_status()
+        agg = {}
+        for row in csv.DictReader(io.StringIO(r.text)):
+            artist, album = row.get("performer") or "", row.get("title") or ""
+            if not artist or not album:
+                continue
+            key = (_artist_key(artist), _title_key(album))
+            try:
+                peak = int(row.get("peak_pos") or 999)
+                wks = int(row.get("wks_on_chart") or 0)
+                yr = int((row.get("chart_week") or "0000")[:4])
+            except ValueError:
+                continue
+            cur = agg.get(key)
+            if cur is None:
+                agg[key] = [artist, album, peak, wks, yr]
+            else:
+                cur[2] = min(cur[2], peak); cur[3] = max(cur[3], wks); cur[4] = min(cur[4], yr)
+        await _b200_migrate()
+        async with aiosqlite.connect(_DYNAMIC_DB, timeout=60) as db:
+            await db.execute("DELETE FROM album_charts")
+            await db.executemany(
+                "INSERT INTO album_charts (artist_key, album_key, artist, album, peak, weeks, first_year) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                [(k[0], k[1], *v) for k, v in agg.items()])
+            await db.commit()
+        await _set_setting("b200_imported_at", datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"))
+        _b200_job.update(status="done", message=f"{len(agg):,} albums")
+        log.info(f"Billboard 200 imported: {len(agg):,} albums")
+        return len(agg)
+    except Exception as e:
+        log.warning(f"Billboard 200 import failed: {e}")
+        _b200_job.update(status="failed", message=str(e))
+        return 0
+
+
+async def _b200_startup():
+    """Import on first run and refresh weekly."""
+    await asyncio.sleep(240)
+    while True:
+        try:
+            last = await _get_setting("b200_imported_at")
+            if not last or time.time() - _utc_epoch(last) > 7 * 86400:
+                await _import_b200()
+        except Exception:
+            pass
+        await asyncio.sleep(6 * 3600)
+
+
+def _album_score(peak, weeks) -> int:
+    """Peak matters most; weeks on a log scale so long-running classics keep separating (10 yrs = max)."""
+    import math
+    wk = min(1.0, math.log1p(weeks or 0) / math.log1p(520))
+    return int(round(65 * _peak_factor(peak or 200) ** 0.8 + 35 * wk))
+
+
+def _owned_album_keys(dconn) -> set:
+    from app.routers.retriever import _ge_album_name
+    owned = set()
+    for ar, alb, fp in dconn.execute(
+            "SELECT COALESCE(tag_artist, ''), album_title, file_path FROM tracks "
+            "WHERE COALESCE(missing, 0) = 0"):
+        name = _ge_album_name(alb, fp or "")
+        if name:
+            owned.add((_artist_key(ar), _title_key(name)))
+    return owned
+
+
+def album_chart_info_sync(artist: str, albums: list) -> dict:
+    """{album title: {peak, weeks, score}} for one artist's albums (Bloodhound)."""
+    ak = _artist_key(artist)
+    dconn = sqlite3.connect(_DYNAMIC_DB, check_same_thread=False)
+    try:
+        rows = {k: (p, w) for k, p, w in dconn.execute(
+            "SELECT album_key, peak, weeks FROM album_charts WHERE artist_key=?", (ak,))}
+    except Exception:
+        rows = {}
+    finally:
+        dconn.close()
+    out = {}
+    for title in albums:
+        hit = rows.get(_title_key(title))
+        if hit:
+            out[title] = {"b200_peak": hit[0], "b200_weeks": hit[1], "album_score": _album_score(*hit)}
+    return out
+
+
+class EssentialAlbumsRequest(BaseModel):
+    decades:       List[int] = []
+    include_owned: bool = True
+    limit:         int = 300
+
+
+@router.post("/albums/essential")
+async def albums_essential(req: EssentialAlbumsRequest, _=Depends(require_auth)):
+    await _b200_migrate()
+    await _migrate_chart_data()
+
+    def run():
+        dconn = sqlite3.connect(_DYNAMIC_DB, check_same_thread=False)
+        try:
+            owned = _owned_album_keys(dconn)
+            rows = dconn.execute(
+                "SELECT artist_key, album_key, artist, album, peak, weeks, first_year FROM album_charts").fetchall()
+        finally:
+            dconn.close()
+        ranges = [(d, d + 9) for d in req.decades]
+        out = []
+        for ak, alk, artist, album, peak, weeks, yr in rows:
+            if ranges and not (yr and any(lo <= yr <= hi for lo, hi in ranges)):
+                continue
+            is_owned = (ak, alk) in owned
+            if is_owned and not req.include_owned:
+                continue
+            out.append({"artist": artist, "album": album, "year": yr, "b200_peak": peak,
+                        "b200_weeks": weeks, "album_score": _album_score(peak, weeks), "in_library": is_owned})
+        out.sort(key=lambda r: -r["album_score"])
+        return {"total": len(out), "owned": sum(r["in_library"] for r in out), "results": out[:req.limit]}
+
+    return await asyncio.get_event_loop().run_in_executor(None, run)
+
+
+@router.get("/albums/status")
+async def albums_status(_=Depends(require_auth)):
+    await _b200_migrate()
+    async with aiosqlite.connect(_DYNAMIC_DB) as db:
+        n = (await (await db.execute("SELECT COUNT(*) FROM album_charts")).fetchone())[0]
+    return {"albums": n, "imported_at": await _get_setting("b200_imported_at"), **_b200_job}
+
+
+@router.post("/albums/import")
+async def albums_import(_=Depends(require_auth)):
+    if _b200_job.get("status") == "running":
+        raise HTTPException(409, "Already importing.")
+    n = await _import_b200()
+    if not n:
+        raise HTTPException(502, _b200_job.get("message") or "Import failed")
+    return {"ok": True, "albums": n}

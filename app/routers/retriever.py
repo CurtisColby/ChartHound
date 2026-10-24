@@ -2794,9 +2794,18 @@ def _ge_tag_keys(tags) -> list:
     return out
 
 
+# Families that sit next to each other — disagreement between them isn't a real conflict
+GE_NEIGHBORS = {frozenset(p) for p in (
+    ("pop", "rnb"), ("rock", "metal"), ("country", "folk"), ("rnb", "hiphop"), ("jazz", "blues"),
+    ("rnb", "blues"), ("pop", "dance"), ("rock", "blues"), ("rock", "folk"), ("ccm", "gospel"),
+    ("dance", "rnb"), ("pop", "hiphop"),
+)}
+
+
 def _ge_related(f1: str, f2: str) -> bool:
-    """Two families are neighbours if a bridge style joins them (Pop ↔ Rock via Pop Rock…)."""
-    return f1 == f2 or any(f1 in fams and f2 in fams for _, fams in GE_STYLES.values())
+    """Neighbours: same family, joined by a bridge style (Pop ↔ Rock via Pop Rock), or listed above."""
+    return (f1 == f2 or frozenset((f1, f2)) in GE_NEIGHBORS
+            or any(f1 in fams and f2 in fams for _, fams in GE_STYLES.values()))
 
 
 def _ge_vote(sources: list) -> Optional[dict]:
