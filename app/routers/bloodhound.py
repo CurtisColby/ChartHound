@@ -37,7 +37,7 @@ from app.security import decrypt_token
 
 # Reuse sniffer helpers — no code duplication
 from app.routers.sniffer import (
-    _get_connection, _qbt_login, _background_checkmark,
+    _get_connection, _qbt_login, _background_checkmark, _qbt_add_and_track,
     _build_library_index, _check_library,
     _fetch_indexers_by_protocol, _torznab_search, _newznab_search,
     _parse_torrent_results, _parse_usenet_results, _grab_nzb_direct,
@@ -373,22 +373,8 @@ async def grab(req: BHGrabRequest, _=Depends(require_auth)):
             sid = await _qbt_login(client, base, extra, pwd)
             cookies = {"SID": sid}
 
-            r = await client.post(f"{base}/api/v2/torrents/add",
-                data={"urls": req.download_url, "category": "charthound-music",
-                      "savepath": save_path},
-                cookies=cookies)
-            if not r.is_success:
-                raise HTTPException(502, f"qBittorrent add failed: {r.status_code}")
-
-            # Grab hash of the torrent we just added
-            await asyncio.sleep(1)
-            tr = await client.get(f"{base}/api/v2/torrents/info",
-                params={"category": "charthound-music", "sort": "added_on",
-                        "reverse": "true", "limit": "1"},
-                cookies=cookies)
-            t_hash = ""
-            if tr.is_success and tr.json():
-                t_hash = tr.json()[0].get("hash", "")
+            t_hash = await _qbt_add_and_track(client, base, cookies,
+                                              req.download_url, save_path)
 
         # Fire-and-forget background task with specific hash
         asyncio.create_task(_background_checkmark(base, pwd, extra, t_hash, req.title or ""))

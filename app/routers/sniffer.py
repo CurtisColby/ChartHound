@@ -1720,22 +1720,8 @@ async def grab(req: GrabRequest, _=Depends(require_auth)):
             sid = await _qbt_login(client, base, extra, pwd)
             cookies = {"SID": sid}
 
-            r = await client.post(f"{base}/api/v2/torrents/add",
-                data={"urls": req.download_url, "category": "charthound-music",
-                      "savepath": save_path},
-                cookies=cookies)
-            if not r.is_success:
-                raise HTTPException(502, f"qBittorrent add failed: {r.status_code}")
-
-            # Grab the hash of the torrent we just added
-            await asyncio.sleep(1)  # give qBit a moment to register it
-            tr = await client.get(f"{base}/api/v2/torrents/info",
-                params={"category": "charthound-music", "sort": "added_on",
-                        "reverse": "true", "limit": "1"},
-                cookies=cookies)
-            t_hash = ""
-            if tr.is_success and tr.json():
-                t_hash = tr.json()[0].get("hash", "")
+            t_hash = await _qbt_add_and_track(client, base, cookies,
+                                              req.download_url, save_path)
 
         # Fire-and-forget background task with specific hash
         asyncio.create_task(_background_checkmark(base, pwd, extra, t_hash, req.title or ""))
@@ -1843,6 +1829,72 @@ async def test_nzb_client(_=Depends(require_auth)):
         return {"ok": False, "error": f"Connection failed: {e}"}
 
 
+_QBT_CAT = "charthound-music"
+
+
+def _magnet_hash(url: str) -> str:
+    """v1 info-hash from a magnet link (hex or base32), lowercase hex; '' if none."""
+    m = re.search(r"xt=urn:btih:([A-Za-z0-9]+)", url or "")
+    if not m:
+        return ""
+    h = m.group(1)
+    if len(h) == 40:
+        return h.lower()
+    if len(h) == 32:
+        try:
+            return base64.b32decode(h.upper()).hex()
+        except Exception:
+            return ""
+    return ""
+
+
+async def _qbt_hashes(client: httpx.AsyncClient, base: str, cookies: dict) -> set:
+    r = await client.get(f"{base}/api/v2/torrents/info",
+                         params={"category": _QBT_CAT}, cookies=cookies)
+    if r.is_success and isinstance(r.json(), list):
+        return {t.get("hash", "") for t in r.json()}
+    return set()
+
+
+async def _qbt_add_and_track(client: httpx.AsyncClient, base: str, cookies: dict,
+                             url: str, save_path: str) -> str:
+    """Add a torrent and return ITS hash (not just the newest in the category)."""
+    before = await _qbt_hashes(client, base, cookies)
+    want = _magnet_hash(url)
+    r = await client.post(f"{base}/api/v2/torrents/add",
+        data={"urls": url, "category": _QBT_CAT, "savepath": save_path},
+        cookies=cookies)
+    if not r.is_success or r.text.strip() == "Fails.":
+        raise HTTPException(502, f"qBittorrent add failed: {r.status_code} {r.text.strip()[:80]}")
+    if want and want in before:
+        return want                                   # already in qBit — re-check it
+    for _ in range(30):                               # .torrent URLs are fetched async by qBit
+        await asyncio.sleep(1)
+        now = await _qbt_hashes(client, base, cookies)
+        if want and want in now:
+            return want
+        new = now - before
+        if len(new) == 1:
+            return new.pop()
+        if new:                                       # several at once — pick newest
+            tr = await client.get(f"{base}/api/v2/torrents/info",
+                params={"hashes": "|".join(new), "sort": "added_on", "reverse": "true"},
+                cookies=cookies)
+            if tr.is_success and tr.json():
+                return tr.json()[0].get("hash", "")
+    log.warning(f"Grab: torrent added but never appeared in '{_QBT_CAT}' within 30s — {url[:80]}")
+    return ""
+
+
+async def _qbt_start(client: httpx.AsyncClient, base: str, t_hash: str, cookies: dict):
+    """qBittorrent 5.x: torrents/start; 4.x: torrents/resume."""
+    r = await client.post(f"{base}/api/v2/torrents/start",
+                          data={"hashes": t_hash}, cookies=cookies)
+    if r.status_code == 404:
+        await client.post(f"{base}/api/v2/torrents/resume",
+                          data={"hashes": t_hash}, cookies=cookies)
+
+
 async def _background_checkmark(base: str, password: str, extra: dict,
                                 t_hash: str = "", title: str = ""):
     """
@@ -1876,11 +1928,6 @@ async def _background_checkmark(base: str, password: str, extra: dict,
                 torrent = tr.json()[0]
                 progress = torrent.get("progress", 0)
 
-                # Already downloading/seeding with actual data — done
-                if progress > 0.01:
-                    log.info(f"Checkmark OK: '{label}' ({t_hash[:8]}) at {progress*100:.0f}%")
-                    return
-
                 # Get file list
                 fr = await client.get(f"{base}/api/v2/torrents/files",
                     params={"hash": t_hash}, cookies=cookies)
@@ -1888,14 +1935,16 @@ async def _background_checkmark(base: str, password: str, extra: dict,
 
                 if not files:
                     # No metadata yet — force resume to trigger peer connection
-                    await client.post(f"{base}/api/v2/torrents/resume",
-                        data={"hashes": t_hash}, cookies=cookies)
+                    await _qbt_start(client, base, t_hash, cookies)
                     log.info(f"Checkmark: '{label}' ({t_hash[:8]}) no files yet (metadata pending), "
                              f"force-resumed, attempt {attempt+1}/12")
                     continue
 
                 # Files exist — set all to priority 1
                 has_unchecked = any(f.get("priority", 0) == 0 for f in files)
+                if not has_unchecked and progress > 0.01:
+                    log.info(f"Checkmark OK: '{label}' ({t_hash[:8]}) at {progress*100:.0f}%")
+                    return
 
                 if has_unchecked:
                     all_ids = "|".join(str(i) for i in range(len(files)))
@@ -1905,8 +1954,7 @@ async def _background_checkmark(base: str, password: str, extra: dict,
                     log.info(f"Checkmark: '{label}' set {len(files)} files to Normal — {pr.status_code}")
 
                 # Force resume
-                await client.post(f"{base}/api/v2/torrents/resume",
-                    data={"hashes": t_hash}, cookies=cookies)
+                await _qbt_start(client, base, t_hash, cookies)
                 log.info(f"Checkmark: '{label}' ({t_hash[:8]}) started on attempt {attempt+1}")
                 return
 
