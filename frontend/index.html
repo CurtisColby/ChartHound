@@ -1032,12 +1032,19 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
           </div>
 
           <div>
-            <div class="section-label sl-teal">ONLINE GENRES</div>
-            <p style="font-family:var(--mono);font-size:.56rem;color:var(--muted);line-height:1.7;margin:0 0 .5rem">Writes up to 3 genres per song from the Last.fm data Top Dogs collected (① SCAN → Online Data). Changes the <b>GENRE tag only</b> — nothing else in the file. Hand-edited tracks are skipped. Preview first; nothing is written until you approve.</p>
+            <div class="section-label sl-teal">GENRE ENGINE</div>
+            <p style="font-family:var(--mono);font-size:.56rem;color:var(--muted);line-height:1.7;margin:0 0 .5rem">Gives every song <b>one family + up to 3 styles</b> (e.g. Rock; Classic Rock; Folk Rock) by weighing Discogs (per album), MusicBrainz and Last.fm. Close calls are marked <span style="color:var(--amber)">CHECK</span>. Step 1: RUN (about 1–2 hours the first time, cached after). Step 2: PREVIEW → WRITE. Writes the <b>GENRE tag only</b>; hand-edited tracks are skipped.</p>
+            <div style="display:flex;gap:.35rem;margin-bottom:.4rem">
+              <button class="btn btn-outline" id="ge-btn-run" onclick="geRun()" style="flex:1;font-size:.65rem;font-family:var(--mono);color:var(--teal);border-color:var(--teal)">▶ RUN ENGINE</button>
+              <button class="btn btn-outline" id="ge-btn-stop" onclick="geStop()" style="font-size:.65rem;font-family:var(--mono);display:none;color:var(--red);border-color:var(--red)">■ STOP</button>
+            </div>
+            <div style="background:var(--bg);border-radius:3px;height:5px;overflow:hidden;border:1px solid var(--border);margin-bottom:.3rem"><div id="ge-bar" style="height:100%;width:0%;background:var(--teal);transition:width .4s"></div></div>
+            <div id="ge-status" style="font-family:var(--mono);font-size:.55rem;color:var(--muted2);line-height:1.6;margin-bottom:.6rem;word-break:break-word"></div>
             <select id="og-scope" style="width:100%;margin-bottom:.4rem;background:var(--bg);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:.62rem;padding:.4rem .5rem">
               <option value="empty">Only songs with no genre</option>
               <option value="changed" selected>Songs where the genre would change</option>
-              <option value="all">All songs with online genres</option>
+              <option value="check">Only songs marked CHECK</option>
+              <option value="all">All songs with a genre</option>
             </select>
             <input type="text" id="og-folder" placeholder="Folder (optional) e.g. /music/ABBA" style="width:100%;box-sizing:border-box;margin-bottom:.4rem;background:var(--bg);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:.62rem;padding:.4rem .5rem">
             <div style="display:flex;gap:.35rem">
@@ -4989,6 +4996,38 @@ async function confirmClearDatabase() {
   }
 }
 
+// ── M5b: Genre Engine ────────────────────────────────────────────
+let _geTimer = null;
+async function geRun() {
+  const r = await fetch(`${API}/api/retriever/genre-engine/start`, {method:'POST', headers:authHdrs()});
+  if (!r.ok) { const d = await r.json().catch(() => ({})); toast(d.detail || `HTTP ${r.status}`, 'error'); return; }
+  toast('Genre Engine started — runs in the background', 'ok'); setTimeout(gePoll, 800);
+}
+async function geStop() {
+  await fetch(`${API}/api/retriever/genre-engine/stop`, {method:'POST', headers:authHdrs()});
+  toast('Stopping — finished lookups are kept', 'ok');
+}
+async function gePoll() {
+  try {
+    const r = await fetch(`${API}/api/retriever/genre-engine/status`, {headers:authHdrs()});
+    if (!r.ok) return;
+    const d = await r.json();
+    const running = d.status === 'running';
+    const tot = (d.albums_total || 0) + (d.artists_total || 0), done = (d.albums_done || 0) + (d.artists_done || 0);
+    const bar = document.getElementById('ge-bar'); if (bar) bar.style.width = (tot ? Math.round(100 * done / tot) : (d.status === 'done' ? 100 : 0)) + '%';
+    const el = document.getElementById('ge-status');
+    if (el) el.innerHTML = running
+      ? `<span style="color:var(--teal)">Discogs ${d.albums_done.toLocaleString()}/${d.albums_total.toLocaleString()} · MusicBrainz ${d.artists_done.toLocaleString()}/${d.artists_total.toLocaleString()}</span><br>${esc(d.message || '')}`
+      : (d.status === 'idle' ? 'Not run yet.' : esc(d.message || ''));
+    const rb = document.getElementById('ge-btn-run'), sb = document.getElementById('ge-btn-stop');
+    if (rb) { rb.disabled = running; rb.style.opacity = running ? '.35' : '1'; }
+    if (sb) sb.style.display = running ? '' : 'none';
+    clearTimeout(_geTimer);
+    if (running) _geTimer = setTimeout(gePoll, 3000);
+  } catch {}
+}
+document.addEventListener('DOMContentLoaded', () => setTimeout(gePoll, 2600));
+
 // ── M5a: Online Genres → files ───────────────────────────────────
 let _ogTimer = null;
 function _ogReq() {
@@ -5015,11 +5054,12 @@ function ogShowPreview(d) {
       <td style="padding:.35rem .6rem;color:var(--muted)">${esc(x.artist)}</td>
       <td style="padding:.35rem .6rem">${esc(x.title)}</td>
       <td style="padding:.35rem .6rem;color:var(--muted2)">${esc(x.current.join('; ') || '—')}</td>
-      <td style="padding:.35rem .6rem;color:var(--teal)">${esc(x.proposed.join('; '))}</td></tr>`).join('');
+      <td style="padding:.35rem .6rem;color:var(--teal)">${esc(x.proposed.join('; '))}</td>
+      <td style="padding:.35rem .6rem">${x.confidence === 'check' ? '<span style="color:var(--amber)">CHECK</span>' : '<span style="color:var(--muted2)">ok</span>'}</td></tr>`).join('');
   m.innerHTML = `<div style="background:var(--surface);border:1px solid var(--border2);border-radius:10px;max-width:1100px;width:100%;max-height:85vh;display:flex;flex-direction:column">
     <div style="padding:1rem 1.25rem;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:1rem">
       <div><div style="font-family:var(--display);font-size:1.2rem;letter-spacing:2px">ONLINE GENRES PREVIEW</div>
-      <div style="font-family:var(--mono);font-size:.6rem;color:var(--muted)">${d.count.toLocaleString()} songs would be updated${d.count > 300 ? ' · showing first 300' : ''}</div></div>
+      <div style="font-family:var(--mono);font-size:.6rem;color:var(--muted)">${d.count.toLocaleString()} songs would be updated${d.check ? ` · <span style="color:var(--amber)">${d.check.toLocaleString()} marked CHECK (listed first)</span>` : ''}${d.count > 300 ? ' · showing first 300' : ''}</div></div>
       <div style="display:flex;gap:.5rem">
         <button class="btn btn-outline" onclick="document.getElementById('og-modal').remove()" style="font-size:.65rem;font-family:var(--mono)">CANCEL</button>
         <button class="btn" ${d.count ? '' : 'disabled'} onclick="ogApply(${d.count})" style="font-size:.65rem;font-family:var(--mono);background:var(--teal);color:#000">✎ WRITE ${d.count.toLocaleString()} FILES</button>
@@ -5027,8 +5067,8 @@ function ogShowPreview(d) {
     <div style="overflow:auto;flex:1"><table style="width:100%;border-collapse:collapse;font-family:var(--mono);font-size:.6rem">
       <thead><tr style="background:var(--surface2);position:sticky;top:0">
         <th style="padding:.45rem .6rem;text-align:left;color:var(--muted)">ARTIST</th><th style="padding:.45rem .6rem;text-align:left;color:var(--muted)">TITLE</th>
-        <th style="padding:.45rem .6rem;text-align:left;color:var(--muted)">CURRENT GENRE</th><th style="padding:.45rem .6rem;text-align:left;color:var(--muted)">NEW GENRE</th></tr></thead>
-      <tbody>${rows || '<tr><td colspan="4" style="padding:2rem;text-align:center;color:var(--muted2)">Nothing to change. If the Last.fm pass is still running, try again when it finishes.</td></tr>'}</tbody></table></div>
+        <th style="padding:.45rem .6rem;text-align:left;color:var(--muted)">CURRENT GENRE</th><th style="padding:.45rem .6rem;text-align:left;color:var(--muted)">NEW GENRE</th><th style="padding:.45rem .6rem;text-align:left;color:var(--muted)">CONF</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="5" style="padding:2rem;text-align:center;color:var(--muted2)">Nothing to show. Run the Genre Engine first (▶ RUN ENGINE), or pick a different filter.</td></tr>'}</tbody></table></div>
     <div style="padding:.6rem 1.25rem;border-top:1px solid var(--border);font-family:var(--mono);font-size:.55rem;color:var(--amber)">⚠ Lidarr users: set Settings → Metadata → "Tag Audio Files with Metadata" to Never first, or Lidarr may overwrite these genres.</div>
   </div>`;
   m.addEventListener('click', e => { if (e.target === m) m.remove(); });

@@ -3708,6 +3708,8 @@ async def _migrate_chart_data():
                 await db.execute("ALTER TABLE tracks ADD COLUMN chart_last_checked TEXT")
                 log.info("tracks: chart_last_checked column added via migration")
 
+            if "album_title" not in tr_cols:
+                await db.execute("ALTER TABLE tracks ADD COLUMN album_title TEXT")
             if "manually_verified" not in tr_cols:
                 # Used by the Retriever (hand edits) but never created by the schema
                 await db.execute("ALTER TABLE tracks ADD COLUMN manually_verified INTEGER DEFAULT 0")
@@ -4015,10 +4017,12 @@ async def _run_scan(req: ScanRequest):
                             "plex_rating_key=COALESCE(NULLIF(?, ''), plex_rating_key), "
                             "emby_id=COALESCE(NULLIF(?, ''), emby_id), "
                             "jf_id=COALESCE(NULLIF(?, ''), jf_id), "
-                            "year=COALESCE(year, ?) WHERE track_id=?",
+                            "year=COALESCE(year, ?), "
+                            "album_title=COALESCE(NULLIF(?, ''), album_title) WHERE track_id=?",
                             (track.get("tag_artist") or "", track.get("duration_sec"),
                              track.get("plex_rating_key") or "", track.get("emby_id") or "",
-                             track.get("jf_id") or "", track.get("year"), track_id))
+                             track.get("jf_id") or "", track.get("year"),
+                             track.get("album") or "", track_id))
                     except Exception:
                         pass
 

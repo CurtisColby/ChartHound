@@ -2641,6 +2641,437 @@ async def write_approved_tracks(job_id: int, track_ids: List[int], write_art: bo
 
 
 
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  GENRE ENGINE (M5b) — one family + up to 3 styles per song, by weighted vote
+# ══════════════════════════════════════════════════════════════════════════════
+#  Sources (weight): Discogs album genres/styles (3) · MusicBrainz artist tags (2)
+#                    Last.fm song tags (2) · Last.fm artist tags (1)
+#  Album batching: one Discogs lookup per album folder; compilations skip Discogs.
+#  Every lookup is cached; re-runs only fetch what's new.
+
+GE_FAMILIES = {
+    "rock": "Rock", "pop": "Pop", "country": "Country", "rnb": "R&B", "hiphop": "Hip-Hop",
+    "metal": "Metal", "dance": "Dance", "folk": "Folk", "jazz": "Jazz", "blues": "Blues",
+    "classical": "Classical", "ccm": "Christian", "gospel": "Gospel",
+}
+# style key → (display, families it belongs to). Two families = a bridge style.
+GE_STYLES = {
+    "classicrock": ("Classic Rock", ("rock",)), "hardrock": ("Hard Rock", ("rock",)),
+    "softrock": ("Soft Rock", ("rock", "pop")), "arenarock": ("Arena Rock", ("rock",)),
+    "indierock": ("Indie Rock", ("rock",)), "folkrock": ("Folk Rock", ("rock", "folk")),
+    "southernrock": ("Southern Rock", ("rock",)), "punkrock": ("Punk / New Wave", ("rock",)),
+    "alternative": ("Alternative Rock", ("rock",)), "poprock": ("Pop Rock", ("rock", "pop")),
+    "countryrock": ("Country Rock", ("country", "rock")), "bluesrock": ("Blues Rock", ("blues", "rock")),
+    "progrock": ("Progressive Rock", ("rock",)), "psychrock": ("Psychedelic Rock", ("rock",)),
+    "rocknroll": ("Rock & Roll", ("rock",)),
+    "dancepop": ("Dance-Pop", ("pop", "dance")), "synthpop": ("Synth-Pop", ("pop",)),
+    "teenpop": ("Teen Pop", ("pop",)), "powerpop": ("Power Pop", ("pop", "rock")),
+    "adultpop": ("Adult Contemporary", ("pop",)), "indipop": ("Indie Pop", ("pop",)),
+    "easylistening": ("Easy Listening", ("pop", "jazz")),
+    "tradcountry": ("Traditional Country", ("country",)), "countrypop": ("Country Pop", ("country", "pop")),
+    "outlawcountry": ("Outlaw Country", ("country",)), "americana": ("Americana", ("country", "folk")),
+    "brocountry": ("Bro-Country", ("country",)), "texascountry": ("Texas Country", ("country",)),
+    "soul": ("Soul", ("rnb",)), "neosoul": ("Neo-Soul", ("rnb",)), "funk": ("Funk", ("rnb",)),
+    "motown": ("Motown", ("rnb",)), "quietstorm": ("Quiet Storm", ("rnb",)),
+    "newjack": ("New Jack Swing", ("rnb",)), "doowop": ("Doo-Wop", ("rnb",)),
+    "trap": ("Trap", ("hiphop",)), "boombap": ("Boom Bap", ("hiphop",)),
+    "gangstarap": ("Gangsta Rap", ("hiphop",)), "conscrap": ("Conscious Rap", ("hiphop",)),
+    "altrap": ("Alt Hip-Hop", ("hiphop",)),
+    "heavymetal": ("Heavy Metal", ("metal",)), "thrashmetal": ("Thrash Metal", ("metal",)),
+    "deathmetal": ("Death Metal", ("metal",)), "doommetal": ("Doom Metal", ("metal",)),
+    "glaemmetal": ("Glam Metal", ("metal", "rock")),
+    "edm": ("EDM", ("dance",)), "house": ("House", ("dance",)), "techno": ("Techno", ("dance",)),
+    "trance": ("Trance", ("dance",)), "disco": ("Disco", ("dance", "rnb")), "eurodance": ("Eurodance", ("dance",)),
+    "tradfolk": ("Traditional Folk", ("folk",)), "indifolk": ("Indie Folk", ("folk",)),
+    "singersong": ("Singer-Songwriter", ("folk", "pop")),
+    "smoothjazz": ("Smooth Jazz", ("jazz",)), "vocaljazz": ("Vocal Jazz", ("jazz",)),
+    "bebop": ("Bebop", ("jazz",)), "jazzfusion": ("Jazz Fusion", ("jazz",)),
+    "chicagoblues": ("Chicago Blues", ("blues",)), "deltablues": ("Delta Blues", ("blues",)),
+    "texasblues": ("Texas Blues", ("blues",)),
+    "orchestral": ("Orchestral", ("classical",)), "opera": ("Opera", ("classical",)),
+    "baroque": ("Baroque", ("classical",)),
+    "ccm-rock": ("Christian Rock", ("ccm", "rock")), "ccm-pop": ("Christian Pop", ("ccm", "pop")),
+    "worship": ("Worship", ("ccm",)), "sgospel": ("Southern Gospel", ("gospel",)),
+}
+# Raw tag text (Discogs genres/styles, MusicBrainz, Last.fm) → family or style key.
+GE_TAGS = {
+    # families
+    "rock": "rock", "pop": "pop", "country": "country", "r&b": "rnb", "rnb": "rnb",
+    "rhythm and blues": "rnb", "rhythm & blues": "rnb", "contemporary r&b": "rnb", "funk / soul": "rnb",
+    "hip hop": "hiphop", "hip-hop": "hiphop", "hiphop": "hiphop", "rap": "hiphop", "pop rap": "hiphop",
+    "metal": "metal", "electronic": "dance", "electronica": "dance", "dance": "dance",
+    "folk": "folk", "jazz": "jazz", "blues": "blues", "classical": "classical",
+    "christian": "ccm", "ccm": "ccm", "contemporary christian": "ccm", "gospel": "gospel",
+    "folk, world, & country": "_folkcountry",
+    # rock styles
+    "classic rock": "classicrock", "hard rock": "hardrock", "soft rock": "softrock",
+    "arena rock": "arenarock", "aor": "arenarock", "indie rock": "indierock", "folk rock": "folkrock",
+    "southern rock": "southernrock", "punk": "punkrock", "punk rock": "punkrock", "new wave": "punkrock",
+    "post-punk": "punkrock", "alternative": "alternative", "alternative rock": "alternative",
+    "grunge": "alternative", "britpop": "alternative", "pop rock": "poprock", "pop/rock": "poprock",
+    "country rock": "countryrock", "blues rock": "bluesrock", "progressive rock": "progrock",
+    "prog rock": "progrock", "psychedelic rock": "psychrock", "heartland rock": "classicrock",
+    "rock & roll": "rocknroll", "rock and roll": "rocknroll", "rock n roll": "rocknroll",
+    "rockabilly": "rocknroll",
+    # pop styles
+    "dance pop": "dancepop", "dance-pop": "dancepop", "europop": "dancepop", "synthpop": "synthpop",
+    "synth-pop": "synthpop", "synth pop": "synthpop", "electropop": "synthpop", "teen pop": "teenpop",
+    "power pop": "powerpop", "adult contemporary": "adultpop", "indie pop": "indipop",
+    "easy listening": "easylistening", "lounge": "easylistening",
+    # country
+    "classic country": "tradcountry", "traditional country": "tradcountry", "honky tonk": "tradcountry",
+    "country pop": "countrypop", "outlaw country": "outlawcountry", "americana": "americana",
+    "bluegrass": "americana", "texas country": "texascountry", "red dirt": "texascountry",
+    "bro-country": "brocountry",
+    # r&b
+    "soul": "soul", "neo soul": "neosoul", "neo-soul": "neosoul", "funk": "funk", "motown": "motown",
+    "quiet storm": "quietstorm", "new jack swing": "newjack", "doo wop": "doowop", "doo-wop": "doowop",
+    # hip-hop
+    "trap": "trap", "boom bap": "boombap", "gangsta": "gangstarap", "gangsta rap": "gangstarap",
+    "conscious": "conscrap", "conscious hip hop": "conscrap",
+    # metal
+    "heavy metal": "heavymetal", "thrash": "thrashmetal", "thrash metal": "thrashmetal",
+    "death metal": "deathmetal", "doom metal": "doommetal", "stoner rock": "doommetal",
+    "glam": "glaemmetal", "glam metal": "glaemmetal", "hair metal": "glaemmetal", "glam rock": "glaemmetal",
+    # dance
+    "edm": "edm", "house": "house", "techno": "techno", "trance": "trance", "disco": "disco",
+    "eurodance": "eurodance", "euro house": "eurodance", "hi nrg": "disco",
+    # folk / jazz / blues / classical / christian
+    "traditional folk": "tradfolk", "indie folk": "indifolk", "singer-songwriter": "singersong",
+    "singer/songwriter": "singersong", "smooth jazz": "smoothjazz", "vocal jazz": "vocaljazz",
+    "bebop": "bebop", "fusion": "jazzfusion", "jazz fusion": "jazzfusion",
+    "chicago blues": "chicagoblues", "delta blues": "deltablues", "texas blues": "texasblues",
+    "orchestral": "orchestral", "opera": "opera", "baroque": "baroque",
+    "christian rock": "ccm-rock", "christian pop": "ccm-pop", "worship": "worship",
+    "praise & worship": "worship", "southern gospel": "sgospel",
+}
+GE_WEIGHTS = {"discogs": 3.0, "mb": 2.0, "lfm_track": 2.0, "lfm_artist": 1.0}
+_ge_job = {"status": "idle", "phase": "", "albums_done": 0, "albums_total": 0,
+           "artists_done": 0, "artists_total": 0, "scored": 0, "check": 0, "message": ""}
+_ge_stop = {"flag": False}
+_GE_FOLDER_JUNK = re.compile(r"[\(\[\{][^\)\]\}]*[\)\]\}]|\b(cd|disc|disk)\s*\d+\b|\b(19|20)\d{2}\b", re.I)
+
+
+def _ge_tag_keys(tags) -> list:
+    out = []
+    for t in tags or []:
+        k = GE_TAGS.get(str(t).strip().lower())
+        if k and k not in out:
+            out.append(k)
+    return out
+
+
+def _ge_vote(sources: list) -> Optional[dict]:
+    """sources: [(source_name, [keys in rank order])] → {family, styles, confidence, sources} or None."""
+    fam_score, style_score, used = {}, {}, []
+    for name, keys in sources:
+        if not keys:
+            continue
+        w = GE_WEIGHTS[name]
+        contrib = {}
+        for i, k in enumerate(keys[:6]):
+            pos = 1.0 if i == 0 else (0.7 if i == 1 else 0.5)
+            if k == "_folkcountry":
+                fams = ("folk", "country")
+            elif k in GE_FAMILIES:
+                fams = (k,)
+            elif k in GE_STYLES:
+                fams = GE_STYLES[k][1]
+                style_score[k] = style_score.get(k, 0) + w * pos
+            else:
+                continue
+            for f in fams:   # a source can't stack several tags into one family
+                contrib[f] = max(contrib.get(f, 0), w * pos / len(fams))
+        if contrib:
+            used.append(name)
+        for f, v in contrib.items():
+            fam_score[f] = fam_score.get(f, 0) + v
+    if not fam_score:
+        return None
+    ranked = sorted(fam_score.items(), key=lambda kv: -kv[1])
+    family, top = ranked[0]
+    second = ranked[1][1] if len(ranked) > 1 else 0
+    styles = [k for k, _ in sorted(style_score.items(), key=lambda kv: -kv[1])
+              if family in GE_STYLES[k][1]][:3]
+    confident = top >= 2.0 and second < 0.75 * top
+    return {"family": family, "styles": styles,
+            "confidence": "high" if confident else "check", "sources": used}
+
+
+def _ge_display(family: str, styles: list) -> list:
+    return [GE_FAMILIES[family]] + [GE_STYLES[s][0] for s in styles]
+
+
+async def _ge_migrate():
+    async with aiosqlite.connect(settings.database_url) as db:
+        await db.execute("""CREATE TABLE IF NOT EXISTS ge_discogs (
+            lookup_key TEXT PRIMARY KEY, status TEXT NOT NULL, genres TEXT, styles TEXT,
+            fetched_at TEXT NOT NULL DEFAULT (datetime('now')))""")
+        await db.execute("""CREATE TABLE IF NOT EXISTS ge_mb_artists (
+            artist_key TEXT PRIMARY KEY, status TEXT NOT NULL, tags TEXT,
+            fetched_at TEXT NOT NULL DEFAULT (datetime('now')))""")
+        await db.execute("""CREATE TABLE IF NOT EXISTS track_genres (
+            track_id INTEGER PRIMARY KEY, family TEXT NOT NULL, styles TEXT,
+            confidence TEXT NOT NULL, sources TEXT,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')))""")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_tg_family ON track_genres(family)")
+        await db.commit()
+
+
+def _ge_album_name(album_title: Optional[str], file_path: str) -> str:
+    if album_title:
+        return album_title
+    folder = os.path.basename(os.path.dirname(file_path or ""))
+    if re.fullmatch(r"(cd|disc|disk)\s*\d+", folder.strip(), re.I):
+        folder = os.path.basename(os.path.dirname(os.path.dirname(file_path)))
+    if " - " in folder:
+        folder = folder.split(" - ", 1)[1]
+    return re.sub(r"\s+", " ", _GE_FOLDER_JUNK.sub(" ", folder)).strip(" -_.")
+
+
+async def _ge_get_discogs_token() -> str:
+    try:
+        from app.security import decrypt_token
+        async with aiosqlite.connect(settings.database_url) as db:
+            row = await (await db.execute(
+                "SELECT token_enc FROM connections WHERE service='discogs'")).fetchone()
+        return decrypt_token(row[0]) if row and row[0] else ""
+    except Exception:
+        return ""
+
+
+async def _ge_discogs_phase(albums: dict, artists_for_fallback: dict, token: str):
+    """albums: lookup_key → (artist, album). One search per album; artist-level fallback."""
+    hdr = {"User-Agent": "ChartHound/1.0 +https://github.com/CurtisColby/ChartHound",
+           "Authorization": f"Discogs token={token}"}
+    SQL = ("INSERT INTO ge_discogs (lookup_key, status, genres, styles, fetched_at) "
+           "VALUES (?, ?, ?, ?, datetime('now')) ON CONFLICT(lookup_key) DO UPDATE SET "
+           "status=excluded.status, genres=excluded.genres, styles=excluded.styles, "
+           "fetched_at=excluded.fetched_at")
+    todo = list(albums.items()) + [(k, (a, None)) for k, a in artists_for_fallback.items()]
+    _ge_job["albums_total"] = len(todo)
+    async with httpx.AsyncClient(timeout=20.0) as client, \
+               aiosqlite.connect(settings.database_url, timeout=30) as db:
+        for i, (key, (artist, album)) in enumerate(todo):
+            if _ge_stop["flag"]:
+                break
+            t0 = time.monotonic()
+            results, status = [], "notfound"
+            tries = ([{"artist": artist, "release_title": album, "type": "master"},
+                      {"artist": artist, "release_title": album, "type": "release"}] if album
+                     else [{"artist": artist, "type": "master"}])
+            for params in tries:
+                for _ in range(3):
+                    try:
+                        r = await client.get("https://api.discogs.com/database/search",
+                                             params={**params, "per_page": 5}, headers=hdr)
+                    except Exception:
+                        r = None
+                    if r is not None and r.status_code == 429:
+                        _ge_job["message"] = "Discogs rate limit — pausing 60s…"
+                        await asyncio.sleep(60)
+                        continue
+                    break
+                if r is not None and r.is_success:
+                    results = r.json().get("results", [])
+                    status = "ok" if results else "notfound"
+                    if results:
+                        break
+                elif r is not None and r.status_code in (401, 403):
+                    _ge_job["message"] = "Discogs rejected the token — check The Kennel."
+                    _ge_stop["flag"] = True
+                    break
+                else:
+                    status = "error"
+                await asyncio.sleep(1.05)
+                try:
+                    if r is not None and int(r.headers.get("X-Discogs-Ratelimit-Remaining", "10")) <= 2:
+                        await asyncio.sleep(5)
+                except Exception:
+                    pass
+            if album:
+                g, st = (results[0].get("genre", []), results[0].get("style", [])) if results else ([], [])
+            else:   # artist profile: most common genres/styles across their top releases
+                cg, cs = {}, {}
+                for res in results:
+                    for x in res.get("genre", []): cg[x] = cg.get(x, 0) + 1
+                    for x in res.get("style", []): cs[x] = cs.get(x, 0) + 1
+                g = [x for x, _ in sorted(cg.items(), key=lambda kv: -kv[1])]
+                st = [x for x, _ in sorted(cs.items(), key=lambda kv: -kv[1])]
+            if status != "error":
+                await db.execute(SQL, (key, status, json.dumps(g), json.dumps(st)))
+            _ge_job["albums_done"] = i + 1
+            _ge_job["message"] = f"Discogs: {artist}{' — ' + album if album else ''}"
+            if (i + 1) % 25 == 0:
+                await db.commit()
+            await asyncio.sleep(max(0.0, 1.05 - (time.monotonic() - t0)))
+        await db.commit()
+
+
+async def _ge_mb_phase(artists: dict):
+    SQL = ("INSERT INTO ge_mb_artists (artist_key, status, tags, fetched_at) VALUES (?, ?, ?, datetime('now')) "
+           "ON CONFLICT(artist_key) DO UPDATE SET status=excluded.status, tags=excluded.tags, "
+           "fetched_at=excluded.fetched_at")
+    _ge_job["artists_total"] = len(artists)
+    hdr = {"User-Agent": "ChartHound/1.0 (https://github.com/CurtisColby/ChartHound)"}
+    async with httpx.AsyncClient(timeout=20.0) as client, \
+               aiosqlite.connect(settings.database_url, timeout=30) as db:
+        for i, (ak, name) in enumerate(artists.items()):
+            if _ge_stop["flag"]:
+                break
+            await mb_limiter.acquire()
+            status, tags = "error", []
+            try:
+                r = await client.get("https://musicbrainz.org/ws/2/artist/",
+                                     params={"query": f'artist:"{name}"', "fmt": "json", "limit": 3},
+                                     headers=hdr)
+                if r.is_success:
+                    arts = [a for a in r.json().get("artists", []) if int(a.get("score", 0)) >= 90]
+                    status = "ok" if arts else "notfound"
+                    if arts:
+                        tl = sorted(arts[0].get("tags", []), key=lambda t: -int(t.get("count", 0)))
+                        tags = [t["name"] for t in tl if int(t.get("count", 0)) > 0]
+            except Exception:
+                pass
+            if status != "error":
+                await db.execute(SQL, (ak, status, json.dumps(tags)))
+            _ge_job["artists_done"] = i + 1
+            if (i + 1) % 25 == 0:
+                await db.commit()
+        await db.commit()
+
+
+async def _run_genre_engine():
+    global _ge_job
+    from app.routers.groomer import _artist_key, _title_key, _FEAT_RE, _migrate_chart_data
+    _ge_stop["flag"] = False
+    _ge_job = {"status": "running", "phase": "preparing", "albums_done": 0, "albums_total": 0,
+               "artists_done": 0, "artists_total": 0, "scored": 0, "check": 0, "message": "Preparing…"}
+    try:
+        await _migrate_chart_data()
+        await _ge_migrate()
+        token = await _ge_get_discogs_token()
+        now = time.time()
+        async with aiosqlite.connect(settings.database_url) as db:
+            tracks = await (await db.execute("""
+                SELECT t.track_id, COALESCE(t.tag_artist, a.name, ''), t.title, t.file_path, t.album_title
+                FROM tracks t LEFT JOIN artists a ON t.artist_id = a.artist_id
+                WHERE t.file_path IS NOT NULL""")).fetchall()
+            dcache = {k: (st, f) for k, st, f in await (await db.execute(
+                "SELECT lookup_key, status, fetched_at FROM ge_discogs")).fetchall()}
+            mcache = {k: (st, f) for k, st, f in await (await db.execute(
+                "SELECT artist_key, status, fetched_at FROM ge_mb_artists")).fetchall()}
+
+        def fresh(c):
+            if not c:
+                return False
+            from app.routers.groomer import _utc_epoch
+            age = now - _utc_epoch(c[1])
+            return age < (365 if c[0] == "ok" else 90) * 86400
+
+        # Group by album folder; detect compilations
+        folders = {}
+        for tid, artist, title, fp, alb in tracks:
+            folders.setdefault(os.path.dirname(fp), []).append((tid, artist, title, fp, alb))
+        track_album, albums, names = {}, {}, {}
+        for folder, items in folders.items():
+            counts = {}
+            for _, artist, *_r in items:
+                ak = _artist_key(artist)
+                if ak:
+                    counts[ak] = counts.get(ak, 0) + 1
+                    names.setdefault(ak, _FEAT_RE.sub("", artist))
+            if not counts:
+                continue
+            top_ak, top_n = max(counts.items(), key=lambda kv: kv[1])
+            album = _ge_album_name(items[0][4], items[0][3])
+            is_comp = (len(counts) >= 4 and top_n / len(items) < 0.5) or "various" in album.lower()
+            if is_comp or not album:
+                continue
+            key = f"album:{top_ak}|{_title_key(album)}"
+            for it in items:
+                track_album[it[0]] = key
+            if not fresh(dcache.get(key)):
+                albums[key] = (names[top_ak], album)
+        # Artist-level Discogs profile only for artists with songs outside a real album
+        # (compilations, loose files) — keeps the first run to roughly one call per album.
+        need_art = {_artist_key(artist) for tid, artist, *_r in tracks if tid not in track_album}
+        art_fallback = {f"artist:{ak}": names[ak] for ak in need_art
+                        if ak in names and not fresh(dcache.get(f"artist:{ak}"))}
+        mb_todo = {ak: n for ak, n in names.items() if not fresh(mcache.get(ak))}
+
+        # Discogs (if connected) and MusicBrainz run side by side — different services
+        _ge_job["phase"] = "lookups"
+        jobs = [_ge_mb_phase(mb_todo)]
+        if token:
+            jobs.append(_ge_discogs_phase(albums, art_fallback, token))
+        else:
+            _ge_job["message"] = "Discogs not connected — using MusicBrainz + Last.fm only."
+        await asyncio.gather(*jobs)
+
+        # ── Vote ──
+        _ge_job.update({"phase": "voting", "message": "Voting on genres…"})
+        async with aiosqlite.connect(settings.database_url, timeout=30) as db:
+            disc = {k: (json.loads(g or "[]"), json.loads(s or "[]")) for k, g, s in await (await db.execute(
+                "SELECT lookup_key, genres, styles FROM ge_discogs WHERE status='ok'")).fetchall()}
+            mb = {k: json.loads(t or "[]") for k, t in await (await db.execute(
+                "SELECT artist_key, tags FROM ge_mb_artists WHERE status='ok'")).fetchall()}
+            lt = {(a, t): json.loads(g or "[]") for a, t, g in await (await db.execute(
+                "SELECT artist_key, title_key, tags FROM lastfm_tracks WHERE status='ok'")).fetchall()}
+            la = {a: json.loads(g or "[]") for a, g in await (await db.execute(
+                "SELECT artist_key, tags FROM lastfm_artists WHERE status='ok'")).fetchall()}
+            out, n_check = [], 0
+            for tid, artist, title, fp, alb in tracks:
+                ak, tk = _artist_key(artist), _title_key(title)
+                d = disc.get(track_album.get(tid)) or disc.get(f"artist:{ak}")
+                sources = [
+                    ("discogs", _ge_tag_keys((d[1] + d[0]) if d else [])),   # styles first: more specific
+                    ("mb", _ge_tag_keys(mb.get(ak))),
+                    ("lfm_track", _ge_tag_keys(lt.get((ak, tk)))),
+                    ("lfm_artist", _ge_tag_keys(la.get(ak))),
+                ]
+                v = _ge_vote(sources)
+                if not v:
+                    continue
+                n_check += v["confidence"] == "check"
+                out.append((tid, v["family"], json.dumps(v["styles"]), v["confidence"],
+                            ",".join(v["sources"])))
+            await db.execute("DELETE FROM track_genres")
+            await db.executemany(
+                "INSERT INTO track_genres (track_id, family, styles, confidence, sources, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, datetime('now'))", out)
+            await db.commit()
+        stopped = _ge_stop["flag"]
+        _ge_job.update({"status": "stopped" if stopped else "done", "phase": "", "scored": len(out),
+                        "check": n_check,
+                        "message": (f"{'Stopped — partial results saved' if stopped else 'Done'}: "
+                                    f"{len(out):,} songs have a genre, {n_check:,} marked to check")})
+        log.info(f"Genre Engine: {_ge_job['message']}")
+    except Exception as e:
+        log.exception("Genre Engine failed")
+        _ge_job.update({"status": "failed", "message": f"Error: {e}"})
+
+
+@router.post("/genre-engine/start")
+async def genre_engine_start(background_tasks: BackgroundTasks, user: dict = Depends(require_auth)):
+    if _ge_job.get("status") == "running":
+        raise HTTPException(409, "Already running.")
+    background_tasks.add_task(_run_genre_engine)
+    return {"ok": True}
+
+
+@router.post("/genre-engine/stop")
+async def genre_engine_stop(user: dict = Depends(require_auth)):
+    _ge_stop["flag"] = True
+    return {"ok": True}
+
+
+@router.get("/genre-engine/status")
+async def genre_engine_status(user: dict = Depends(require_auth)):
+    return _ge_job
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  ONLINE GENRES (M5a) — write Last.fm genres to files, GENRE field only
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2725,16 +3156,13 @@ _og_stop = {"flag": False}
 
 
 async def _online_genre_rows(scope: str, folder: Optional[str]) -> list:
-    """[(track_id, file_path, artist, title, current[list], proposed[list])] for the chosen scope."""
-    from app.routers.groomer import _artist_key, _title_key, _genres_from_tags, _migrate_chart_data
-    await _migrate_chart_data()
+    """[(track_id, file_path, artist, title, current, proposed, confidence)] from the Genre Engine."""
+    await _ge_migrate()
     async with aiosqlite.connect(settings.database_url) as db:
-        lfm = {(a, t): tags for a, t, tags in await (await db.execute(
-            "SELECT artist_key, title_key, tags FROM lastfm_tracks WHERE status='ok'")).fetchall()}
-        art = {a: tags for a, tags in await (await db.execute(
-            "SELECT artist_key, tags FROM lastfm_artists WHERE status='ok'")).fetchall()}
         q = ("SELECT t.track_id, t.file_path, COALESCE(t.tag_artist, a.name, ''), t.title, "
-             "t.genre_1, t.genre_2, t.genre_3 FROM tracks t LEFT JOIN artists a ON t.artist_id = a.artist_id "
+             "t.genre_1, t.genre_2, t.genre_3, g.family, g.styles, g.confidence "
+             "FROM track_genres g JOIN tracks t ON t.track_id = g.track_id "
+             "LEFT JOIN artists a ON t.artist_id = a.artist_id "
              "WHERE COALESCE(t.manually_verified, 0) = 0")
         params = []
         if folder:
@@ -2742,24 +3170,23 @@ async def _online_genre_rows(scope: str, folder: Optional[str]) -> list:
             params.append(folder.rstrip("/") + "/%")
         rows = await (await db.execute(q, params)).fetchall()
     out = []
-    for tid, fp, artist, title, g1, g2, g3 in rows:
-        ak = _artist_key(artist)
-        keys = _genres_from_tags(lfm.get((ak, _title_key(title)))) or _genres_from_tags(art.get(ak))
-        proposed = [_GENRE_KEY_DISPLAY.get(k, k) for k in keys]
-        if not proposed:
-            continue
+    for tid, fp, artist, title, g1, g2, g3, fam, styles, conf in rows:
+        proposed = _ge_display(fam, json.loads(styles or "[]"))
         current = [g for g in (g1, g2, g3) if g]
-        same = [c.lower() for c in current] == [p.lower() for p in proposed]
+        same = [c.lower() for c in current] == [p.lower() for p in proposed[:3]]
         if scope == "empty" and current:
             continue
         if scope == "changed" and same:
             continue
-        out.append((tid, fp, artist, title, current, proposed))
+        if scope == "check" and conf != "check":
+            continue
+        out.append((tid, fp, artist, title, current, proposed, conf))
+    out.sort(key=lambda r: (r[6] != "check", r[2].lower(), r[3].lower()))
     return out
 
 
 class OnlineGenreRequest(BaseModel):
-    scope:  str = "changed"           # empty | changed | all
+    scope:  str = "changed"           # empty | changed | all | check
     folder: Optional[str] = None      # /music/... subfolder, optional
 
 
@@ -2768,8 +3195,9 @@ async def online_genres_preview(req: OnlineGenreRequest, user: dict = Depends(re
     rows = await _online_genre_rows(req.scope, req.folder)
     return {
         "count":  len(rows),
-        "sample": [{"track_id": r[0], "artist": r[2], "title": r[3],
-                    "current": r[4], "proposed": r[5]} for r in rows[:300]],
+        "check":  sum(1 for r in rows if r[6] == "check"),
+        "sample": [{"track_id": r[0], "artist": r[2], "title": r[3], "current": r[4],
+                    "proposed": r[5], "confidence": r[6]} for r in rows[:300]],
     }
 
 
@@ -2811,7 +3239,7 @@ async def _run_online_genres(req: OnlineGenreRequest):
         _og_job["total"] = len(rows)
         loop = asyncio.get_event_loop()
         async with aiosqlite.connect(settings.database_url, timeout=30) as db:
-            for i, (tid, fp, artist, title, current, proposed) in enumerate(rows):
+            for i, (tid, fp, artist, title, current, proposed, _conf) in enumerate(rows):
                 if _og_stop["flag"]:
                     break
                 ok = await loop.run_in_executor(None, write_genre_only, fp, proposed)
