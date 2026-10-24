@@ -5002,18 +5002,20 @@ async def get_results(
                     genre_clauses.append(f"({no_tag} AND cd.chart_name = ?)")
                     params.append(g)
 
+            # TOP GENRES mode: match if ANY of the song's top-3 online genres is selected
+            top3 = "(" + " OR ".join(["(',' || hs.genre_keys || ',') LIKE ?"] * len(genre_list)) + ")"
+            top3_params = [f"%,{g},%" for g in genre_list]
             if not genre_clauses and genre_mode == "main":
-                ph = ",".join("?" * len(genre_list))
-                conditions.append(f"hs.main_genre IN ({ph})")
-                params += genre_list
+                conditions.append(f"(hs.genre_keys IS NOT NULL AND {top3})")
+                params += top3_params
             if genre_clauses:
                 loose = "(" + " OR ".join(genre_clauses) + ")"
                 if genre_mode == "main":
-                    # Online main genre wins; file tags only for songs with no online genre yet
-                    ph = ",".join("?" * len(genre_list))
-                    conditions.append(f"(hs.main_genre IN ({ph}) OR (hs.main_genre IS NULL AND {loose}))")
-                    # main-genre params go before the loose-clause params added above
-                    params[_genre_param_start:_genre_param_start] = genre_list
+                    # Online genres win; file tags only for songs with no online genre yet
+                    conditions.append(f"((hs.genre_keys IS NOT NULL AND {top3}) "
+                                      f"OR (hs.genre_keys IS NULL AND {loose}))")
+                    # top-3 params go before the loose-clause params added above
+                    params[_genre_param_start:_genre_param_start] = top3_params
                 else:
                     conditions.append(loose)
 
