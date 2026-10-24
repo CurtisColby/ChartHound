@@ -9376,7 +9376,7 @@ function trkRenderTable() {
   items.forEach(function(it) {
     var typeIcon = it.source === 'radarr' ? '🎬' : '📺';
     var statusColor = it.status === 'missing' ? 'var(--red)' : it.status === 'found' ? 'var(--green)' : it.status === 'skipped' ? 'var(--amber)' : 'var(--muted)';
-    var statusLabel = it.status === 'missing' ? '❌ Missing' : it.status === 'found' ? '✅ Found' : it.status === 'skipped' ? '⏭ Skipped' : it.status;
+    var statusLabel = it.status === 'missing' ? '❌ Missing' : it.status === 'found' ? '✅ Found' : it.status === 'skipped' ? (it.auto_skipped ? '⏭ Skipped (auto)' : '⏭ Skipped') : it.status;
     var lastSearched = it.last_searched
       ? it.last_searched.replace('T',' ').substring(0,16)
       : '<span style="color:var(--crimson);letter-spacing:.5px">— NEVER —</span>';

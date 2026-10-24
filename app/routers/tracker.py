@@ -71,6 +71,7 @@ _TIER0_DAYS       = 90     # released within 90d  → top priority, flat cooldow
 _TIER1_DAYS       = 730    # released within 2y   → second priority
 _MAX_COOLDOWN     = 30     # backoff ceiling (days)
 _DORMANT_TRIES    = 6      # old titles with this many misses → monthly only
+_AUTO_SKIP_TRIES  = 12     # old titles (>2y) with this many misses → auto-skipped
 _TV_WEIGHT        = 3      # TV ticks per movie tick when both have eligible items
 _GRAB_CHECK_DELAY = 900    # seconds after a search before checking arr history
 _GRAB_HOLD_DAYS   = 3      # cooldown after a confirmed grab (lets download land)
@@ -165,6 +166,10 @@ async def _ensure_tracker_tables():
             await db.execute("ALTER TABLE tracker_items ADD COLUMN release_date TEXT")
         except Exception:
             pass  # column already exists
+        try:
+            await db.execute("ALTER TABLE tracker_items ADD COLUMN auto_skipped INTEGER DEFAULT 0")
+        except Exception:
+            pass
         await db.execute("CREATE INDEX IF NOT EXISTS idx_tracker_release ON tracker_items(release_date)")
         await db.commit()
     log.info("Tracker tables ready.")
@@ -477,11 +482,14 @@ async def _do_sync() -> dict:
         async with httpx.AsyncClient(timeout=30.0, verify=False) as client:
             async with aiosqlite.connect(_DYNAMIC_DB) as db:
                 existing_ep_ids = set()
+                ids_by_series: dict = {}
                 async with db.execute(
-                    "SELECT external_id FROM tracker_items WHERE source='sonarr'"
+                    "SELECT external_id, series_id FROM tracker_items WHERE source='sonarr'"
                 ) as cur:
-                    async for row in cur:
-                        existing_ep_ids.add(row[0])
+                    async for ext, sid in cur:
+                        existing_ep_ids.add(ext)
+                        ids_by_series.setdefault(sid, set()).add(ext)
+                failed_series = 0
 
                 for series in all_series:
                     if not series.get("monitored", False):
@@ -498,7 +506,11 @@ async def _do_sync() -> dict:
                         )
                         er.raise_for_status()
                         episodes = er.json()
-                    except Exception:
+                    except Exception as e:
+                        # Keep this series' items (tries/cooldowns) — don't treat as deleted
+                        existing_ep_ids -= ids_by_series.get(series_id, set())
+                        failed_series += 1
+                        log.warning(f"Tracker sync: episodes for '{series_title}' failed, kept as-is: {e}")
                         continue
 
                     for ep in episodes:
@@ -547,6 +559,9 @@ async def _do_sync() -> dict:
                                     (ep_id,)
                                 )
                                 existing_ep_ids.discard(ep_id)
+
+                if failed_series:
+                    errors.append(f"Sonarr: {failed_series} series unreachable this sync (kept unchanged)")
 
                 # Remove orphans that are no longer in Sonarr
                 for orphan_id in existing_ep_ids:
@@ -825,6 +840,27 @@ async def _execute_search(item: dict):
         log.warning(f"Tracker search error for '{title}': {e}")
 
 
+async def _auto_skip(item: dict) -> int:
+    """Old titles that keep missing stop being searched. New releases never auto-skip."""
+    if _tier(item.get("release_date")) != 2:
+        return 0
+    t1 = _tier_bounds()[1]
+    async with aiosqlite.connect(_DYNAMIC_DB) as db:
+        if item["source"] == "sonarr":
+            cur = await db.execute(
+                "UPDATE tracker_items SET status='skipped', auto_skipped=1 "
+                "WHERE source='sonarr' AND series_id=? AND season_number=? AND status='missing' "
+                "AND search_count>=? AND (release_date IS NULL OR release_date<?)",
+                (item["series_id"], item["season_number"], _AUTO_SKIP_TRIES, t1))
+        else:
+            cur = await db.execute(
+                "UPDATE tracker_items SET status='skipped', auto_skipped=1 "
+                "WHERE item_id=? AND status='missing' AND search_count>=?",
+                (item["item_id"], _AUTO_SKIP_TRIES))
+        await db.commit()
+        return cur.rowcount or 0
+
+
 def _parse_arr_date(s: str) -> Optional[datetime]:
     try:
         d = datetime.fromisoformat(s.replace("Z", "+00:00"))
@@ -873,8 +909,14 @@ async def _verify_grab(item: dict, started: datetime, next_days: int):
                 rel = grabs[0].get("sourceTitle") or ""
                 await _add_log(source, title, "found",
                                f"GRABBED {len(grabs)} release(s){' — ' + rel[:120] if rel else ''}")
-        elif logging_on:
-            await _add_log(source, title, "miss", f"Nothing grabbed — next try in {next_days}d")
+        else:
+            skipped = await _auto_skip(item)
+            if logging_on:
+                if skipped:
+                    await _add_log(source, title, "skip",
+                                   f"Auto-skipped after {_AUTO_SKIP_TRIES}+ misses (older than 2 years) — Unskip to retry")
+                else:
+                    await _add_log(source, title, "miss", f"Nothing grabbed — next try in {next_days}d")
     except Exception as e:
         log.warning(f"Tracker grab-check failed for '{title}': {e}")
 
@@ -1041,7 +1083,7 @@ async def search_now(req: ItemIdRequest, user: dict = Depends(require_auth)):
 async def skip_item(req: ItemIdRequest, user: dict = Depends(require_auth)):
     async with aiosqlite.connect(_DYNAMIC_DB) as db:
         await db.execute(
-            "UPDATE tracker_items SET status='skipped' WHERE item_id=?", (req.item_id,)
+            "UPDATE tracker_items SET status='skipped', auto_skipped=0 WHERE item_id=?", (req.item_id,)
         )
         await db.commit()
     await _add_log("system", f"item #{req.item_id}", "skip", "User skipped item")
@@ -1052,7 +1094,9 @@ async def skip_item(req: ItemIdRequest, user: dict = Depends(require_auth)):
 async def unskip_item(req: ItemIdRequest, user: dict = Depends(require_auth)):
     async with aiosqlite.connect(_DYNAMIC_DB) as db:
         await db.execute(
-            "UPDATE tracker_items SET status='missing', cooldown_until=NULL WHERE item_id=?",
+            "UPDATE tracker_items SET status='missing', cooldown_until=NULL, "
+            "search_count=CASE WHEN auto_skipped=1 THEN 0 ELSE search_count END, auto_skipped=0 "
+            "WHERE item_id=?",
             (req.item_id,)
         )
         await db.commit()
@@ -1078,7 +1122,9 @@ async def skip_season(req: SkipSeasonRequest, user: dict = Depends(require_auth)
 async def unskip_season(req: SkipSeasonRequest, user: dict = Depends(require_auth)):
     async with aiosqlite.connect(_DYNAMIC_DB) as db:
         await db.execute(
-            """UPDATE tracker_items SET skipped_season=0, status='missing', cooldown_until=NULL
+            """UPDATE tracker_items SET skipped_season=0, status='missing', cooldown_until=NULL,
+                      search_count=CASE WHEN auto_skipped=1 THEN 0 ELSE search_count END,
+                      auto_skipped=0
                WHERE source='sonarr' AND series_id=? AND season_number=?""",
             (req.series_id, req.season_number)
         )
