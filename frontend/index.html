@@ -46,6 +46,16 @@ body::before{content:'';position:fixed;inset:0;background-image:url("data:image/
 .grm-viewtoggle{display:flex;gap:.35rem;position:sticky;top:0;z-index:5;background:var(--surface);padding-bottom:.25rem}
 .grm-viewtoggle button{flex:1;padding:.55rem .3rem;background:var(--surface2);color:var(--muted);border:1px solid var(--border2);border-radius:6px;font-family:var(--display);font-size:.85rem;letter-spacing:1.5px;cursor:pointer;transition:all .15s;white-space:nowrap}
 .grm-viewtoggle button.on{background:var(--pink);color:#000;border-color:var(--pink)}
+#ret-main.ge-reviewing > :not(#ge-review){display:none!important}
+.ger-in{background:var(--bg);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:.68rem;padding:.4rem .5rem;outline:none}
+.ger-table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:.7rem}
+.ger-table th{position:sticky;top:0;background:var(--surface2);text-align:left;padding:.5rem .6rem;color:var(--muted);font-weight:normal;letter-spacing:1px;z-index:1}
+.ger-table td{padding:.42rem .6rem;border-bottom:1px solid var(--border);vertical-align:top}
+.ger-artist td{background:var(--surface2);color:var(--text);font-weight:bold;padding:.5rem .6rem}
+.ger-new{color:var(--teal);cursor:pointer;border-bottom:1px dashed transparent}
+.ger-new:hover{border-bottom-color:var(--teal)}
+.ger-edit td{background:rgba(45,212,191,.06)}
+.ger-edit select{background:var(--bg);border:1px solid var(--border2);border-radius:4px;color:var(--text);font-family:var(--mono);font-size:.66rem;padding:.3rem .35rem;margin-right:.3rem}
 .grm-qs{background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.3);border-radius:8px;padding:.6rem .75rem}
 .grm-qs summary{cursor:pointer;font-family:var(--mono);font-size:.6rem;letter-spacing:2px;color:var(--amber);list-style:none}
 .grm-qs summary::-webkit-details-marker{display:none}
@@ -1040,17 +1050,11 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
             </div>
             <div style="background:var(--bg);border-radius:3px;height:5px;overflow:hidden;border:1px solid var(--border);margin-bottom:.3rem"><div id="ge-bar" style="height:100%;width:0%;background:var(--teal);transition:width .4s"></div></div>
             <div id="ge-status" style="font-family:var(--mono);font-size:.55rem;color:var(--muted2);line-height:1.6;margin-bottom:.6rem;word-break:break-word"></div>
-            <select id="og-scope" style="width:100%;margin-bottom:.4rem;background:var(--bg);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:.62rem;padding:.4rem .5rem">
-              <option value="empty">Only songs with no genre</option>
-              <option value="changed" selected>Songs where the genre would change</option>
-              <option value="check">Only songs marked CHECK</option>
-              <option value="all">All songs with a genre</option>
-            </select>
-            <input type="text" id="og-folder" placeholder="Folder (optional) e.g. /music/ABBA" style="width:100%;box-sizing:border-box;margin-bottom:.4rem;background:var(--bg);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:.62rem;padding:.4rem .5rem">
             <div style="display:flex;gap:.35rem">
-              <button class="btn btn-outline" id="og-btn-preview" onclick="ogPreview()" style="flex:1;font-size:.65rem;font-family:var(--mono)">🔍 PREVIEW</button>
+              <button class="btn btn-outline" id="og-btn-preview" onclick="geOpenReview()" style="flex:1;font-size:.65rem;font-family:var(--mono)">📋 REVIEW &amp; WRITE</button>
               <button class="btn btn-outline" id="og-btn-stop" onclick="ogStop()" style="font-size:.65rem;font-family:var(--mono);display:none;color:var(--red);border-color:var(--red)">■ STOP</button>
             </div>
+            <button class="btn btn-outline" onclick="geRevote(this)" title="Recalculate genres and CHECK flags from saved lookups — no internet lookups, takes seconds. Your manual edits are kept." style="width:100%;margin-top:.35rem;font-size:.58rem;font-family:var(--mono);color:var(--muted)">↻ RE-VOTE (no lookups)</button>
             <div id="og-status" style="font-family:var(--mono);font-size:.55rem;color:var(--muted2);line-height:1.6;margin-top:.4rem;word-break:break-word"></div>
           </div>
 
@@ -1063,7 +1067,47 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
         </div>
 
         <div class="pane-resizer" id="resizer-retriever" onmousedown="startResize(event,'retriever')"></div>
-        <div class="pane-main">
+        <div class="pane-main" id="ret-main">
+          <!-- GENRE REVIEW (M5b-1.2) -->
+          <div id="ge-review" style="display:none">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.6rem">
+              <div style="font-family:var(--display);font-size:1.3rem;letter-spacing:2px;color:var(--teal)">GENRE REVIEW</div>
+              <button class="btn btn-outline" onclick="geCloseReview()" style="font-size:.65rem;font-family:var(--mono)">✕ CLOSE</button>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:.5rem">
+              <input id="ger-search" type="text" placeholder="Search artist or title…" onkeydown="if(event.key==='Enter')geLoad(1)" class="ger-in" style="flex:1;min-width:180px">
+              <select id="ger-scope" onchange="geLoad(1)" class="ger-in">
+                <option value="changed" selected>Genre would change</option>
+                <option value="check">Marked CHECK</option>
+                <option value="empty">Files with no genre</option>
+                <option value="manual">My edits</option>
+                <option value="all">All songs</option>
+              </select>
+              <select id="ger-family" onchange="geLoad(1)" class="ger-in"><option value="">Any family</option></select>
+              <input id="ger-folder" type="text" placeholder="Folder e.g. /music/Eagles" onkeydown="if(event.key==='Enter')geLoad(1)" class="ger-in" style="width:190px">
+              <button class="btn btn-outline" onclick="geLoad(1)" style="font-size:.65rem;font-family:var(--mono)">🔍 APPLY</button>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:.5rem;margin-bottom:.5rem">
+              <div id="ger-count" style="font-family:var(--mono);font-size:.68rem;color:var(--muted)"></div>
+              <div style="display:flex;gap:.4rem;align-items:center">
+                <button class="btn btn-outline" onclick="geLoad(_ger.page-1)" style="font-size:.65rem;font-family:var(--mono)">◀</button>
+                <span id="ger-page" style="font-family:var(--mono);font-size:.65rem;color:var(--muted)"></span>
+                <button class="btn btn-outline" onclick="geLoad(_ger.page+1)" style="font-size:.65rem;font-family:var(--mono)">▶</button>
+                <button class="btn" id="ger-write-sel" onclick="geWrite(true)" style="font-size:.65rem;font-family:var(--mono);background:var(--teal);color:#000">✎ WRITE SELECTED (0)</button>
+                <button class="btn btn-outline" id="ger-write-all" onclick="geWrite(false)" style="font-size:.65rem;font-family:var(--mono);color:var(--teal);border-color:var(--teal)">✎ WRITE ALL MATCHING</button>
+              </div>
+            </div>
+            <div style="overflow:auto;border:1px solid var(--border);border-radius:8px;max-height:calc(100vh - 330px)">
+              <table class="ger-table">
+                <thead><tr>
+                  <th style="width:28px"><input type="checkbox" onchange="geSelectAll(this.checked)"></th>
+                  <th>TITLE</th><th>NEW GENRE <span style="color:var(--muted2);font-weight:normal">(click to edit)</span></th><th>CURRENT IN FILE</th><th>CONF</th>
+                </tr></thead>
+                <tbody id="ger-body"></tbody>
+              </table>
+            </div>
+            <div style="margin-top:.5rem;font-family:var(--mono);font-size:.6rem;color:var(--amber)">⚠ Writes the GENRE tag only. Your edits are saved immediately and never overwritten by the engine. Lidarr: "Tag Audio Files with Metadata" must be Never.</div>
+          </div>
           <div class="section-label sl-teal">SCAN PROGRESS</div>
           <div id="bannerTip" class="feature-banner recommend" style="justify-content:space-between;align-items:flex-start">
             <span>⭐ Run The Retriever first to pre-populate the metadata cache. The Sniffer and Top Dogs will be significantly faster once your library is tagged. Chart data is also written permanently to your files as a backup.</span>
@@ -5030,57 +5074,143 @@ document.addEventListener('DOMContentLoaded', () => setTimeout(gePoll, 2600));
 
 // ── M5a: Online Genres → files ───────────────────────────────────
 let _ogTimer = null;
-function _ogReq() {
-  return {scope: document.getElementById('og-scope').value,
-          folder: (document.getElementById('og-folder').value || '').trim() || null};
+let _geTax = null;
+const _ger = {page: 1, pages: 1, total: 0, rows: [], sel: new Set()};
+
+async function geTaxonomy() {
+  if (_geTax) return _geTax;
+  const r = await fetch(`${API}/api/retriever/genre-engine/taxonomy`, {headers:authHdrs()});
+  _geTax = await r.json();
+  const fs = document.getElementById('ger-family');
+  if (fs && fs.options.length < 2)
+    Object.entries(_geTax.families).forEach(([k, v]) => fs.insertAdjacentHTML('beforeend', `<option value="${k}">${esc(v)}</option>`));
+  return _geTax;
 }
-async function ogPreview() {
-  const btn = document.getElementById('og-btn-preview');
-  btn.disabled = true; btn.textContent = 'LOADING…';
+function _gerFilters() {
+  return {scope: document.getElementById('ger-scope').value,
+          search: document.getElementById('ger-search').value.trim() || null,
+          family: document.getElementById('ger-family').value || null,
+          folder: document.getElementById('ger-folder').value.trim() || null};
+}
+async function geOpenReview() {
+  document.getElementById('ret-main').classList.add('ge-reviewing');
+  document.getElementById('ge-review').style.display = '';
+  await geTaxonomy();
+  geLoad(1);
+}
+function geCloseReview() {
+  document.getElementById('ret-main').classList.remove('ge-reviewing');
+  document.getElementById('ge-review').style.display = 'none';
+}
+async function geLoad(page) {
+  page = Math.max(1, Math.min(page, _ger.pages || 1));
+  const body = document.getElementById('ger-body');
+  body.innerHTML = '<tr><td colspan="5" style="padding:1.5rem;text-align:center;color:var(--muted2)">Loading…</td></tr>';
   try {
-    const r = await fetch(`${API}/api/retriever/online-genres/preview`, {method:'POST', headers:authHdrs(), body:JSON.stringify(_ogReq())});
+    const r = await fetch(`${API}/api/retriever/genre-engine/review?page=${page}&size=100`, {method:'POST', headers:authHdrs(), body:JSON.stringify(_gerFilters())});
     const d = await r.json();
     if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
-    ogShowPreview(d);
-  } catch (e) { toast(`Preview failed: ${e.message}`, 'error'); }
-  finally { btn.disabled = false; btn.textContent = '🔍 PREVIEW'; }
+    Object.assign(_ger, {page: d.page, pages: Math.max(1, Math.ceil(d.total / d.size)), total: d.total, rows: d.rows});
+    _ger.sel.clear();
+    document.getElementById('ger-count').innerHTML = `${d.total.toLocaleString()} songs` + (d.check ? ` · <span style="color:var(--amber)">${d.check.toLocaleString()} CHECK</span>` : '');
+    document.getElementById('ger-page').textContent = `page ${_ger.page} / ${_ger.pages}`;
+    geRender();
+  } catch (e) { body.innerHTML = `<tr><td colspan="5" style="padding:1.5rem;color:var(--red)">${esc(e.message)}</td></tr>`; }
 }
-function ogShowPreview(d) {
-  document.getElementById('og-modal')?.remove();
-  const m = document.createElement('div');
-  m.id = 'og-modal';
-  m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:4000;display:flex;align-items:center;justify-content:center;padding:2rem';
-  const rows = (d.sample || []).map(x => `<tr style="border-bottom:1px solid var(--border)">
-      <td style="padding:.35rem .6rem;color:var(--muted)">${esc(x.artist)}</td>
-      <td style="padding:.35rem .6rem">${esc(x.title)}</td>
-      <td style="padding:.35rem .6rem;color:var(--muted2)">${esc(x.current.join('; ') || '—')}</td>
-      <td style="padding:.35rem .6rem;color:var(--teal)">${esc(x.proposed.join('; '))}</td>
-      <td style="padding:.35rem .6rem">${x.confidence === 'check' ? '<span style="color:var(--amber)">CHECK</span>' : '<span style="color:var(--muted2)">ok</span>'}</td></tr>`).join('');
-  m.innerHTML = `<div style="background:var(--surface);border:1px solid var(--border2);border-radius:10px;max-width:1100px;width:100%;max-height:85vh;display:flex;flex-direction:column">
-    <div style="padding:1rem 1.25rem;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:1rem">
-      <div><div style="font-family:var(--display);font-size:1.2rem;letter-spacing:2px">ONLINE GENRES PREVIEW</div>
-      <div style="font-family:var(--mono);font-size:.6rem;color:var(--muted)">${d.count.toLocaleString()} songs would be updated${d.check ? ` · <span style="color:var(--amber)">${d.check.toLocaleString()} marked CHECK (listed first)</span>` : ''}${d.count > 300 ? ' · showing first 300' : ''}</div></div>
-      <div style="display:flex;gap:.5rem">
-        <button class="btn btn-outline" onclick="document.getElementById('og-modal').remove()" style="font-size:.65rem;font-family:var(--mono)">CANCEL</button>
-        <button class="btn" ${d.count ? '' : 'disabled'} onclick="ogApply(${d.count})" style="font-size:.65rem;font-family:var(--mono);background:var(--teal);color:#000">✎ WRITE ${d.count.toLocaleString()} FILES</button>
-      </div></div>
-    <div style="overflow:auto;flex:1"><table style="width:100%;border-collapse:collapse;font-family:var(--mono);font-size:.6rem">
-      <thead><tr style="background:var(--surface2);position:sticky;top:0">
-        <th style="padding:.45rem .6rem;text-align:left;color:var(--muted)">ARTIST</th><th style="padding:.45rem .6rem;text-align:left;color:var(--muted)">TITLE</th>
-        <th style="padding:.45rem .6rem;text-align:left;color:var(--muted)">CURRENT GENRE</th><th style="padding:.45rem .6rem;text-align:left;color:var(--muted)">NEW GENRE</th><th style="padding:.45rem .6rem;text-align:left;color:var(--muted)">CONF</th></tr></thead>
-      <tbody>${rows || '<tr><td colspan="5" style="padding:2rem;text-align:center;color:var(--muted2)">Nothing to show. Run the Genre Engine first (▶ RUN ENGINE), or pick a different filter.</td></tr>'}</tbody></table></div>
-    <div style="padding:.6rem 1.25rem;border-top:1px solid var(--border);font-family:var(--mono);font-size:.55rem;color:var(--amber)">⚠ Lidarr users: set Settings → Metadata → "Tag Audio Files with Metadata" to Never first, or Lidarr may overwrite these genres.</div>
-  </div>`;
-  m.addEventListener('click', e => { if (e.target === m) m.remove(); });
-  document.body.appendChild(m);
+function geRender() {
+  const body = document.getElementById('ger-body');
+  if (!_ger.rows.length) { body.innerHTML = '<tr><td colspan="5" style="padding:2rem;text-align:center;color:var(--muted2)">Nothing matches. Run the Genre Engine first, or change the filters.</td></tr>'; geSyncSel(); return; }
+  let html = '', last = null;
+  _ger.rows.forEach((x, i) => {
+    if (x.artist !== last) {
+      last = x.artist;
+      const n = _ger.rows.filter(r => r.artist === x.artist).length;
+      html += `<tr class="ger-artist"><td><input type="checkbox" onchange="geSelectArtist(${JSON.stringify(x.artist).replace(/"/g,'&quot;')}, this.checked)"></td>
+        <td colspan="4">${esc(x.artist || '(unknown artist)')} <span style="color:var(--muted2);font-weight:normal">· ${n} on this page</span>
+        <a href="#" onclick="geEditArtist(${i});return false" style="margin-left:.75rem;color:var(--amber);font-weight:normal;font-size:.62rem">✎ set genre for ALL songs by this artist</a></td></tr>
+        <tr class="ger-edit" id="ger-aedit-${i}" style="display:none"><td></td><td colspan="4" id="ger-aedit-cell-${i}"></td></tr>`;
+    }
+    const conf = x.confidence === 'check' ? '<span style="color:var(--amber)">CHECK</span>'
+               : x.confidence === 'manual' ? '<span style="color:var(--pink)">EDITED</span>' : '<span style="color:var(--muted2)">ok</span>';
+    html += `<tr id="ger-row-${i}"><td><input type="checkbox" class="ger-cb" data-i="${i}" ${_ger.sel.has(x.track_id) ? 'checked' : ''} onchange="geToggle(${i}, this.checked)"></td>
+      <td>${esc(x.title)}</td>
+      <td><span class="ger-new" onclick="geEditRow(${i})">${esc(x.proposed.join('; '))}</span></td>
+      <td style="color:var(--muted2)">${esc(x.current.join('; ') || '—')}</td><td>${conf}</td></tr>
+      <tr class="ger-edit" id="ger-edit-${i}" style="display:none"><td></td><td colspan="4" id="ger-edit-cell-${i}"></td></tr>`;
+  });
+  body.innerHTML = html;
+  geSyncSel();
 }
-async function ogApply(n) {
-  if (!confirm(`Write new genres to ${n.toLocaleString()} music files?\n\nOnly the GENRE tag changes. Plex/Emby/Jellyfin get a library refresh when it finishes.`)) return;
-  document.getElementById('og-modal')?.remove();
-  const r = await fetch(`${API}/api/retriever/online-genres/apply`, {method:'POST', headers:authHdrs(), body:JSON.stringify(_ogReq())});
+function geToggle(i, on) { const id = _ger.rows[i].track_id; on ? _ger.sel.add(id) : _ger.sel.delete(id); geSyncSel(); }
+function geSelectAll(on) { _ger.rows.forEach(r => on ? _ger.sel.add(r.track_id) : _ger.sel.delete(r.track_id)); geRender(); }
+function geSelectArtist(artist, on) { _ger.rows.filter(r => r.artist === artist).forEach(r => on ? _ger.sel.add(r.track_id) : _ger.sel.delete(r.track_id)); geRender(); }
+function geSyncSel() {
+  const b = document.getElementById('ger-write-sel'); if (b) { b.textContent = `✎ WRITE SELECTED (${_ger.sel.size})`; b.disabled = !_ger.sel.size; b.style.opacity = _ger.sel.size ? '1' : '.4'; }
+  const a = document.getElementById('ger-write-all'); if (a) a.textContent = `✎ WRITE ALL ${_ger.total.toLocaleString()} MATCHING`;
+}
+function _geEditorHTML(fam, styles, saveCall) {
+  const famOpts = Object.entries(_geTax.families).map(([k, v]) => `<option value="${k}" ${k === fam ? 'selected' : ''}>${esc(v)}</option>`).join('');
+  const styleSel = (j) => `<select data-st="${j}"></select>`;
+  return `<div class="ger-editor" data-styles='${JSON.stringify(styles || [])}'>
+      <select data-fam onchange="geFillStyles(this.parentNode)">${famOpts}</select>${styleSel(0)}${styleSel(1)}${styleSel(2)}
+      <button class="btn btn-sm" style="background:var(--teal);color:#000;font-size:.6rem" onclick="${saveCall}">SAVE</button>
+      <button class="btn btn-outline btn-sm" style="font-size:.6rem" onclick="geRender()">CANCEL</button></div>`;
+}
+function geFillStyles(ed, initial) {
+  const fam = ed.querySelector('[data-fam]').value;
+  const fits = Object.entries(_geTax.styles).filter(([, v]) => v.families.includes(fam));
+  const keep = initial || [...ed.querySelectorAll('[data-st]')].map(s => s.value);
+  ed.querySelectorAll('[data-st]').forEach((sel, j) => {
+    sel.innerHTML = '<option value="">— style —</option>' + fits.map(([k, v]) => `<option value="${k}">${esc(v.label)}${v.families.length > 1 ? ' ↔' : ''}</option>`).join('');
+    if (keep[j] && fits.some(([k]) => k === keep[j])) sel.value = keep[j];
+  });
+}
+function _geOpenEditor(rowId, cellId, fam, styles, saveCall) {
+  geRender();
+  document.getElementById(rowId).style.display = '';
+  const cell = document.getElementById(cellId);
+  cell.innerHTML = _geEditorHTML(fam, styles, saveCall);
+  geFillStyles(cell.querySelector('.ger-editor'), styles);
+}
+function geEditRow(i) { const x = _ger.rows[i]; _geOpenEditor(`ger-edit-${i}`, `ger-edit-cell-${i}`, x.family, x.styles, `geSaveRow(${i}, this.parentNode)`); }
+function geEditArtist(i) { const x = _ger.rows[i]; _geOpenEditor(`ger-aedit-${i}`, `ger-aedit-cell-${i}`, x.family, x.styles, `geSaveArtist(${i}, this.parentNode)`); }
+function _geReadEditor(ed) {
+  return {family: ed.querySelector('[data-fam]').value,
+          styles: [...ed.querySelectorAll('[data-st]')].map(s => s.value).filter(Boolean)};
+}
+async function _geSave(body) {
+  const r = await fetch(`${API}/api/retriever/genre-engine/override`, {method:'PUT', headers:authHdrs(), body:JSON.stringify(body)});
+  const d = await r.json();
+  if (!r.ok) { toast(d.detail || `HTTP ${r.status}`, 'error'); return; }
+  toast(`Saved: ${d.genre.join('; ')} — ${d.updated} song${d.updated > 1 ? 's' : ''}`, 'success');
+  geLoad(_ger.page);
+}
+function geSaveRow(i, ed) { _geSave({..._geReadEditor(ed), track_ids: [_ger.rows[i].track_id]}); }
+function geSaveArtist(i, ed) {
+  const a = _ger.rows[i].artist;
+  if (!confirm(`Set this genre for EVERY song by ${a} (all pages)?`)) return;
+  _geSave({..._geReadEditor(ed), artist: a});
+}
+async function geWrite(selectedOnly) {
+  const n = selectedOnly ? _ger.sel.size : _ger.total;
+  if (!n) return;
+  if (!confirm(`Write the new genre to ${n.toLocaleString()} music file${n > 1 ? 's' : ''}?\n\nOnly the GENRE tag changes. Plex/Emby/Jellyfin get a library refresh when it finishes.`)) return;
+  const body = selectedOnly ? {track_ids: [..._ger.sel]} : _gerFilters();
+  const r = await fetch(`${API}/api/retriever/online-genres/apply`, {method:'POST', headers:authHdrs(), body:JSON.stringify(body)});
   if (!r.ok) { const d = await r.json().catch(() => ({})); toast(d.detail || `HTTP ${r.status}`, 'error'); return; }
-  toast('Writing genres in the background', 'ok');
+  toast('Writing genres in the background — progress shows in the left panel', 'ok');
   ogPoll();
+}
+async function geRevote(btn) {
+  btn.disabled = true; const t = btn.textContent; btn.textContent = 'RE-VOTING…';
+  try {
+    const r = await fetch(`${API}/api/retriever/genre-engine/revote`, {method:'POST', headers:authHdrs()});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    toast(d.message || 'Re-vote done', 'success'); gePoll();
+    if (document.getElementById('ge-review').style.display !== 'none') geLoad(1);
+  } catch (e) { toast(e.message, 'error'); }
+  finally { btn.disabled = false; btn.textContent = t; }
 }
 async function ogStop() {
   await fetch(`${API}/api/retriever/online-genres/stop`, {method:'POST', headers:authHdrs()});

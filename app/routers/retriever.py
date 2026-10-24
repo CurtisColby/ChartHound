@@ -2746,10 +2746,13 @@ GE_TAGS = {
     "christian rock": "ccm-rock", "christian pop": "ccm-pop", "worship": "worship",
     "praise & worship": "worship", "southern gospel": "sgospel",
 }
-GE_WEIGHTS = {"discogs": 3.0, "mb": 2.0, "lfm_track": 2.0, "lfm_artist": 1.0}
+GE_WEIGHTS = {"discogs": 3.0, "discogs_g": 2.0, "mb": 2.0, "lfm_track": 2.0, "lfm_artist": 1.0}
+# Discogs lists an album's genres alphabetically, so their order carries no meaning
+_GE_FLAT = {"discogs_g"}
 _ge_job = {"status": "idle", "phase": "", "albums_done": 0, "albums_total": 0,
            "artists_done": 0, "artists_total": 0, "scored": 0, "check": 0, "message": ""}
 _ge_stop = {"flag": False}
+_ge_revote_only = {"flag": False}   # re-vote from cache, no lookups
 _GE_FOLDER_JUNK = re.compile(r"[\(\[\{][^\)\]\}]*[\)\]\}]|\b(cd|disc|disk)\s*\d+\b|\b(19|20)\d{2}\b", re.I)
 
 
@@ -2762,16 +2765,24 @@ def _ge_tag_keys(tags) -> list:
     return out
 
 
+def _ge_related(f1: str, f2: str) -> bool:
+    """Two families are neighbours if a bridge style joins them (Pop ↔ Rock via Pop Rock…)."""
+    return f1 == f2 or any(f1 in fams and f2 in fams for _, fams in GE_STYLES.values())
+
+
 def _ge_vote(sources: list) -> Optional[dict]:
-    """sources: [(source_name, [keys in rank order])] → {family, styles, confidence, sources} or None."""
-    fam_score, style_score, used = {}, {}, []
+    """
+    sources: [(source_name, [keys in rank order])] → {family, styles, confidence, sources} or None.
+    CHECK only when sources genuinely disagree (unrelated families) or evidence is thin.
+    """
+    fam_score, style_score, used, tops = {}, {}, [], []
     for name, keys in sources:
         if not keys:
             continue
         w = GE_WEIGHTS[name]
         contrib = {}
         for i, k in enumerate(keys[:6]):
-            pos = 1.0 if i == 0 else (0.7 if i == 1 else 0.5)
+            pos = 1.0 if (i == 0 or name in _GE_FLAT) else (0.7 if i == 1 else 0.5)
             if k == "_folkcountry":
                 fams = ("folk", "country")
             elif k in GE_FAMILIES:
@@ -2784,17 +2795,24 @@ def _ge_vote(sources: list) -> Optional[dict]:
             for f in fams:   # a source can't stack several tags into one family
                 contrib[f] = max(contrib.get(f, 0), w * pos / len(fams))
         if contrib:
-            used.append(name)
+            if name.replace("_g", "") not in used:
+                used.append(name.replace("_g", ""))
+            tops.append((name, w, max(contrib.items(), key=lambda kv: kv[1])[0]))
         for f, v in contrib.items():
             fam_score[f] = fam_score.get(f, 0) + v
     if not fam_score:
         return None
-    ranked = sorted(fam_score.items(), key=lambda kv: -kv[1])
-    family, top = ranked[0]
-    second = ranked[1][1] if len(ranked) > 1 else 0
-    styles = [k for k, _ in sorted(style_score.items(), key=lambda kv: -kv[1])
-              if family in GE_STYLES[k][1]][:3]
-    confident = top >= 2.0 and second < 0.75 * top
+    family = max(fam_score.items(), key=lambda kv: kv[1])[0]
+
+    # Styles: must fit the family and have real support (drops one-off stragglers)
+    cands = sorted(((k, v) for k, v in style_score.items() if family in GE_STYLES[k][1]),
+                   key=lambda kv: -kv[1])
+    best = cands[0][1] if cands else 0
+    styles = [k for k, v in cands if v >= 1.0 and v >= 0.4 * best][:3]
+
+    agree = sum(w for _, w, f in tops if _ge_related(f, family))
+    clash = any(w >= 2 and not _ge_related(f, family) for _, w, f in tops)
+    confident = agree >= 3 and not clash
     return {"family": family, "styles": styles,
             "confidence": "high" if confident else "check", "sources": used}
 
@@ -2998,6 +3016,8 @@ async def _run_genre_engine():
         art_fallback = {f"artist:{ak}": names[ak] for ak in need_art
                         if ak in names and not fresh(dcache.get(f"artist:{ak}"))}
         mb_todo = {ak: n for ak, n in names.items() if not fresh(mcache.get(ak))}
+        if _ge_revote_only["flag"]:
+            albums, art_fallback, mb_todo = {}, {}, {}
 
         # Discogs (if connected) and MusicBrainz run side by side — different services
         _ge_job["phase"] = "lookups"
@@ -3031,7 +3051,8 @@ async def _run_genre_engine():
                 ak, tk = _artist_key(artist), _title_key(title)
                 d = disc.get(track_album.get(tid)) or disc.get(f"artist:{ak}")
                 sources = [
-                    ("discogs", _ge_tag_keys((d[1] + d[0]) if d else [])),   # styles first: more specific
+                    ("discogs", _ge_tag_keys(d[1] if d else [])),     # album styles
+                    ("discogs_g", _ge_tag_keys(d[0] if d else [])),   # album genres (unordered)
                     ("mb", _ge_tag_keys(mb.get(ak))),
                     ("lfm_track", _ge_tag_keys(lt.get((ak, tk)))),
                     ("lfm_artist", _ge_tag_keys(la.get(ak))),
@@ -3042,9 +3063,10 @@ async def _run_genre_engine():
                 n_check += v["confidence"] == "check"
                 out.append((tid, v["family"], json.dumps(v["styles"]), v["confidence"],
                             ",".join(v["sources"])))
-            await db.execute("DELETE FROM track_genres")
+            # Manual edits are never overwritten by a re-run
+            await db.execute("DELETE FROM track_genres WHERE confidence != 'manual'")
             await db.executemany(
-                "INSERT INTO track_genres (track_id, family, styles, confidence, sources, updated_at) "
+                "INSERT OR IGNORE INTO track_genres (track_id, family, styles, confidence, sources, updated_at) "
                 "VALUES (?, ?, ?, ?, ?, datetime('now'))", out)
             await db.commit()
         stopped = _ge_stop["flag"]
@@ -3166,8 +3188,9 @@ _og_job = {"status": "idle", "done": 0, "total": 0, "written": 0, "failed": 0, "
 _og_stop = {"flag": False}
 
 
-async def _online_genre_rows(scope: str, folder: Optional[str]) -> list:
-    """[(track_id, file_path, artist, title, current, proposed, confidence)] from the Genre Engine."""
+async def _online_genre_rows(scope: str, folder: Optional[str], search: Optional[str] = None,
+                             family: Optional[str] = None, track_ids: Optional[List[int]] = None) -> list:
+    """[(track_id, file_path, artist, title, current, proposed, confidence, family, styles)]."""
     await _ge_migrate()
     async with aiosqlite.connect(settings.database_url) as db:
         q = ("SELECT t.track_id, t.file_path, COALESCE(t.tag_artist, a.name, ''), t.title, "
@@ -3179,31 +3202,47 @@ async def _online_genre_rows(scope: str, folder: Optional[str]) -> list:
         if folder:
             q += " AND t.file_path LIKE ?"
             params.append(folder.rstrip("/") + "/%")
+        if family:
+            q += " AND g.family = ?"
+            params.append(family)
+        if track_ids:
+            q += f" AND t.track_id IN ({','.join('?' * len(track_ids))})"
+            params += list(track_ids)
         rows = await (await db.execute(q, params)).fetchall()
+    needle = (search or "").strip().lower()
     out = []
     for tid, fp, artist, title, g1, g2, g3, fam, styles, conf in rows:
-        proposed = _ge_display(fam, json.loads(styles or "[]"))
+        st = json.loads(styles or "[]")
+        proposed = _ge_display(fam, st)
         current = [g for g in (g1, g2, g3) if g]
         same = [c.lower() for c in current] == [p.lower() for p in proposed[:3]]
-        if scope == "empty" and current:
+        if needle and needle not in (artist or "").lower() and needle not in (title or "").lower():
             continue
-        if scope == "changed" and same:
-            continue
-        if scope == "check" and conf != "check":
-            continue
-        out.append((tid, fp, artist, title, current, proposed, conf))
-    out.sort(key=lambda r: (r[6] != "check", r[2].lower(), r[3].lower()))
+        if not track_ids:
+            if scope == "empty" and current:
+                continue
+            if scope == "changed" and same:
+                continue
+            if scope == "check" and conf != "check":
+                continue
+            if scope == "manual" and conf != "manual":
+                continue
+        out.append((tid, fp, artist, title, current, proposed, conf, fam, st))
+    out.sort(key=lambda r: ((r[2] or "").lower(), (r[3] or "").lower()))
     return out
 
 
 class OnlineGenreRequest(BaseModel):
-    scope:  str = "changed"           # empty | changed | all | check
-    folder: Optional[str] = None      # /music/... subfolder, optional
+    scope:     str = "changed"            # empty | changed | all | check | manual
+    folder:    Optional[str] = None       # /music/... subfolder, optional
+    search:    Optional[str] = None       # artist or title contains
+    family:    Optional[str] = None       # family key
+    track_ids: Optional[List[int]] = None # explicit selection (overrides scope)
 
 
 @router.post("/online-genres/preview")
 async def online_genres_preview(req: OnlineGenreRequest, user: dict = Depends(require_auth)):
-    rows = await _online_genre_rows(req.scope, req.folder)
+    rows = await _online_genre_rows(req.scope, req.folder, req.search, req.family, req.track_ids)
     return {
         "count":  len(rows),
         "check":  sum(1 for r in rows if r[6] == "check"),
@@ -3246,11 +3285,11 @@ async def _run_online_genres(req: OnlineGenreRequest):
     _og_job = {"status": "running", "done": 0, "total": 0, "written": 0, "failed": 0,
                "message": "Preparing…"}
     try:
-        rows = await _online_genre_rows(req.scope, req.folder)
+        rows = await _online_genre_rows(req.scope, req.folder, req.search, req.family, req.track_ids)
         _og_job["total"] = len(rows)
         loop = asyncio.get_event_loop()
         async with aiosqlite.connect(settings.database_url, timeout=30) as db:
-            for i, (tid, fp, artist, title, current, proposed, _conf) in enumerate(rows):
+            for i, (tid, fp, artist, title, current, proposed, _conf, _f, _s) in enumerate(rows):
                 if _og_stop["flag"]:
                     break
                 ok = await loop.run_in_executor(None, write_genre_only, fp, proposed)
@@ -3302,3 +3341,78 @@ async def online_genres_status(user: dict = Depends(require_auth)):
 async def online_genres_stop(user: dict = Depends(require_auth)):
     _og_stop["flag"] = True
     return {"ok": True}
+
+
+
+@router.get("/genre-engine/taxonomy")
+async def genre_engine_taxonomy(user: dict = Depends(require_auth)):
+    return {"families": GE_FAMILIES,
+            "styles": {k: {"label": v[0], "families": list(v[1])} for k, v in GE_STYLES.items()}}
+
+
+@router.post("/genre-engine/review")
+async def genre_engine_review(req: OnlineGenreRequest, page: int = 1, size: int = 100,
+                              user: dict = Depends(require_auth)):
+    rows = await _online_genre_rows(req.scope, req.folder, req.search, req.family)
+    size = max(20, min(size, 500))
+    page = max(1, page)
+    chunk = rows[(page - 1) * size: page * size]
+    return {
+        "total": len(rows), "page": page, "size": size,
+        "check": sum(1 for r in rows if r[6] == "check"),
+        "rows": [{"track_id": r[0], "artist": r[2], "title": r[3], "current": r[4],
+                  "proposed": r[5], "confidence": r[6], "family": r[7], "styles": r[8]} for r in chunk],
+    }
+
+
+class GenreOverride(BaseModel):
+    family:    str
+    styles:    List[str] = []
+    track_ids: Optional[List[int]] = None
+    artist:    Optional[str] = None      # apply to every song by this artist
+
+
+@router.put("/genre-engine/override")
+async def genre_engine_override(req: GenreOverride, user: dict = Depends(require_auth)):
+    from app.routers.groomer import _artist_key
+    if req.family not in GE_FAMILIES:
+        raise HTTPException(400, "Unknown family.")
+    styles = []
+    for st in req.styles[:3]:
+        if st and st in GE_STYLES and req.family in GE_STYLES[st][1] and st not in styles:
+            styles.append(st)
+    await _ge_migrate()
+    async with aiosqlite.connect(settings.database_url, timeout=60) as db:
+        ids = list(req.track_ids or [])
+        if req.artist:
+            want = _artist_key(req.artist)
+            rows = await (await db.execute(
+                "SELECT t.track_id, COALESCE(t.tag_artist, a.name, '') FROM tracks t "
+                "LEFT JOIN artists a ON t.artist_id = a.artist_id")).fetchall()
+            ids += [tid for tid, ar in rows if _artist_key(ar) == want]
+        ids = sorted(set(ids))
+        if not ids:
+            raise HTTPException(400, "No songs selected.")
+        await db.executemany(
+            "INSERT INTO track_genres (track_id, family, styles, confidence, sources, updated_at) "
+            "VALUES (?, ?, ?, 'manual', 'manual', datetime('now')) ON CONFLICT(track_id) DO UPDATE SET "
+            "family=excluded.family, styles=excluded.styles, confidence='manual', sources='manual', "
+            "updated_at=excluded.updated_at",
+            [(tid, req.family, json.dumps(styles)) for tid in ids])
+        await db.commit()
+    return {"ok": True, "updated": len(ids), "genre": _ge_display(req.family, styles)}
+
+
+@router.post("/genre-engine/revote")
+async def genre_engine_revote(user: dict = Depends(require_auth)):
+    """Recalculate the vote from cached lookups only — no network calls, takes seconds."""
+    t = _ge_task["task"]
+    if t is not None and not t.done():
+        raise HTTPException(409, "The engine is running.")
+    _ge_stop["flag"] = False
+    _ge_revote_only["flag"] = True
+    try:
+        await _run_genre_engine()
+    finally:
+        _ge_revote_only["flag"] = False
+    return _ge_job
