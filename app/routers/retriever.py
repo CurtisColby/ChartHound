@@ -3177,7 +3177,18 @@ async def genre_engine_stop(user: dict = Depends(require_auth)):
 
 @router.get("/genre-engine/status")
 async def genre_engine_status(user: dict = Depends(require_auth)):
-    return _ge_job
+    if _ge_job.get("status") != "idle":
+        return _ge_job
+    # Idle after a restart — report the last run from the database
+    out = dict(_ge_job)
+    try:
+        async with aiosqlite.connect(settings.database_url) as db:
+            row = await (await db.execute(
+                "SELECT COUNT(*), MAX(CASE WHEN confidence!='manual' THEN updated_at END) FROM track_genres")).fetchone()
+        out["decided"], out["last_run"] = (row[0] or 0), (row[1] or "")
+    except Exception:
+        out["decided"], out["last_run"] = 0, ""
+    return out
 
 
 

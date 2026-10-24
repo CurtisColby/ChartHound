@@ -1692,7 +1692,9 @@ async function gePoll() {
     const el = document.getElementById('ge-status');
     if (el) el.innerHTML = running
       ? `<span style="color:var(--teal)">Discogs ${d.albums_done.toLocaleString()}/${d.albums_total.toLocaleString()} · MusicBrainz ${d.artists_done.toLocaleString()}/${d.artists_total.toLocaleString()}</span><br>${esc(d.message || '')}`
-      : (d.status === 'idle' ? 'Not run yet.' : esc(d.message || ''));
+      : (d.status === 'idle'
+          ? (d.last_run ? `Last run ${stDate(d.last_run)} · ${(d.decided || 0).toLocaleString()} songs have a genre.` : 'Not run yet.')
+          : esc(d.message || ''));
     const rb = document.getElementById('ge-btn-run'), sb = document.getElementById('ge-btn-stop');
     if (rb) { rb.disabled = running; rb.style.opacity = running ? '.35' : '1'; }
     if (sb) sb.style.display = running ? '' : 'none';

@@ -153,7 +153,8 @@ async function showApp(isPlaceholderKey = false) {
   await loadAllStatuses();
   await loadPathSettings();
   startHeartbeat();
-  toast(`Welcome back, ${currentUser}. Head to The Kennel to connect your services.`, 'ok');
+  stLoad();
+  toast(`Welcome back, ${currentUser}.`, 'ok');
   checkForUpdate();
 }
 
@@ -181,6 +182,7 @@ function switchTab(name) {
   document.getElementById(`nav-${name}`).classList.add('active');
   document.getElementById(`panel-${name}`).classList.add('active');
   document.getElementById('vinylIcon').classList.toggle('spinning', ['retriever','sniffer','bloodhound','tracker'].includes(name));
+  if (name === 'start') stLoad();
   if (name === 'retriever') { checkRetrieverBanners(); loadCustomTags(); retInjectScrollNav(); }
   if (name === 'groomer') grmInit();
   if (name === 'sniffer') snfInit();

@@ -108,7 +108,7 @@ function grmInit() {
   grmLoadStats();
   _grmLoadPathSettings();
   grmLoadLibraries();
-  if (!grmScanPoll) grmInitView();
+  if (!grmScanPoll || window._stWantView) grmInitView();
   grmLfmPoll();
 }
 
@@ -1116,6 +1116,7 @@ function grmScanBadge(text) {
   const b = document.getElementById('grm-vbtn-scan'); if (b) b.textContent = text ? `① SCAN · ${text}` : '① SCAN';
 }
 async function grmInitView() {
+  if (window._stWantView) { grmSetView(window._stWantView); window._stWantView = null; return; }
   // Open on BUILD when scored results exist, otherwise SCAN
   try {
     const r = await fetch(`${API}/api/groomer/results?limit=1&min_peak=1&max_peak=100`, {headers:authHdrs()});

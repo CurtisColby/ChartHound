@@ -5436,6 +5436,20 @@ class PlaylistPushRequest(BaseModel):
     path_mode:     Optional[str] = None            # 'navidrome' = use Navidrome prefix
 
 
+async def _record_last_playlist(name: str, dest: str, count: int):
+    """Start Here: remember the most recent playlist sent anywhere."""
+    try:
+        val = json.dumps({"name": name or "", "dest": dest, "count": count,
+                          "at": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")})
+        async with aiosqlite.connect(_DYNAMIC_DB) as db:
+            await db.execute(
+                "INSERT INTO app_settings (key, value, updated_at) VALUES ('grm_last_push', ?, datetime('now')) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at", (val,))
+            await db.commit()
+    except Exception as e:
+        log.warning(f"record last playlist: {e}")
+
+
 @router.post("/playlist/push")
 async def playlist_push(req: PlaylistPushRequest, _=Depends(require_auth)):
     if not req.server:
@@ -5464,11 +5478,15 @@ async def playlist_push(req: PlaylistPushRequest, _=Depends(require_auth)):
 
     try:
         if req.server == "plex":
-            return await _push_to_plex(base_url, token, req.playlist_name, tracks)
-        user_id = extra.get("user_id", "")
-        if req.server == "emby":
-            return await _push_to_emby(base_url, token, user_id, req.playlist_name, tracks)
-        return await _push_to_jellyfin(base_url, token, user_id, req.playlist_name, tracks)
+            res = await _push_to_plex(base_url, token, req.playlist_name, tracks)
+        else:
+            user_id = extra.get("user_id", "")
+            if req.server == "emby":
+                res = await _push_to_emby(base_url, token, user_id, req.playlist_name, tracks)
+            else:
+                res = await _push_to_jellyfin(base_url, token, user_id, req.playlist_name, tracks)
+        await _record_last_playlist(req.playlist_name, req.server, len(tracks))
+        return res
     except HTTPException:
         raise
     except Exception as e:
@@ -5560,6 +5578,8 @@ async def playlist_m3u(req: PlaylistPushRequest, _=Depends(require_auth)):
         lines.append(f"#EXTINF:-1,{artist} - {title}")
         lines.append(fp)
 
+    await _record_last_playlist(req.playlist_name,
+                                "navidrome-m3u" if req.path_mode == "navidrome" else "m3u", len(tracks))
     return PlainTextResponse(
         "\n".join(lines),
         media_type="audio/x-mpegurl",

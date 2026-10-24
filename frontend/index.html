@@ -7,7 +7,8 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐕</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/css/app.css?v=m8a">
+<link rel="stylesheet" href="/static/css/app.css?v=m8b">
+<script>try{document.documentElement.style.fontSize=(+localStorage.getItem('ch_textsize')||18)+'px'}catch(e){}</script>
 </head>
 <body>
 
@@ -155,7 +156,11 @@
   <nav class="sidebar" id="appSidebar">
     <div class="sidebar-toggle-btn" onclick="toggleSidebar()" id="sidebarToggleBtn" title="Collapse navigation">◀ hide</div>
     <div class="nav-label">NAVIGATION</div>
-    <div class="nav-item active" id="nav-kennel" style="--tab-color:var(--c1)" onclick="switchTab('kennel')">
+    <div class="nav-item active" id="nav-start" style="--tab-color:var(--gold)" onclick="switchTab('start')">
+      <span class="nav-icon">🧭</span>
+      <div class="nav-text"><div class="nav-name">START HERE</div><div class="nav-desc">Step-by-step guide &amp; what to do next</div></div>
+    </div>
+    <div class="nav-item" id="nav-kennel" style="--tab-color:var(--c1)" onclick="switchTab('kennel')">
       <span class="nav-icon">🔑</span>
       <div class="nav-text"><div class="nav-name">THE KENNEL</div><div class="nav-desc">Connections & encrypted API vault</div></div>
       <div class="nav-conn-dot" id="navDotKennel"></div>
@@ -186,6 +191,11 @@
     </div>
     <div class="nav-spacer"></div>
     <div class="nav-heartbeat" id="navHeartbeat">⟳ —</div>
+    <div class="st-ts">TEXT SIZE
+      <button onclick="stTextSize(16)" data-ts="16" title="Normal">A</button>
+      <button onclick="stTextSize(18)" data-ts="18" title="Large" style="font-size:.8rem">A</button>
+      <button onclick="stTextSize(20)" data-ts="20" title="Larger" style="font-size:.95rem">A</button>
+    </div>
     <div class="nav-version">v1.0.0 · MILESTONE 8</div>
     <div id="nav-update-banner" style="display:none;margin:.3rem .6rem;padding:.35rem .5rem;background:rgba(245,166,35,.12);border:1px solid rgba(245,166,35,.35);border-radius:5px;font-family:var(--mono);font-size:.48rem;color:var(--amber);line-height:1.6;cursor:pointer" onclick="window.open('https://github.com/DowntownDiscipline96/ChartHound/releases','_blank')" title="View release notes">
       ⬆ <span id="nav-update-text">Update available</span><br>
@@ -197,7 +207,29 @@
   <div class="content-area">
 
     <!-- THE KENNEL -->
-    <div class="tab-panel active" id="panel-kennel">
+    <!-- START HERE -->
+    <div class="tab-panel active" id="panel-start">
+      <div class="st-wrap">
+        <div class="st-head">
+          <div class="st-title">START HERE</div>
+          <div class="st-sub">ChartHound turns your music library into great playlists. Follow the steps in order the first time —
+            after that, use the <b>“After new music arrives”</b> routine below. Every step has a <b>GO</b> button that takes you to the right place.</div>
+        </div>
+        <div id="st-steps"><div class="st-loading">Checking where you are…</div></div>
+        <div class="st-routine">
+          <div class="st-routine-title">🔁 AFTER NEW MUSIC ARRIVES</div>
+          <div class="st-routine-sub">Do these four in order whenever downloads finish, so new songs get Hit Scores and genres.</div>
+          <ol class="st-routine-list">
+            <li><span>Let the download finish and your media server pick it up <i>(in Plex: ⋯ → Scan Library Files on the library)</i>.</span></li>
+            <li><span>Top Dogs → <b>① SCAN</b> — adds the new songs (quick, only new ones).</span><button class="st-go" onclick="stGo('groomer','scan')">GO</button></li>
+            <li><span>The Retriever → <b>▶ RUN ENGINE</b>, then <b>REVIEW &amp; WRITE</b> — genres for the new albums.</span><button class="st-go" onclick="stGo('retriever')">GO</button></li>
+            <li><span>Top Dogs → <b>② BUILD</b> — make or refresh playlists.</span><button class="st-go" onclick="stGo('groomer','build')">GO</button></li>
+          </ol>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-panel" id="panel-kennel">
       <div class="pane" id="pane-kennel">
         <div class="pane-aside" id="aside-kennel">
           <button class="pane-collapse-btn" onclick="toggleAside('kennel')" title="Collapse/expand panel">◀</button>
@@ -2125,13 +2157,14 @@
 
 <div id="toastWrap"></div>
 
-<script src="/static/js/core.js?v=m8a"></script>
-<script src="/static/js/retriever.js?v=m8a"></script>
-<script src="/static/js/topdogs.js?v=m8a"></script>
-<script src="/static/js/sniffer.js?v=m8a"></script>
-<script src="/static/js/bloodhound.js?v=m8a"></script>
-<script src="/static/js/vet.js?v=m8a"></script>
-<script src="/static/js/tracker.js?v=m8a"></script>
-<script src="/static/js/guide.js?v=m8a"></script>
+<script src="/static/js/core.js?v=m8b"></script>
+<script src="/static/js/start.js?v=m8b"></script>
+<script src="/static/js/retriever.js?v=m8b"></script>
+<script src="/static/js/topdogs.js?v=m8b"></script>
+<script src="/static/js/sniffer.js?v=m8b"></script>
+<script src="/static/js/bloodhound.js?v=m8b"></script>
+<script src="/static/js/vet.js?v=m8b"></script>
+<script src="/static/js/tracker.js?v=m8b"></script>
+<script src="/static/js/guide.js?v=m8b"></script>
 </body>
 </html>
