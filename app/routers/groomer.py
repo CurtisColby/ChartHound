@@ -3158,6 +3158,8 @@ _LFM_TAG_MAP = {
     "gospel": "gospel", "southern gospel": "sgospel",
 }
 _CLASSIC_MIN_LISTENERS = 300_000
+# 🌙 Mellow / Easy Listening vibe — any family with one of these styles
+_MELLOW_STYLES = {"softrock", "adultpop", "easylistening", "smoothjazz", "quietstorm", "singersong"}
 _NOT_CLASSIC_RE = re.compile(r"\b(live|demo|remix|karaoke|instrumental|acoustic|rehearsal|session|edit)\b", re.I)
 
 
@@ -3301,20 +3303,24 @@ def _rebuild_hit_scores_sync() -> int:
                 rows = index.get((ak, tk), [])
                 score, year, h_peak, h_wks, yrank, n = _score_track(rows, cd_peak, "low" if is_low else "high")
                 if lis:
-                    # Staying power: boost, plus a floor for heavily played songs
-                    score = int(round(min(100, max(score + _staying_boost(lis), _popularity_score(lis)))))
+                    # Staying power: the boost shrinks as the chart score nears 100 (keeps 100 rare),
+                    # plus a floor for heavily played songs
+                    room = max(0.0, 100 - score) / 50
+                    score = int(round(min(100, max(score + _staying_boost(lis) * min(1.0, room),
+                                                   _popularity_score(lis)))))
                 ohw = 1 if (ak in top40 and len(top40[ak]) == 1 and tk in top40[ak]) else 0
             yr = year or (song_year.get((ak, tk)) if is_classic else None) or cd_year or t_year
             out.append((tid, score, yr, h_peak, h_wks, yrank, ohw, n, lis or None,
-                        genres[0] if genres else None, ",".join(genres) or None, 1 if is_classic else 0))
+                        genres[0] if genres else None, ",".join(genres) or None, 1 if is_classic else 0,
+                        f"{ak}|{tk}"))
 
         dconn.execute("BEGIN")
         dconn.execute("DELETE FROM hit_scores")
         dconn.executemany(
             "INSERT INTO hit_scores (track_id, hit_score, hit_year, hot100_peak, hot100_weeks, "
             "yearend_rank, one_hit_wonder, charts_count, listeners, main_genre, genre_keys, "
-            "never_charted, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))", out)
+            "never_charted, song_key, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))", out)
         dconn.commit()
     finally:
         dconn.close()
@@ -3342,7 +3348,9 @@ async def _hit_score_startup():
         async with aiosqlite.connect(_DYNAMIC_DB) as db:
             hs = (await (await db.execute("SELECT COUNT(*) FROM hit_scores")).fetchone())[0]
             cd = (await (await db.execute("SELECT COUNT(*) FROM chart_data")).fetchone())[0]
-        if cd and not hs:
+            old = (await (await db.execute(
+                "SELECT COUNT(*) FROM hit_scores WHERE song_key IS NULL")).fetchone())[0]
+        if cd and (not hs or old):
             await _rebuild_hit_scores()
     except Exception as e:
         log.warning(f"Hit Score startup check failed: {e}")
@@ -3708,6 +3716,8 @@ async def _migrate_chart_data():
                 await db.execute("ALTER TABLE tracks ADD COLUMN chart_last_checked TEXT")
                 log.info("tracks: chart_last_checked column added via migration")
 
+            if "missing" not in tr_cols:
+                await db.execute("ALTER TABLE tracks ADD COLUMN missing INTEGER DEFAULT 0")
             if "album_title" not in tr_cols:
                 await db.execute("ALTER TABLE tracks ADD COLUMN album_title TEXT")
             if "manually_verified" not in tr_cols:
@@ -3734,7 +3744,8 @@ async def _migrate_chart_data():
             """)
             hs_cols = [row[1] async for row in await db.execute("PRAGMA table_info(hit_scores)")]
             for col, typ in (("listeners", "INTEGER"), ("main_genre", "TEXT"),
-                             ("genre_keys", "TEXT"), ("never_charted", "INTEGER NOT NULL DEFAULT 0")):
+                             ("genre_keys", "TEXT"), ("never_charted", "INTEGER NOT NULL DEFAULT 0"),
+                             ("song_key", "TEXT")):
                 if col not in hs_cols:
                     await db.execute(f"ALTER TABLE hit_scores ADD COLUMN {col} {typ}")
             await db.execute("""
@@ -3757,6 +3768,10 @@ async def _migrate_chart_data():
                     fetched_at  TEXT NOT NULL DEFAULT (datetime('now'))
                 )
             """)
+            await db.execute("""CREATE TABLE IF NOT EXISTS track_genres (
+                track_id INTEGER PRIMARY KEY, family TEXT NOT NULL, styles TEXT,
+                confidence TEXT NOT NULL, sources TEXT,
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')))""")
             await db.execute("CREATE INDEX IF NOT EXISTS idx_hs_score ON hit_scores(hit_score)")
             await db.execute("CREATE INDEX IF NOT EXISTS idx_hs_year  ON hit_scores(hit_year)")
 
@@ -4018,7 +4033,7 @@ async def _run_scan(req: ScanRequest):
                             "emby_id=COALESCE(NULLIF(?, ''), emby_id), "
                             "jf_id=COALESCE(NULLIF(?, ''), jf_id), "
                             "year=COALESCE(year, ?), "
-                            "album_title=COALESCE(NULLIF(?, ''), album_title) WHERE track_id=?",
+                            "album_title=COALESCE(NULLIF(?, ''), album_title), missing=0 WHERE track_id=?",
                             (track.get("tag_artist") or "", track.get("duration_sec"),
                              track.get("plex_rating_key") or "", track.get("emby_id") or "",
                              track.get("jf_id") or "", track.get("year"),
@@ -4928,7 +4943,8 @@ async def get_results(
     min_score:   Optional[int] = None,
     decades:     Optional[str] = None,   # "1980,1990"
     ohw:         bool = False,           # one-hit wonders only
-    genre_mode:  str = "main",           # main = online main genre; any = any file tag
+    genre_mode:  str = "main",           # main = online genres (engine → Last.fm → file tags); any = file tags
+    crossovers:  bool = True,            # bridge styles cross families (Pop Rock in Pop playlists)
     limit:       int = 500,
     offset:      int = 0,
     _=Depends(require_auth),
@@ -4951,6 +4967,7 @@ async def get_results(
         conditions.append("cd.weeks_on_chart >= ?"); params.append(min_weeks)
     if confidence:
         conditions.append("cd.confidence = ?"); params.append(confidence)
+    conditions.append("COALESCE(t.missing, 0) = 0")
     _yr = "COALESCE(hs.hit_year, cd.chart_year, t.year)"
     if min_year is not None:
         conditions.append(f"{_yr} >= ?"); params.append(min_year)
@@ -5006,22 +5023,37 @@ async def get_results(
                     genre_clauses.append(f"({no_tag} AND cd.chart_name = ?)")
                     params.append(g)
 
-            # TOP GENRES mode: match if ANY of the song's top-3 online genres is selected
+            # ── Online genres (TOP GENRES mode) ─────────────────────────────
+            # 1. Genre Engine family/styles (tg)  2. Last.fm top-3 (hs)  3. file tags
+            from app.routers import retriever as _ret
+            sel = set(genre_list)
+            fams = [g for g in sel if g in _ret.GE_FAMILIES]
+            stys = {g for g in sel if g in _ret.GE_STYLES}
+            if crossovers:   # bridge styles let neighbouring families in (Pop ← Rock songs tagged Pop Rock)
+                stys |= {k for k, (_l, fs) in _ret.GE_STYLES.items()
+                         if len(fs) > 1 and set(fs) & set(fams)}
+            if "mellow" in sel:
+                stys |= _MELLOW_STYLES
+            eng_parts, eng_params = [], []
+            if fams:
+                eng_parts.append(f"tg.family IN ({','.join('?' * len(fams))})")
+                eng_params += fams
+            for st in sorted(stys):
+                eng_parts.append("tg.styles LIKE ?")
+                eng_params.append(f'%"{st}"%')
+            engine = ("(tg.family IS NOT NULL AND (" + " OR ".join(eng_parts) + "))") if eng_parts \
+                     else "(tg.family IS NOT NULL AND 0)"
             top3 = "(" + " OR ".join(["(',' || hs.genre_keys || ',') LIKE ?"] * len(genre_list)) + ")"
             top3_params = [f"%,{g},%" for g in genre_list]
-            if not genre_clauses and genre_mode == "main":
-                conditions.append(f"(hs.genre_keys IS NOT NULL AND {top3})")
-                params += top3_params
-            if genre_clauses:
-                loose = "(" + " OR ".join(genre_clauses) + ")"
-                if genre_mode == "main":
-                    # Online genres win; file tags only for songs with no online genre yet
-                    conditions.append(f"((hs.genre_keys IS NOT NULL AND {top3}) "
-                                      f"OR (hs.genre_keys IS NULL AND {loose}))")
-                    # top-3 params go before the loose-clause params added above
-                    params[_genre_param_start:_genre_param_start] = top3_params
-                else:
-                    conditions.append(loose)
+            if genre_mode == "main":
+                loose = ("(" + " OR ".join(genre_clauses) + ")") if genre_clauses else "0"
+                conditions.append(
+                    f"({engine} OR (tg.family IS NULL AND hs.genre_keys IS NOT NULL AND {top3}) "
+                    f"OR (tg.family IS NULL AND hs.genre_keys IS NULL AND {loose}))")
+                # order: engine params, top-3 params, then loose params (already appended)
+                params[_genre_param_start:_genre_param_start] = eng_params + top3_params
+            elif genre_clauses:
+                conditions.append("(" + " OR ".join(genre_clauses) + ")")
 
     where        = ("WHERE " + " AND ".join(conditions)) if conditions else ""
     # Keep filter_params separate — reused for COUNT query without limit/offset
@@ -5039,6 +5071,7 @@ async def get_results(
                 JOIN tracks t ON cd.track_id = t.track_id
                 LEFT JOIN artists a ON t.artist_id = a.artist_id
                 LEFT JOIN hit_scores hs ON hs.track_id = cd.track_id
+                LEFT JOIN track_genres tg ON tg.track_id = cd.track_id
                 {where}
             """, filter_params) as cur:
                 total_row   = await cur.fetchone()
@@ -5065,14 +5098,15 @@ async def get_results(
                         hs.hit_score, hs.one_hit_wonder, hs.hot100_peak,
                         hs.hot100_weeks, hs.yearend_rank, t.duration_sec,
                         hs.listeners, hs.main_genre, hs.never_charted,
+                        tg.family AS ge_family, tg.styles AS ge_styles,
                         t.title, t.file_path, t.file_format,
                         t.plex_rating_key, t.emby_id, t.jf_id,
                         t.track_id, t.genre_1, t.genre_2, t.genre_3,
                         COALESCE(t.tag_artist, a.name, '') AS tag_artist,
                         COALESCE(t.tag_album,  al.title, '') AS tag_album,
                         ROW_NUMBER() OVER (
-                            PARTITION BY LOWER(TRIM(t.title)),
-                                         LOWER(TRIM(COALESCE(t.tag_artist, a.name, '')))
+                            PARTITION BY COALESCE(hs.song_key, LOWER(TRIM(t.title)) || '|' ||
+                                         LOWER(TRIM(COALESCE(t.tag_artist, a.name, ''))))
                             ORDER BY
                                 -- Compilation rows rank below real-artist rows
                                 CASE
@@ -5094,6 +5128,7 @@ async def get_results(
                     LEFT JOIN artists a  ON t.artist_id = a.artist_id
                     LEFT JOIN albums al  ON t.album_id  = al.album_id
                     LEFT JOIN hit_scores hs ON hs.track_id = cd.track_id
+                    LEFT JOIN track_genres tg ON tg.track_id = cd.track_id
                     WHERE 1=1 {dedup_where}
                 ) WHERE rn = 1
                 ORDER BY COALESCE(hit_score, 0) DESC, peak_position ASC
@@ -5121,6 +5156,7 @@ async def get_results(
 class PlaylistBuildRequest(BaseModel):
     genre:        Optional[str] = None          # same keys as /results genre filter
     genre_mode:   str = "main"
+    crossovers:   bool = True
     decades:      List[int] = []                # [1980, 1990]
     min_score:    int = 0
     ohw_only:     bool = False
@@ -5138,7 +5174,8 @@ async def playlist_build(req: PlaylistBuildRequest, _=Depends(require_auth)):
         min_year=None, max_year=None, confidence=None, genre=req.genre,
         min_score=req.min_score or None,
         decades=",".join(str(d) for d in req.decades) or None,
-        ohw=req.ohw_only, genre_mode=req.genre_mode, limit=50000, offset=0, _=None,
+        ohw=req.ohw_only, genre_mode=req.genre_mode, crossovers=req.crossovers,
+        limit=50000, offset=0, _=None,
     )
     # One version per song (strip "(Remastered)", "feat." etc.)
     best: dict = {}

@@ -47,8 +47,11 @@ body::before{content:'';position:fixed;inset:0;background-image:url("data:image/
 .grm-viewtoggle button{flex:1;padding:.55rem .3rem;background:var(--surface2);color:var(--muted);border:1px solid var(--border2);border-radius:6px;font-family:var(--display);font-size:.85rem;letter-spacing:1.5px;cursor:pointer;transition:all .15s;white-space:nowrap}
 .grm-viewtoggle button.on{background:var(--pink);color:#000;border-color:var(--pink)}
 #ret-main.ge-reviewing > :not(#ge-review){display:none!important}
-.ger-in{background:var(--bg);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:.68rem;padding:.4rem .5rem;outline:none}
-.ger-table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:.7rem}
+#ge-review .btn{width:auto!important;flex:0 0 auto;padding:.45rem .8rem}
+#ge-review .ger-in{width:auto}
+#ge-review select.ger-in{flex:0 0 auto}
+.ger-in{background:var(--bg);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:.78rem;padding:.45rem .55rem;outline:none}
+.ger-table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:.8rem}
 .ger-table th{position:sticky;top:0;background:var(--surface2);text-align:left;padding:.5rem .6rem;color:var(--muted);font-weight:normal;letter-spacing:1px;z-index:1}
 .ger-table td{padding:.42rem .6rem;border-bottom:1px solid var(--border);vertical-align:top}
 .ger-artist td{background:var(--surface2);color:var(--text);font-weight:bold;padding:.5rem .6rem}
@@ -971,6 +974,9 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
           <div id="retrieverLfmBanner" class="feature-banner warn" style="display:none">
             ⚠ Last.fm not connected — mood tags limited. Connect in The Kennel for best results.
           </div>
+          <details class="ret-legacy" style="border:1px solid var(--border);border-radius:8px;padding:.55rem .7rem">
+            <summary style="cursor:pointer;font-family:var(--mono);font-size:.58rem;letter-spacing:2px;color:var(--muted);list-style:none">▸ LEGACY RETRIEVER <span style="letter-spacing:0;color:var(--muted2)">— old one-song-at-a-time tagging (slow). Use the Genre Engine below instead.</span></summary>
+            <div style="display:flex;flex-direction:column;gap:1rem;margin-top:.7rem">
           <div>
             <div class="section-label sl-teal">SCAN SCOPE</div>
             <div id="subfolderInput" style="display:block">
@@ -1041,9 +1047,12 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
             </div>
           </div>
 
+            </div>
+          </details>
+
           <div>
             <div class="section-label sl-teal">GENRE ENGINE</div>
-            <p style="font-family:var(--mono);font-size:.56rem;color:var(--muted);line-height:1.7;margin:0 0 .5rem">Gives every song <b>one family + up to 3 styles</b> (e.g. Rock; Classic Rock; Folk Rock) by weighing Discogs (per album), MusicBrainz and Last.fm. Close calls are marked <span style="color:var(--amber)">CHECK</span>. Step 1: RUN (about 1–2 hours the first time, cached after). Step 2: PREVIEW → WRITE. Writes the <b>GENRE tag only</b>; hand-edited tracks are skipped.</p>
+            <p style="font-family:var(--mono);font-size:.56rem;color:var(--muted);line-height:1.7;margin:0 0 .5rem">Gives every song <b>one family + up to 3 styles</b> (e.g. Rock; Classic Rock; Folk Rock) by weighing Discogs (per album), MusicBrainz and Last.fm. Songs where sources disagree are marked <span style="color:var(--red)">⚠ CONFLICT</span>; songs few sources know are <span style="color:var(--amber)">? LITTLE DATA</span>. Step 1: RUN (1–3 hours the first time, cached after; re-runs only look up new music). Step 2: REVIEW &amp; WRITE. Writes the <b>GENRE tag only</b>; hand-edited tracks are skipped.</p>
             <div style="display:flex;gap:.35rem;margin-bottom:.4rem">
               <button class="btn btn-outline" id="ge-btn-run" onclick="geRun()" style="flex:1;font-size:.65rem;font-family:var(--mono);color:var(--teal);border-color:var(--teal)">▶ RUN ENGINE</button>
               <button class="btn btn-outline" id="ge-btn-stop" onclick="geStop()" style="font-size:.65rem;font-family:var(--mono);display:none;color:var(--red);border-color:var(--red)">■ STOP</button>
@@ -1056,7 +1065,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
             </div>
             <details style="margin-top:.45rem;border:1px solid var(--border);border-radius:6px;padding:.45rem .55rem" ontoggle="if(this.open)geLoadRules()">
               <summary style="cursor:pointer;font-family:var(--mono);font-size:.58rem;color:var(--muted);letter-spacing:1px">📁 FOLDER RULES</summary>
-              <div style="font-family:var(--mono);font-size:.52rem;color:var(--muted2);line-height:1.6;margin:.4rem 0">Everything inside a listed folder gets that family (e.g. FULL CHRISTIAN ALBUMS → Christian). The online sources then only pick the style. Click RE-VOTE after saving.</div>
+              <div style="font-family:var(--mono);font-size:.52rem;color:var(--muted2);line-height:1.6;margin:.4rem 0">Everything inside a listed folder gets that family (e.g. FULL CHRISTIAN ALBUMS → Christian); the online sources then only pick the style. ⛔ Skip leaves a folder completely alone. Click RE-VOTE after saving.</div>
               <div id="ge-rules"></div>
               <div style="display:flex;gap:.3rem;margin-top:.35rem">
                 <button class="btn btn-outline" onclick="geAddRule()" style="flex:1;font-size:.55rem;font-family:var(--mono)">+ ADD</button>
@@ -1087,7 +1096,8 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
               <input id="ger-search" type="text" placeholder="Search artist or title…" onkeydown="if(event.key==='Enter')geLoad(1)" class="ger-in" style="flex:1;min-width:180px">
               <select id="ger-scope" onchange="geLoad(1)" class="ger-in">
                 <option value="changed" selected>Genre would change</option>
-                <option value="check">Marked CHECK</option>
+                <option value="conflict">⚠ Conflicts (worth a look)</option>
+                <option value="thin">? Little data (usually fine)</option>
                 <option value="empty">Files with no genre</option>
                 <option value="manual">My edits</option>
                 <option value="all">All songs</option>
@@ -1097,7 +1107,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
               <button class="btn btn-outline" onclick="geLoad(1)" style="font-size:.65rem;font-family:var(--mono)">🔍 APPLY</button>
             </div>
             <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:.5rem;margin-bottom:.5rem">
-              <div id="ger-count" style="font-family:var(--mono);font-size:.68rem;color:var(--muted)"></div>
+              <div id="ger-count" style="font-family:var(--mono);font-size:.8rem;color:var(--muted)"></div>
               <div style="display:flex;gap:.4rem;align-items:center">
                 <button class="btn btn-outline" onclick="geLoad(_ger.page-1)" style="font-size:.65rem;font-family:var(--mono)">◀</button>
                 <span id="ger-page" style="font-family:var(--mono);font-size:.65rem;color:var(--muted)"></span>
@@ -1792,12 +1802,15 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
                 <div style="display:flex;flex-wrap:wrap;gap:.3rem"><button class="grm-dec" data-dec="1950" onclick="grmToggleDecade(1950)" style="padding:.3rem .45rem;background:var(--surface3);color:var(--muted);border:1px solid var(--border2);border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer">50s</button><button class="grm-dec" data-dec="1960" onclick="grmToggleDecade(1960)" style="padding:.3rem .45rem;background:var(--surface3);color:var(--muted);border:1px solid var(--border2);border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer">60s</button><button class="grm-dec" data-dec="1970" onclick="grmToggleDecade(1970)" style="padding:.3rem .45rem;background:var(--surface3);color:var(--muted);border:1px solid var(--border2);border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer">70s</button><button class="grm-dec" data-dec="1980" onclick="grmToggleDecade(1980)" style="padding:.3rem .45rem;background:var(--surface3);color:var(--muted);border:1px solid var(--border2);border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer">80s</button><button class="grm-dec" data-dec="1990" onclick="grmToggleDecade(1990)" style="padding:.3rem .45rem;background:var(--surface3);color:var(--muted);border:1px solid var(--border2);border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer">90s</button><button class="grm-dec" data-dec="2000" onclick="grmToggleDecade(2000)" style="padding:.3rem .45rem;background:var(--surface3);color:var(--muted);border:1px solid var(--border2);border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer">00s</button><button class="grm-dec" data-dec="2010" onclick="grmToggleDecade(2010)" style="padding:.3rem .45rem;background:var(--surface3);color:var(--muted);border:1px solid var(--border2);border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer">10s</button><button class="grm-dec" data-dec="2020" onclick="grmToggleDecade(2020)" style="padding:.3rem .45rem;background:var(--surface3);color:var(--muted);border:1px solid var(--border2);border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer">20s</button></div>
               </div>
               <div>
-                <div style="font-size:.7rem;color:var(--muted);margin-bottom:.35rem">Genre match<span class="grm-q" tabindex="0" data-tip="TOP GENRES: a song counts if any of its top 3 online (Last.fm) genres is one you picked — Simon &amp; Garfunkel (folk, folk rock, classic rock) matches Folk Rock, while Whitney Houston (pop, soul, R&amp;B) stays out of rock playlists. Songs not looked up yet fall back to your file tags. ANY TAG: old behaviour — any of the 3 file genre tags can match.">?</span></div>
+                <div style="font-size:.7rem;color:var(--muted);margin-bottom:.35rem">Genre match<span class="grm-q" tabindex="0" data-tip="TOP GENRES: uses the Genre Engine (Retriever) — each song has one family + up to 3 styles. Tick a family (parent) for the whole family, or individual styles. Songs the engine has not tagged fall back to Last.fm, then to your file tags. ANY TAG: old behaviour — any of the 3 file genre tags can match.">?</span></div>
                 <div style="display:flex;gap:.3rem">
                   <button id="grm-gm-main" onclick="grmSetGenreMode('main')" style="flex:1;padding:.3rem .5rem;border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer;border:1px solid var(--border2);background:var(--pink);color:#000">TOP GENRES</button>
                   <button id="grm-gm-any"  onclick="grmSetGenreMode('any')"  style="flex:1;padding:.3rem .5rem;border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer;border:1px solid var(--border2);background:var(--surface3);color:var(--muted)">ANY TAG</button>
                 </div>
               </div>
+              <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.7rem;color:var(--muted)">
+                <input type="checkbox" id="grm-cross" checked onchange="grmSearch()" style="accent-color:var(--teal)"> Include crossovers<span class="grm-q" tabindex="0" data-tip="ON: bridge styles cross families — picking Pop also brings in Rock songs tagged Pop Rock; picking Folk brings in Folk Rock. OFF: only songs whose own family you picked.">?</span>
+              </label>
               <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.7rem;color:var(--muted)">
                 <input type="checkbox" id="grm-ohw" onchange="grmSearch()" style="accent-color:var(--pink)"> One-hit wonders only<span class="grm-q" tabindex="0" data-tip="Artists with exactly one Top 40 Hot 100 hit — and this is it. Fun for a themed playlist; pair with a lower Min Hit Score (40–50).">?</span>
               </label>
@@ -5121,7 +5134,10 @@ async function geLoad(page) {
     if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
     Object.assign(_ger, {page: d.page, pages: Math.max(1, Math.ceil(d.total / d.size)), total: d.total, rows: d.rows});
     _ger.sel.clear();
-    document.getElementById('ger-count').innerHTML = `${d.total.toLocaleString()} songs` + (d.check ? ` · <span style="color:var(--amber)">${d.check.toLocaleString()} CHECK</span>` : '');
+    const thin = (d.check || 0) - (d.conflict || 0);
+    document.getElementById('ger-count').innerHTML = `${d.total.toLocaleString()} songs`
+      + (d.conflict ? ` · <span style="color:var(--red)">⚠ ${d.conflict.toLocaleString()} conflicts</span>` : '')
+      + (thin > 0 ? ` · <span style="color:var(--amber)">? ${thin.toLocaleString()} little data</span>` : '');
     document.getElementById('ger-page').textContent = `page ${_ger.page} / ${_ger.pages}`;
     geRender();
   } catch (e) { body.innerHTML = `<tr><td colspan="5" style="padding:1.5rem;color:var(--red)">${esc(e.message)}</td></tr>`; }
@@ -5139,7 +5155,8 @@ function geRender() {
         <a href="#" onclick="geEditArtist(${i});return false" style="margin-left:.75rem;color:var(--amber);font-weight:normal;font-size:.62rem">✎ set genre for ALL songs by this artist</a></td></tr>
         <tr class="ger-edit" id="ger-aedit-${i}" style="display:none"><td></td><td colspan="4" id="ger-aedit-cell-${i}"></td></tr>`;
     }
-    const conf = x.confidence === 'check' ? '<span style="color:var(--amber)">CHECK</span>'
+    const conf = x.confidence === 'conflict' ? '<span style="color:var(--red)" title="Sources disagree — worth a look">⚠ CONFLICT</span>'
+               : (x.confidence === 'thin' || x.confidence === 'check') ? '<span style="color:var(--amber)" title="Only one source knew this song — usually fine">? LITTLE DATA</span>'
                : x.confidence === 'manual' ? '<span style="color:var(--pink)">EDITED</span>' : '<span style="color:var(--muted2)">ok</span>';
     html += `<tr id="ger-row-${i}"><td><input type="checkbox" class="ger-cb" data-i="${i}" ${_ger.sel.has(x.track_id) ? 'checked' : ''} onchange="geToggle(${i}, this.checked)"></td>
       <td>${esc(x.title)}</td>
@@ -5219,11 +5236,13 @@ async function geLoadRules() {
 }
 function geRenderRules() {
   const box = document.getElementById('ge-rules'); if (!box) return;
-  const fam = f => Object.entries(_geTax.families).map(([k, v]) => `<option value="${k}" ${k === f ? 'selected' : ''}>${esc(v)}</option>`).join('');
-  box.innerHTML = _geRules.map((r, i) => `<div style="display:flex;gap:.25rem;margin-bottom:.25rem">
-      <input value="${esc(r.prefix)}" oninput="_geRules[${i}].prefix=this.value" placeholder="/music/Folder" style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--border2);border-radius:4px;color:var(--text);font-family:var(--mono);font-size:.55rem;padding:.3rem">
-      <select onchange="_geRules[${i}].family=this.value" style="background:var(--bg);border:1px solid var(--border2);border-radius:4px;color:var(--text);font-family:var(--mono);font-size:.55rem">${fam(r.family)}</select>
-      <button onclick="_geRules.splice(${i},1);geRenderRules()" style="background:none;border:1px solid var(--border2);border-radius:4px;color:var(--red);cursor:pointer;font-size:.6rem">✕</button></div>`).join('')
+  const fam = f => `<option value="skip" ${f === 'skip' ? 'selected' : ''}>⛔ Skip — don't tag</option>`
+    + Object.entries(_geTax.families).map(([k, v]) => `<option value="${k}" ${k === f ? 'selected' : ''}>${esc(v)}</option>`).join('');
+  const inp = 'background:var(--bg);border:1px solid var(--border2);border-radius:4px;color:var(--text);font-family:var(--mono);font-size:.62rem;padding:.35rem';
+  box.innerHTML = _geRules.map((r, i) => `<div style="border:1px solid var(--border);border-radius:5px;padding:.35rem;margin-bottom:.35rem">
+      <input value="${esc(r.prefix)}" oninput="_geRules[${i}].prefix=this.value" placeholder="/music/Folder or full NAS path" style="width:100%;box-sizing:border-box;${inp};margin-bottom:.3rem">
+      <div style="display:flex;gap:.25rem"><select onchange="_geRules[${i}].family=this.value" style="flex:1;${inp}">${fam(r.family)}</select>
+      <button onclick="_geRules.splice(${i},1);geRenderRules()" title="Remove rule" style="background:none;border:1px solid var(--border2);border-radius:4px;color:var(--red);cursor:pointer;font-size:.65rem;padding:0 .5rem">✕</button></div></div>`).join('')
     || '<div style="font-family:var(--mono);font-size:.55rem;color:var(--muted2)">No rules.</div>';
 }
 function geAddRule() { _geRules.push({prefix: '/music/', family: 'ccm'}); geRenderRules(); }
@@ -5258,7 +5277,7 @@ async function ogPoll() {
     const running = d.status === 'running';
     if (stop) stop.style.display = running ? '' : 'none';
     if (el) el.innerHTML = running
-      ? `<span style="color:var(--teal)">Writing ${d.done.toLocaleString()} / ${d.total.toLocaleString()}</span> · ${d.written.toLocaleString()} ok · ${d.failed} failed<br>${esc(d.message || '')}`
+      ? `<span style="color:var(--teal)">Writing ${d.done.toLocaleString()} / ${d.total.toLocaleString()}</span> · ${d.written.toLocaleString()} ok · ${(d.not_found||0).toLocaleString()} not found · ${d.failed} failed<br>${esc(d.message || '')}`
       : (d.status === 'idle' ? '' : esc(d.message || ''));
     clearTimeout(_ogTimer);
     if (running) _ogTimer = setTimeout(ogPoll, 2000);
@@ -6220,12 +6239,16 @@ const _GRM_TREE = [
     ['softrock','Soft Rock',[]],['arenarock','Arena Rock',[]],
     ['indierock','Indie Rock',[]],['folkrock','Folk Rock',[]],
     ['southernrock','Southern Rock',[]],['punkrock','Punk / New Wave',[]],
-    ['alternative','Alternative Rock',[]],
+    ['alternative','Alternative Rock',[]],['poprock','Pop Rock ↔',[]],
+    ['countryrock','Country Rock ↔',[]],['bluesrock','Blues Rock ↔',[]],
+    ['progrock','Progressive Rock',[]],['psychrock','Psychedelic Rock',[]],
+    ['rocknroll','Rock & Roll',[]],
   ]],
   ['pop','Pop',[
     ['dancepop','Dance-Pop',[]],['synthpop','Synth-Pop',[]],
     ['teenpop','Teen Pop',[]],['powerpop','Power Pop',[]],
     ['adultpop','Adult Contemporary',[]],['indipop','Indie Pop',[]],
+    ['easylistening','Easy Listening',[]],
   ]],
   ['country','Country',[
     ['tradcountry','Traditional Country',[]],['countrypop','Country Pop',[]],
@@ -6235,7 +6258,7 @@ const _GRM_TREE = [
   ['rnb','R&B / Soul',[
     ['soul','Soul',[]],['neosoul','Neo-Soul',[]],['funk','Funk',[]],
     ['motown','Motown / Classic Soul',[]],['quietstorm','Quiet Storm',[]],
-    ['newjack','New Jack Swing',[]],
+    ['newjack','New Jack Swing',[]],['doowop','Doo-Wop',[]],
   ]],
   ['hiphop','Hip-Hop / Rap',[
     ['trap','Trap',[]],['boombap','Boom Bap',[]],
@@ -6266,6 +6289,7 @@ const _GRM_TREE = [
   ['classical','Classical',[
     ['orchestral','Orchestral',[]],['opera','Opera',[]],['baroque','Baroque',[]],
   ]],
+  ['mellow','🌙 Mellow / Easy Listening',[]],
   // CCM family — separator handled in render
   ['ccm','CCM',[
     ['ccm-ac','Christian AC',[]],['ccm-rock','Christian Rock',[]],
@@ -6381,6 +6405,11 @@ function grmTreeParentClick(pkey) {
 function grmTreeLeaf(key, parentKey) {
   if (_grmTreeSelected.has(key)) _grmTreeSelected.delete(key);
   else _grmTreeSelected.add(key);
+  if (parentKey) {   // whole family only while every style is ticked
+    const pn = _GRM_TREE.find(n=>n[0]===parentKey);
+    if (pn && pn[2].length && pn[2].every(([k])=>_grmTreeSelected.has(k))) _grmTreeSelected.add(parentKey);
+    else _grmTreeSelected.delete(parentKey);
+  }
   // Sync parent state
   if (parentKey) {
     const node = _GRM_TREE.find(n=>n[0]===parentKey);
@@ -6655,6 +6684,7 @@ async function grmSavePreset() {
     genres: grmGetActivePills(), decades: [...grmDecades],
     min_score: document.getElementById('grm-min-score').value,
     ohw: !!document.getElementById('grm-ohw').checked, genre_mode: grmGenreMode,
+    crossovers: !!document.getElementById('grm-cross').checked,
     len: document.getElementById('grm-len').value, days: document.getElementById('grm-days').value,
     fam: document.getElementById('grm-fam').value, gap: document.getElementById('grm-gap').value,
     playlist: document.getElementById('grm-playlist-name').value,
@@ -6679,6 +6709,7 @@ function grmLoadPreset(name) {
   set('grm-gap', p.gap, 'grm-gap-display', v => v);
   document.getElementById('grm-ohw').checked = !!p.ohw;
   grmSetGenreMode(p.genre_mode || 'main', true);
+  document.getElementById('grm-cross').checked = p.crossovers !== false;
   if (p.playlist) document.getElementById('grm-playlist-name').value = p.playlist;
   grmDecades.clear(); (p.decades || []).forEach(d => grmDecades.add(parseInt(d)));
   document.querySelectorAll('.grm-dec').forEach(b => {
@@ -6712,6 +6743,7 @@ async function grmBuildPlaylist() {
     min_score:    parseInt(document.getElementById('grm-min-score')?.value || 0),
     ohw_only:     !!document.getElementById('grm-ohw')?.checked,
     genre_mode:   grmGenreMode,
+    crossovers:   !!document.getElementById('grm-cross')?.checked,
     minutes:      Math.round(parseFloat(document.getElementById('grm-len').value) * 60),
     days:         parseInt(document.getElementById('grm-days').value),
     familiar_pct: parseInt(document.getElementById('grm-fam').value),
@@ -6787,6 +6819,7 @@ async function grmSearch(append = false) {
   if (grmDecades.size) params.set('decades', [...grmDecades].join(','));
   if (document.getElementById('grm-ohw')?.checked) params.set('ohw', 'true');
   params.set('genre_mode', grmGenreMode);
+  params.set('crossovers', document.getElementById('grm-cross')?.checked ? 'true' : 'false');
   if (_sortKey === 'seq') { _sortKey = 'score'; _sortAsc = true; }
   grmBuiltDays = null;
   try {

@@ -2841,9 +2841,10 @@ def _ge_vote(sources: list) -> Optional[dict]:
 
     agree = sum(w for _, w, f in tops if _ge_related(f, family))
     clash = any(w >= 2 and not _ge_related(f, family) for _, w, f in tops)
-    confident = agree >= 3 and not clash
-    return {"family": family, "styles": styles,
-            "confidence": "high" if confident else "check", "sources": used}
+    # conflict = sources point at unrelated families (worth a look)
+    # thin     = too little information to be sure (usually fine)
+    conf = "conflict" if clash else ("thin" if agree < 3 else "high")
+    return {"family": family, "styles": styles, "confidence": conf, "sources": used}
 
 
 def _ge_display(family: str, styles: list) -> list:
@@ -2863,6 +2864,9 @@ async def _ge_migrate():
             confidence TEXT NOT NULL, sources TEXT,
             updated_at TEXT NOT NULL DEFAULT (datetime('now')))""")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_tg_family ON track_genres(family)")
+        cols = [r[1] for r in await (await db.execute("PRAGMA table_info(tracks)")).fetchall()]
+        if "missing" not in cols:
+            await db.execute("ALTER TABLE tracks ADD COLUMN missing INTEGER DEFAULT 0")
         await db.commit()
 
 
@@ -3086,7 +3090,7 @@ async def _run_genre_engine():
                 if tid not in mine:
                     mine[tid] = [g for g in (g1, g2, g3) if g]
             rules = sorted(await _ge_get_rules(), key=lambda r: -len(r["prefix"]))
-            out, n_check = [], 0
+            out, n_check, n_conflict, n_skip = [], 0, 0, 0
             for tid, artist, title, fp, alb in tracks:
                 ak, tk = _artist_key(artist), _title_key(title)
                 d = disc.get(track_album.get(tid)) or disc.get(f"artist:{ak}")
@@ -3102,6 +3106,9 @@ async def _run_genre_engine():
                 # the online sources then only choose the style.
                 my_sacred = [k for k in _ge_tag_keys(mine.get(tid)) if set(_ge_family_of(k)) & GE_SACRED]
                 rule = next((r for r in rules if fp and (fp == r["prefix"] or fp.startswith(r["prefix"] + "/"))), None)
+                if rule and rule["family"] == "skip":
+                    n_skip += 1
+                    continue          # never tagged, never reviewed
                 forced, why = None, None
                 if rule:
                     forced, why = rule["family"], "rule"
@@ -3116,7 +3123,8 @@ async def _run_genre_engine():
                          "sources": (v["sources"] if v else []) + [why]}
                 if not v:
                     continue
-                n_check += v["confidence"] == "check"
+                n_check += v["confidence"] in ("conflict", "thin")
+                n_conflict += v["confidence"] == "conflict"
                 out.append((tid, v["family"], json.dumps(v["styles"]), v["confidence"],
                             ",".join(v["sources"])))
             # Manual edits are never overwritten by a re-run
@@ -3129,7 +3137,9 @@ async def _run_genre_engine():
         _ge_job.update({"status": "stopped" if stopped else "done", "phase": "", "scored": len(out),
                         "check": n_check,
                         "message": (f"{'Stopped — partial results saved' if stopped else 'Done'}: "
-                                    f"{len(out):,} songs have a genre, {n_check:,} marked to check"
+                                    f"{len(out):,} songs have a genre · ⚠ {n_conflict:,} conflicts · "
+                                    f"? {n_check - n_conflict:,} little data"
+                                    + (f" · {n_skip:,} skipped by folder rule" if n_skip else "")
                                     + (f" · ⚠ {'; '.join(_ge_job.get('warnings', []))[:200]}"
                                        if _ge_job.get("warnings") else ""))})
         log.info(f"Genre Engine: {_ge_job['message']}")
@@ -3178,7 +3188,7 @@ async def _ge_get_rules() -> list:
     except Exception:
         rules = GE_DEFAULT_RULES
     return [{"prefix": _ge_norm_prefix(r.get("prefix", "")), "family": r.get("family")}
-            for r in rules if r.get("prefix") and r.get("family") in GE_FAMILIES]
+            for r in rules if r.get("prefix") and (r.get("family") in GE_FAMILIES or r.get("family") == "skip")]
 
 
 class GenreRules(BaseModel):
@@ -3193,7 +3203,8 @@ async def genre_engine_rules_get(user: dict = Depends(require_auth)):
 @router.put("/genre-engine/rules")
 async def genre_engine_rules_put(req: GenreRules, user: dict = Depends(require_auth)):
     clean = [{"prefix": _ge_norm_prefix(r.get("prefix", "")), "family": r.get("family")}
-             for r in req.rules[:50] if r.get("prefix") and r.get("family") in GE_FAMILIES]
+             for r in req.rules[:50]
+             if r.get("prefix") and (r.get("family") in GE_FAMILIES or r.get("family") == "skip")]
     async with aiosqlite.connect(settings.database_url) as db:
         await db.execute(
             "INSERT INTO app_settings (key, value, updated_at) VALUES ('ge_folder_rules', ?, datetime('now')) "
@@ -3281,7 +3292,7 @@ def write_genre_only(filepath: str, genres: List[str]) -> bool:
         return False
 
 
-_og_job = {"status": "idle", "done": 0, "total": 0, "written": 0, "failed": 0, "message": ""}
+_og_job = {"status": "idle", "done": 0, "total": 0, "written": 0, "failed": 0, "not_found": 0, "message": ""}
 _og_stop = {"flag": False}
 
 
@@ -3294,11 +3305,11 @@ async def _online_genre_rows(scope: str, folder: Optional[str], search: Optional
              "t.genre_1, t.genre_2, t.genre_3, g.family, g.styles, g.confidence "
              "FROM track_genres g JOIN tracks t ON t.track_id = g.track_id "
              "LEFT JOIN artists a ON t.artist_id = a.artist_id "
-             "WHERE COALESCE(t.manually_verified, 0) = 0")
+             "WHERE COALESCE(t.manually_verified, 0) = 0 AND COALESCE(t.missing, 0) = 0")
         params = []
         if folder:
             q += " AND t.file_path LIKE ?"
-            params.append(folder.rstrip("/") + "/%")
+            params.append(_ge_norm_prefix(folder) + "/%")
         if family:
             q += " AND g.family = ?"
             params.append(family)
@@ -3320,7 +3331,11 @@ async def _online_genre_rows(scope: str, folder: Optional[str], search: Optional
                 continue
             if scope == "changed" and same:
                 continue
-            if scope == "check" and conf != "check":
+            if scope == "check" and conf not in ("check", "conflict", "thin"):
+                continue
+            if scope == "conflict" and conf != "conflict":
+                continue
+            if scope == "thin" and conf not in ("thin", "check"):
                 continue
             if scope == "manual" and conf != "manual":
                 continue
@@ -3380,7 +3395,7 @@ async def _run_online_genres(req: OnlineGenreRequest):
     global _og_job
     _og_stop["flag"] = False
     _og_job = {"status": "running", "done": 0, "total": 0, "written": 0, "failed": 0,
-               "message": "Preparing…"}
+               "not_found": 0, "message": "Preparing…"}
     try:
         rows = await _online_genre_rows(req.scope, req.folder, req.search, req.family, req.track_ids)
         _og_job["total"] = len(rows)
@@ -3389,6 +3404,16 @@ async def _run_online_genres(req: OnlineGenreRequest):
             for i, (tid, fp, artist, title, current, proposed, _conf, _f, _s) in enumerate(rows):
                 if _og_stop["flag"]:
                     break
+                if not fp or not os.path.exists(_real_write_path(fp)):
+                    # File moved/deleted or on a folder ChartHound can't see — mark it, don't count as a failure
+                    await db.execute("UPDATE tracks SET missing=1 WHERE track_id=?", (tid,))
+                    await db.execute(
+                        "INSERT INTO write_log (track_id, file_path, field_changed, old_value, new_value, "
+                        "write_status, error_msg) VALUES (?, ?, 'genre', ?, ?, 'skipped', 'file not found')",
+                        (tid, fp or "", "; ".join(current), "; ".join(proposed)))
+                    _og_job["not_found"] += 1
+                    _og_job["done"] = i + 1
+                    continue
                 ok = await loop.run_in_executor(None, write_genre_only, fp, proposed)
                 if ok:   # File-First: DB only follows a successful file write
                     g = (proposed + [None, None, None])[:3]
@@ -3412,6 +3437,7 @@ async def _run_online_genres(req: OnlineGenreRequest):
         stopped = _og_stop["flag"]
         _og_job.update({"status": "stopped" if stopped else "done",
                         "message": (f"{'Stopped' if stopped else 'Done'} — {_og_job['written']:,} files updated, "
+                                    f"{_og_job['not_found']:,} not found (hidden until a scan finds them), "
                                     f"{_og_job['failed']:,} failed"
                                     + (f" · refresh sent to {', '.join(refreshed)}" if refreshed else ""))})
         log.info(f"Online genres: {_og_job['message']}")
@@ -3456,7 +3482,8 @@ async def genre_engine_review(req: OnlineGenreRequest, page: int = 1, size: int 
     chunk = rows[(page - 1) * size: page * size]
     return {
         "total": len(rows), "page": page, "size": size,
-        "check": sum(1 for r in rows if r[6] == "check"),
+        "check": sum(1 for r in rows if r[6] in ("check", "conflict", "thin")),
+        "conflict": sum(1 for r in rows if r[6] == "conflict"),
         "rows": [{"track_id": r[0], "artist": r[2], "title": r[3], "current": r[4],
                   "proposed": r[5], "confidence": r[6], "family": r[7], "styles": r[8]} for r in chunk],
     }
