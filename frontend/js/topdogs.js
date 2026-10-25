@@ -1196,6 +1196,7 @@ async function grmSavePreset() {
     min_score: document.getElementById('grm-min-score').value,
     ohw: !!document.getElementById('grm-ohw').checked, genre_mode: grmGenreMode,
     crossovers: !!document.getElementById('grm-cross').checked,
+    holiday: document.getElementById('grm-holiday')?.value || 'hide',
     len: document.getElementById('grm-len').value, days: document.getElementById('grm-days').value,
     fam: document.getElementById('grm-fam').value, gap: document.getElementById('grm-gap').value,
     playlist: document.getElementById('grm-playlist-name').value,
@@ -1221,6 +1222,7 @@ function grmLoadPreset(name) {
   document.getElementById('grm-ohw').checked = !!p.ohw;
   grmSetGenreMode(p.genre_mode || 'main', true);
   document.getElementById('grm-cross').checked = p.crossovers !== false;
+  { const h = document.getElementById('grm-holiday'); if (h) h.value = p.holiday || 'hide'; }
   if (p.playlist) document.getElementById('grm-playlist-name').value = p.playlist;
   grmDecades.clear(); (p.decades || []).forEach(d => grmDecades.add(parseInt(d)));
   document.querySelectorAll('.grm-dec').forEach(b => {
@@ -1255,6 +1257,7 @@ async function grmBuildPlaylist() {
     ohw_only:     !!document.getElementById('grm-ohw')?.checked,
     genre_mode:   grmGenreMode,
     crossovers:   !!document.getElementById('grm-cross')?.checked,
+    holiday:      document.getElementById('grm-holiday')?.value || 'hide',
     minutes:      Math.round(parseFloat(document.getElementById('grm-len').value) * 60),
     days:         parseInt(document.getElementById('grm-days').value),
     familiar_pct: parseInt(document.getElementById('grm-fam').value),
@@ -1332,6 +1335,7 @@ async function grmSearch(append = false) {
   if (document.getElementById('grm-ohw')?.checked) params.set('ohw', 'true');
   params.set('genre_mode', grmGenreMode);
   params.set('crossovers', document.getElementById('grm-cross')?.checked ? 'true' : 'false');
+  params.set('holiday', document.getElementById('grm-holiday')?.value || 'hide');
   if (_sortKey === 'seq') { _sortKey = 'score'; _sortAsc = true; }
   grmBuiltDays = null;
   try {
