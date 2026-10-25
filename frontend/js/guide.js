@@ -4,7 +4,7 @@ const _HG_CONTENT = {
   start: `
     <div class="hg-section-title">🚀 GETTING STARTED</div>
     <div class="hg-section-sub">FIRST-TIME SETUP — READ THIS BEFORE ANYTHING ELSE</div>
-    <div class="hg-tip">💡 If you're already up and running, skip to the tab you need in the menu on the left.</div>
+    <div class="hg-tip">💡 Once ChartHound is running, the <strong>🧭 Start Here</strong> page shows which steps you've done and what to do next. These first steps are the one-time Docker setup.</div>
     <div class="hg-block">
       <div class="hg-block-title">STEP 1 — GENERATE YOUR SECRET KEY</div>
       <p>ChartHound encrypts all your API tokens and passwords using a SECRET_KEY — a long random string that only you know. You must set this in your <strong>docker-compose.yml</strong> before starting the container. Run one of these commands in a terminal on your server and copy the result:</p>
@@ -70,17 +70,23 @@ const _HG_CONTENT = {
     <div class="hg-block">
       <div class="hg-block-title">CONNECTIONS TO SET UP</div>
       <ul>
-        <li><strong>Plex / Emby / Jellyfin</strong> — Required for The Retriever and Top Dogs to scan your library. Connect at least one. Plex is recommended as the primary.</li>
-        <li><strong>Last.fm</strong> — Strongly recommended. Powers genre metadata and popularity scoring for tracks not in the static Billboard database. Free, takes 30 seconds at last.fm/api/account/create.</li>
-        <li><strong>Prowlarr</strong> — Required for The Sniffer and Bloodhound to search for albums to download.</li>
-        <li><strong>qBittorrent / Deluge / Transmission</strong> — Required for The Sniffer and Bloodhound to send downloads.</li>
-        <li><strong>Radarr / Sonarr</strong> — Required for The Tracker (movies and TV only — not music).</li>
-        <li><strong>Discogs</strong> — Optional but recommended. Excellent genre data for classic rock, jazz, soul, and artists with sparse MusicBrainz tags.</li>
+        <li><strong>Plex / Emby / Jellyfin</strong> — Required. Top Dogs reads your library from it and pushes playlists back. Connect at least one; Plex is recommended.</li>
+        <li><strong>Last.fm</strong> — Strongly recommended. Hit Score "staying power", never-charted classics, Big Hits, and one of the Genre Engine sources. Free at last.fm/api/account/create.</li>
+        <li><strong>Discogs</strong> — Strongly recommended. Carries the most weight in the Genre Engine's vote.</li>
+        <li><strong>Prowlarr</strong> — Needed for The Sniffer and The Bloodhound to search for releases.</li>
+        <li><strong>qBittorrent / Deluge / Transmission</strong> — Torrent grabs from The Sniffer and The Bloodhound.</li>
+        <li><strong>SABnzbd</strong> — Usenet (NZB) grabs. Optional; can be connected alongside a torrent client.</li>
+        <li><strong>Radarr / Sonarr</strong> — Only for The Tracker (movies and TV, not music).</li>
       </ul>
     </div>
     <div class="hg-block">
       <div class="hg-block-title">PATH TRANSLATOR</div>
       <p>This tells ChartHound how to convert your media server's file paths to Docker paths. Open any track in Plex/Emby/Jellyfin file info, copy everything before the artist folder — that is your Media Server Path Prefix. Leave Docker Music Mount as /music unless you changed the volume in docker-compose.yml.</p>
+    </div>
+    <div class="hg-block">
+      <div class="hg-block-title">CHARTHOUND DOWNLOAD PATH</div>
+      <p>On the Download Client card. This is where grabs from The Sniffer and The Bloodhound are saved, written <strong>as your download client sees it inside its own container</strong> (for example <code>/newmusic/ChartHound</code>), not as your server sees it. The folder should also be inside a library your media server scans, so new music shows up.</p>
+      <p style="margin-top:.5rem">After you save, ChartHound asks your download client which folders it already uses. A ✓ means the path is inside one of them. A ⚠ means ChartHound couldn't confirm the client can see it — double-check the client's volume mounts. For SABnzbd, the <strong>charthound-music</strong> category's folder decides where Usenet grabs go.</p>
     </div>
     <div class="hg-block">
       <div class="hg-block-title">ENCRYPTED CREDENTIALS — HOW IT WORKS</div>
@@ -105,7 +111,8 @@ const _HG_CONTENT = {
     </div>
     <div class="hg-block">
       <div class="hg-block-title">CONFLICT AND LITTLE DATA</div>
-      <p><strong>⚠ CONFLICT</strong> means the sources disagree — worth a look. <strong>? LITTLE DATA</strong> means few sources know the song — usually fine.</p>
+      <p><strong>⚠ CONFLICT</strong> means the sources disagree — worth a look. <strong>? LITTLE DATA</strong> means few sources know the song — usually fine. Click <strong>why?</strong> to see what each source said, then <strong>✓</strong> (or the Y key) if the genre looks right — it becomes your decision, stops counting as a conflict and is never changed by the engine. Otherwise click the genre to edit it.</p>
+      <p style="margin-top:.5rem"><strong>No genre found:</strong> when the tagged artist is unknown (an album name like "Disco Essentials", or several artists in one tag), the engine tries again with the artist from the file name or the first listed artist. Songs no source knows even then are listed under the <strong>No genre found</strong> filter — set them by hand or with a folder rule.</p>
     </div>
     <div class="hg-block">
       <div class="hg-block-title">FOLDER RULES</div>
@@ -122,40 +129,32 @@ const _HG_CONTENT = {
   `,
   sniffer: `
     <div class="hg-section-title">📡 THE SNIFFER</div>
-    <div class="hg-section-sub">CHART HIT FINDER — FIND WHAT YOU'RE MISSING & GRAB IT</div>
+    <div class="hg-section-sub">CHART HIT FINDER — FIND THE SONGS YOU'RE MISSING & GRAB THEM</div>
     <div class="hg-block">
       <div class="hg-block-title">WHAT IT DOES</div>
-      <p>The Sniffer cross-references a master list of chart hits and popular tracks against your actual music library, then shows you what you own and what you're missing. For missing tracks, you can search Prowlarr and send albums directly to your download client in one click.</p>
-      <p style="margin-top:.5rem">The library comparison uses your connected media server (Plex first, then Emby, then Jellyfin) for the most accurate results — it sees your entire library, not just folders you've scanned in The Retriever.</p>
+      <p>The Sniffer compares chart hits against your library and lists the songs you don't own. For any missing song, SEARCH asks Prowlarr (album releases first, for better seeds and tags) and one click sends it to your download client.</p>
     </div>
     <div class="hg-block">
-      <div class="hg-block-title">DEDUPLICATION — ALWAYS THE BEST QUALITY</div>
-      <p>When the Sniffer cross-references your library it doesn't count duplicates. It dedupes by track identity (artist + title, normalized) and — when you have multiple copies of the same song — recognizes you own it without double-counting. The same logic applies when building results: you only see one entry per track. A 320kbps MP3 wins over a 128kbps one. A FLAC wins over both. You always get the best version, silently.</p>
-    </div>
-    <div class="hg-block">
-      <div class="hg-block-title">CONNECTIONS REQUIRED</div>
+      <div class="hg-block-title">THREE MODES</div>
       <ul>
-        <li><strong>Plex, Emby, or Jellyfin</strong> — to know what you already own (Plex is checked first)</li>
-        <li><strong>Last.fm</strong> — powers the popularity scoring and genre tag data</li>
-        <li><strong>Prowlarr + download client</strong> — to search for and grab missing albums</li>
+        <li><strong>🏆 Big Hits</strong> (start here) — the highest Hit Score songs you don't own, ranked the same way as Top Dogs. Filter by genre, decade and Min Hit Score, or One-hit wonders only. Last.fm listener counts fill in quietly in the background — click FIND again a few minutes later for sharper scores.</li>
+        <li><strong>📊 Chart Gap Fill</strong> — every charting song you don't own for your genres and decades. The tier (Essential top 250 / Notable top 1,000 / Deep cuts top 5,000) and peak limit are under ADVANCED.</li>
+        <li><strong>🔥 Trending</strong> — current top tracks for a genre from Last.fm.</li>
       </ul>
     </div>
     <div class="hg-block">
-      <div class="hg-block-title">TWO SEARCH MODES</div>
-      <ul>
-        <li><strong>Chart Gap Fill</strong> — Builds a master list of the top chart hits for your selected genres and decades. Uses real Billboard chart data plus Last.fm popularity scoring. Select genres + decade + notability tier, then click FIND MISSING TRACKS.</li>
-        <li><strong>Trending</strong> — Shows currently trending tracks by genre from Last.fm. Good for discovering recent popular music you might be missing.</li>
-      </ul>
+      <div class="hg-block-title">GRABBING</div>
+      <p>Torrent results go to qBittorrent, Deluge or Transmission; NZB results go to SABnzbd. Grabs are tagged <strong>charthound-music</strong> and saved to the ChartHound Download Path set in The Kennel. After the download finishes, follow Start Here → "After new music arrives" so the new songs get Hit Scores and genres.</p>
     </div>
     <div class="hg-block">
-      <div class="hg-block-title">NOTABILITY TIERS</div>
+      <div class="hg-block-title">CONNECTIONS</div>
       <ul>
-        <li><strong>Essential (top 250)</strong> — Only the biggest hits. #1s and long-charting classics.</li>
-        <li><strong>Notable (top 1,000)</strong> — Solid chart performers. The recommended starting point.</li>
-        <li><strong>Deep Cuts (top 5,000)</strong> — Includes album tracks and lesser-known chart entries.</li>
+        <li><strong>Plex, Emby or Jellyfin</strong> — to know what you already own</li>
+        <li><strong>Prowlarr + a download client</strong> — to search and grab</li>
+        <li><strong>Last.fm</strong> — Big Hits staying power and Trending</li>
       </ul>
     </div>
-    <div class="hg-tip">💡 <strong>Best practice:</strong> Start with all genres + Notable. Then narrow to one genre at a time to get deeper coverage per genre. Adding a decade filter gives you 1,000 of just that genre's best hits from that era.</div>
+    <div class="hg-tip">💡 <strong>Shortcut:</strong> after building a playlist in Top Dogs, a link shows how many big hits in that playlist's style you don't own yet — it opens The Sniffer pre-filtered.</div>
   `,
   groomer: `
     <div class="hg-section-title">🏆 TOP DOGS</div>
@@ -167,8 +166,8 @@ const _HG_CONTENT = {
     <div class="hg-block">
       <div class="hg-block-title">THE 4 STEPS</div>
       <ul>
-        <li><strong>1 · Scan</strong> — Media Server → pick server and library → Start Scan. The first scan takes a while; later scans only check new songs. Re-scan after adding music or importing chart data in The Veterinarian. The genre tree does <em>not</em> affect the scan.</li>
-        <li><strong>2 · Choose songs</strong> — Genre tree (middle panel) and the HITS box: Min Hit Score, Decades, One-hit wonders.</li>
+        <li><strong>1 · Scan</strong> (the <strong>① SCAN</strong> view) — Media Server → pick server and library → Start Scan. The first scan takes a while; later scans only check new songs. Re-scan after adding music or importing chart data in The Veterinarian. The genre tree does <em>not</em> affect the scan.</li>
+        <li><strong>2 · Choose songs</strong> (the <strong>② BUILD</strong> view) — Genre tree (middle panel: families and styles from the Genre Engine, with crossovers and a 🌙 Mellow vibe) and the HITS box: Min Hit Score, Decades, One-hit wonders.</li>
         <li><strong>3 · Build</strong> — Playlist Builder: Length, Playlists (days), Familiar hits, Artist spacing → 🚗 Build Playlist. Check the list in the results table.</li>
         <li><strong>4 · Push</strong> — ↑ PLEX / EMBY / JELLYFIN or ↓ M3U. Save your settings as a Preset to rebuild in one click.</li>
       </ul>
@@ -206,7 +205,7 @@ const _HG_CONTENT = {
       <div class="hg-block-title">ADVANCED (COLLAPSED)</div>
       <ul>
         <li><strong>Results table filters</strong> — peak range, min weeks, confidence. Only filter the table; the builder ignores them.</li>
-        <li><strong>Write chart data to COMMENT tags</strong> — writes chart info into your files during the scan. Not needed for playlists; leave off.</li>
+        <li><strong>Write chart data to COMMENT tags</strong> (① SCAN → ADVANCED) — writes chart info into your files during the scan. Not needed for playlists; leave off.</li>
       </ul>
     </div>
     <div class="hg-block">
@@ -217,63 +216,57 @@ const _HG_CONTENT = {
   `,
   bloodhound: `
     <div class="hg-section-title">🔍 THE BLOODHOUND</div>
-    <div class="hg-section-sub">ALBUM HUNTER — HUNT EVERY ALBUM BY ANY ARTIST</div>
+    <div class="hg-section-sub">ALBUM HUNTER — FIND THE ALBUMS YOU'RE MISSING</div>
     <div class="hg-block">
       <div class="hg-block-title">WHAT IT DOES</div>
-      <p>The Bloodhound searches MusicBrainz for albums and shows you what you own vs. what you're missing. When you find something missing, search Prowlarr and grab it to your download client without leaving the page.</p>
+      <p>The Bloodhound finds albums and marks each one <strong>Owned</strong> or <strong>Missing</strong>. Missing releases can be searched on Prowlarr and grabbed without leaving the page.</p>
     </div>
     <div class="hg-block">
-      <div class="hg-block-title">CONNECTIONS REQUIRED</div>
+      <div class="hg-block-title">FIVE SEARCH MODES</div>
       <ul>
-        <li><strong>Plex, Emby, or Jellyfin</strong> — to cross-reference what you already own</li>
-        <li><strong>Prowlarr + download client</strong> — to search for and grab missing albums</li>
+        <li><strong>⭐ Essential</strong> (start here) — the biggest albums on the Billboard 200 since 1967, ranked by peak and weeks on the chart. Filter by decade and tick "Only albums I'm missing". The Billboard 200 data refreshes itself weekly.</li>
+        <li><strong>Artist</strong> — an artist's full discography from MusicBrainz. Albums that hit the Billboard 200 get a <strong>B200</strong> badge, and the essential ones a ⭐. Release type (Albums by default) is under ADVANCED.</li>
+        <li><strong>Album</strong> — search any album by name.</li>
+        <li><strong>Compilations</strong> — 31 preset series (Now That's What I Call Music, WOW Hits, Grammy Nominees…); custom search is under MORE.</li>
+        <li><strong>Genre</strong> — browse by primary genre, sub-genres included automatically.</li>
       </ul>
     </div>
     <div class="hg-block">
-      <div class="hg-block-title">FOUR SEARCH MODES</div>
+      <div class="hg-block-title">CONNECTIONS</div>
       <ul>
-        <li><strong>Artist</strong> — Search by artist name, then browse their full discography. Filter by Albums, Compilations, Singles, or All. Results are sortable by Artist, Title, Year, or Status (Owned/Missing).</li>
-        <li><strong>Album</strong> — Search for any album by name across all of MusicBrainz.</li>
-        <li><strong>Comps</strong> — 31 preset compilation series (Now That's What I Call Music, WOW Hits, Grammy Nominees, etc.) plus a custom search field.</li>
-        <li><strong>Genre</strong> — Browse by primary genre (Rock, Pop, Country, R&amp;B, Hip-Hop, Electronic, Jazz, Blues, Metal, Alternative, Folk, Classical, CCM/Gospel). Selecting a genre automatically includes all its sub-genres in the search.</li>
+        <li><strong>Plex, Emby or Jellyfin</strong> — to know what you already own</li>
+        <li><strong>Prowlarr + a download client</strong> — to search and grab</li>
       </ul>
     </div>
-    <div class="hg-tip">💡 <strong>Best practice:</strong> Use Artist mode to do a complete discography audit — find an artist you love, filter to Albums only, and see at a glance what you're missing. Use Genre mode to discover albums in a genre you want to expand.</div>
+    <div class="hg-tip">💡 <strong>Best practice:</strong> Essential + "Only albums I'm missing" + one decade at a time is the fastest way to fill the big holes in a collection.</div>
   `,
   tracker: `
     <div class="hg-section-title">🎯 THE TRACKER</div>
-    <div class="hg-section-sub">MISSING MEDIA HUNTER — RADARR & SONARR AUTOMATIC SEARCH</div>
+    <div class="hg-section-sub">MISSING MOVIES & TV — RADARR / SONARR, SLOWLY AND POLITELY</div>
     <div class="hg-block">
       <div class="hg-block-title">WHAT IT DOES</div>
-      <p>The Tracker monitors your Radarr and Sonarr libraries for missing movies and TV episodes, then automatically fires search commands through their APIs. ChartHound doesn't touch Prowlarr directly — it tells Radarr and Sonarr to search, and they handle everything from there exactly as they normally would.</p>
-      <p style="margin-top:.5rem"><strong>Note: The Tracker is for movies and TV only — not music.</strong> Music discovery is handled by The Sniffer and The Bloodhound.</p>
+      <p>The Tracker watches Radarr and Sonarr for missing movies and episodes and asks them to search, in the background, even with the browser closed. ChartHound never talks to your indexers directly — Radarr and Sonarr search through Prowlarr as they normally do. <strong>Movies and TV only</strong>; music is The Sniffer and The Bloodhound.</p>
     </div>
     <div class="hg-block">
-      <div class="hg-block-title">CONNECTIONS REQUIRED</div>
+      <div class="hg-block-title">HOW IT DECIDES</div>
       <ul>
-        <li><strong>Radarr</strong> — for missing movie detection and search</li>
-        <li><strong>Sonarr</strong> — for missing TV episode detection and search</li>
-        <li>Prowlarr is handled internally by Radarr/Sonarr — no direct connection needed here</li>
+        <li><strong>Off by default</strong> — turn it on from the Tracker page.</li>
+        <li><strong>Newest first</strong> — released in the last 90 days, then the last 2 years, then older titles (fewest tries first).</li>
+        <li><strong>Back-off</strong> — each miss doubles the wait before the next try (base cooldown per source under ADVANCED, capped at 30 days). Old titles that keep missing drop to monthly.</li>
+        <li><strong>Auto-skip</strong> — titles older than 2 years that miss 12 times are marked Skipped (auto). UNSKIP gives one a fresh start. New releases are never auto-skipped.</li>
+        <li><strong>Grab check</strong> — 15 minutes after each search ChartHound asks Radarr/Sonarr whether anything was grabbed and logs GRABBED or a miss.</li>
+        <li><strong>TV-weighted & season-aware</strong> — three TV searches per movie search; whole missing seasons get one season search, and an earlier missing season waits (except the newest season and fresh releases).</li>
+        <li><strong>Gentle timing</strong> — about one search every 40 minutes with ±25% random jitter; auto-sync every 6 hours.</li>
       </ul>
     </div>
     <div class="hg-block">
-      <div class="hg-block-title">IMPORTANT — DEFAULT OFF</div>
-      <p>The Tracker is disabled by default and must be explicitly enabled from the Tracker page. This is intentional — automatic searching can burn through indexer request limits quickly if misconfigured. Read the settings before enabling.</p>
-    </div>
-    <div class="hg-block">
-      <div class="hg-block-title">KEY SETTINGS</div>
+      <div class="hg-block-title">CONNECTIONS</div>
       <ul>
-        <li><strong>Daily cap</strong> — limits total searches per day to prevent overloading indexers</li>
-        <li><strong>Cooldown</strong> — won't re-search an unfindable item until the cooldown expires (default 7 days)</li>
-        <li><strong>Smart TV ordering</strong> — searches earliest missing season first; won't look for season 3 if season 2 is still missing</li>
-        <li><strong>Season search</strong> — when an entire season is missing, fires a single SeasonSearch instead of individual episode searches</li>
+        <li><strong>Radarr</strong> — movies</li>
+        <li><strong>Sonarr</strong> — TV</li>
       </ul>
     </div>
-    <div class="hg-block">
-      <div class="hg-block-title">REQUEST JITTER</div>
-      <p>When the Tracker fires search commands, it doesn't blast them out at predictable intervals. Each search has a small randomized delay added before it goes out, so the request pattern looks more like a human clicking buttons than a bot. This keeps your indexers happier and reduces the chance of getting rate-limited mid-batch.</p>
-    </div>
-    <div class="hg-tip">💡 <strong>Best practice:</strong> Start with the Moderate preset (60 searches/day) and a 7-day cooldown. Monitor the activity log for a few days before increasing search limits.</div>
+    <div class="hg-tip">💡 <strong>Best practice:</strong> Turn it on, click SYNC MISSING LISTS once, then just glance at the activity log now and then. If a season is stuck, skip it to unblock the later ones.</div>
   `,
   vet: `
     <div class="hg-section-title">🩺 THE VETERINARIAN</div>

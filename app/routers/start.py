@@ -70,11 +70,23 @@ async def start_status(_=Depends(require_auth)):
             "SELECT COUNT(*) FROM tracks t LEFT JOIN track_genres g ON g.track_id=t.track_id "
             "WHERE g.track_id IS NULL AND COALESCE(t.missing,0)=0" + (" AND " + where if where else ""),
             tuple(p.rstrip("/") + "/%" for p in skip), default=0)
+        last_run = await _one(db, "SELECT MAX(updated_at) FROM track_genres WHERE confidence!='manual'", default="")
+        # Songs added since the last run still need the engine; the rest were tried and no source knew them
+        pending_new = pending if not last_run else await _one(db,
+            "SELECT COUNT(*) FROM tracks t LEFT JOIN track_genres g ON g.track_id=t.track_id "
+            "WHERE g.track_id IS NULL AND COALESCE(t.missing,0)=0 AND t.created_at > ?"
+            + (" AND " + where if where else ""),
+            (last_run,) + tuple(p.rstrip("/") + "/%" for p in skip), default=0)
         out["genres"] = {
             "decided": await _one(db, "SELECT COUNT(*) FROM track_genres", default=0),
-            "last_run": await _one(db, "SELECT MAX(updated_at) FROM track_genres WHERE confidence!='manual'", default=""),
+            "last_run": last_run,
             "pending": pending,
-            "conflicts": await _one(db, "SELECT COUNT(*) FROM track_genres WHERE confidence='conflict'", default=0),
+            "pending_new": pending_new,
+            "no_source": max(0, pending - pending_new),
+            # Same rules as Review: missing files and hand-verified songs aren't listed there
+            "conflicts": await _one(db, "SELECT COUNT(*) FROM track_genres g JOIN tracks t ON t.track_id=g.track_id "
+                                        "WHERE g.confidence='conflict' AND COALESCE(t.missing,0)=0 "
+                                        "AND COALESCE(t.manually_verified,0)=0", default=0),
         }
 
         # ④ Playlists

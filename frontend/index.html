@@ -7,7 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐕</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/css/app.css?v=m8c4">
+<link rel="stylesheet" href="/static/css/app.css?v=m8d2">
 <script>try{document.documentElement.style.fontSize=(+localStorage.getItem('ch_textsize')||18)+'px'}catch(e){}</script>
 </head>
 <body>
@@ -215,6 +215,17 @@
           <div class="st-sub">ChartHound turns your music library into great playlists. Follow the steps in order the first time —
             after that, use the <b>“After new music arrives”</b> routine below. Every step has a <b>GO</b> button that takes you to the right place.</div>
         </div>
+        <div id="st-first" class="st-first" style="display:none">
+          <div class="st-first-title">👋 FIRST TIME?</div>
+          <div class="st-first-sub">Setup is mostly waiting the first time — that's normal. Rough times for a large library (tens of thousands of songs):</div>
+          <ul>
+            <li><b>Connect your services</b> — 10–15 minutes</li>
+            <li><b>First ① SCAN</b> in Top Dogs — 10–30 minutes (later scans only add new songs)</li>
+            <li><b>Genre Engine</b> first run — 1–3 hours (later runs only look up new albums)</li>
+            <li><b>Last.fm pass</b> — about 3 hours, quietly in the background</li>
+          </ul>
+          <div class="st-first-sub">You can close the browser while these run. Smaller libraries are much faster.</div>
+        </div>
         <div id="st-steps"><div class="st-loading">Checking where you are…</div></div>
         <div class="st-routine">
           <div class="st-routine-title">🔁 AFTER NEW MUSIC ARRIVES</div>
@@ -312,6 +323,7 @@
               <div class="conn-card-title"><div class="conn-card-dot" id="cDot-plex"></div>🟧 PLEX MEDIA SERVER</div>
               <div class="conn-verified" id="cVerified-plex">NOT VERIFIED</div>
             </div>
+              <div class="conn-usedby">Used by: Top Dogs (reads your library, receives playlists), Sniffer &amp; Bloodhound (what you own) · <b>required</b> — one of Plex, Emby or Jellyfin</div>
             <div class="label-row"><label>Server URL</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">Use your server's LAN IP — not localhost. On Linux Docker, localhost refers to the container itself. Example: http://192.168.1.100:32400</div></div></div>
             <input type="url" id="cURL-plex" placeholder="http://YOUR-SERVER-IP:32400">
             <div class="field-hint">Use your server's LAN IP — e.g. http://192.168.50.42:32400 · Default port: 32400</div>
@@ -332,6 +344,7 @@
               <div class="conn-card-title"><div class="conn-card-dot" id="cDot-emby"></div>🟩 EMBY</div>
               <div class="conn-verified" id="cVerified-emby">NOT VERIFIED</div>
             </div>
+              <div class="conn-usedby">Used by: Top Dogs, Sniffer &amp; Bloodhound — alternative to Plex</div>
             <div class="label-row"><label>Server URL</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">Use your server's LAN IP. Default Emby port is 8096. Example: http://192.168.1.100:8096</div></div></div>
             <input type="url" id="cURL-emby" placeholder="http://YOUR-SERVER-IP:8096">
             <div class="field-hint">Default port: 8096 — use your server's LAN IP</div>
@@ -355,6 +368,7 @@
               <div class="conn-card-title"><div class="conn-card-dot" id="cDot-jellyfin"></div>🟦 JELLYFIN</div>
               <div class="conn-verified" id="cVerified-jellyfin">NOT VERIFIED</div>
             </div>
+              <div class="conn-usedby">Used by: Top Dogs, Sniffer &amp; Bloodhound — alternative to Plex</div>
             <div class="label-row"><label>Server URL</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">Use your server's LAN IP and the port you access Jellyfin on in your browser. If you get a 503 error: Jellyfin Dashboard → Networking → LAN Networks → add 172.28.0.0/16 → save and restart Jellyfin.</div></div></div>
             <input type="url" id="cURL-jellyfin" placeholder="http://YOUR-SERVER-IP:8096">
             <div class="field-hint">Use the port you access Jellyfin on in your browser · If 503 error: add 172.28.0.0/16 to Jellyfin LAN Networks</div>
@@ -378,6 +392,7 @@
               <div class="conn-card-title"><div class="conn-card-dot" id="cDot-lastfm"></div>🔴 LAST.FM</div>
               <div class="conn-verified" id="cVerified-lastfm">NOT VERIFIED</div>
             </div>
+              <div class="conn-usedby">Used by: Hit Scores, Big Hits, Genre Engine, Trending · <b>recommended</b></div>
             <div class="label-row"><label>API Key</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">Last.fm API keys are completely free — no credit card needed. Visit last.fm/api/account/create, sign up, and your key appears immediately. No URL needed for Last.fm.</div></div></div>
             <input type="password" id="cToken-lastfm" placeholder="Stored encrypted · never logged">
             <div class="field-hint">Free at <a href="https://www.last.fm/api/account/create" target="_blank">last.fm/api/account/create</a> — no credit card · no URL needed</div>
@@ -396,6 +411,7 @@
               <div class="conn-card-title"><div class="conn-card-dot" id="cDot-prowlarr"></div>🟣 PROWLARR</div>
               <div class="conn-verified" id="cVerified-prowlarr">NOT VERIFIED</div>
             </div>
+              <div class="conn-usedby">Used by: Sniffer &amp; Bloodhound searches</div>
             <div class="label-row"><label>Server URL</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">Use your server's LAN IP. Default Prowlarr port is 9696. Example: http://192.168.1.100:9696</div></div></div>
             <input type="url" id="cURL-prowlarr" placeholder="http://YOUR-SERVER-IP:9696">
             <div class="field-hint">Default port: 9696</div>
@@ -416,6 +432,7 @@
               <div class="conn-card-title"><div class="conn-card-dot" id="cDot-radarr"></div>🎬 RADARR</div>
               <div class="conn-verified" id="cVerified-radarr">NOT VERIFIED</div>
             </div>
+              <div class="conn-usedby">Used by: The Tracker (movies) · optional</div>
             <div class="label-row"><label>Server URL</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">Use your server's LAN IP. Default Radarr port is 7878. Used by The Tracker for missing movies.</div></div></div>
             <input type="url" id="cURL-radarr" placeholder="http://YOUR-SERVER-IP:7878">
             <div class="field-hint">Default port: 7878 — used by The Tracker</div>
@@ -436,6 +453,7 @@
               <div class="conn-card-title"><div class="conn-card-dot" id="cDot-sonarr"></div>📺 SONARR</div>
               <div class="conn-verified" id="cVerified-sonarr">NOT VERIFIED</div>
             </div>
+              <div class="conn-usedby">Used by: The Tracker (TV) · optional</div>
             <div class="label-row"><label>Server URL</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">Use your server's LAN IP. Default Sonarr port is 8989. Used by The Tracker for missing TV episodes.</div></div></div>
             <input type="url" id="cURL-sonarr" placeholder="http://YOUR-SERVER-IP:8989">
             <div class="field-hint">Default port: 8989 — used by The Tracker</div>
@@ -456,6 +474,7 @@
               <div class="conn-card-title"><div class="conn-card-dot" id="cDot-qbittorrent"></div>⬇ DOWNLOAD CLIENT</div>
               <div class="conn-verified" id="cVerified-qbittorrent">NOT VERIFIED</div>
             </div>
+              <div class="conn-usedby">Used by: Sniffer &amp; Bloodhound torrent grabs</div>
             <p style="font-family:var(--mono);font-size:.57rem;color:var(--muted);line-height:1.7;margin-bottom:.65rem">
               Used by The Sniffer, Bloodhound and Tracker. Grabs are tagged with
               <strong style="color:var(--text)">ChartHound-Music</strong> /
@@ -483,11 +502,12 @@
             <div class="conn-feedback" id="cFeedback-qbittorrent"></div>
             <!-- SNIFFER DOWNLOAD PATH -->
             <div style="margin-top:.75rem;padding-top:.75rem;border-top:1px solid var(--border)">
-              <div class="label-row"><label>ChartHound Download Path</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">Where The Sniffer puts completed downloads. Must be inside your music library root so Plex/Emby/JF pick it up. Example: /media/colby/NAS1/MUSIC TAGGED/ChartHound</div></div></div>
-              <input type="text" id="cSnifferPath" placeholder="/path/to/music/ChartHound">
-              <div class="field-hint">Completed Sniffer grabs land here. Use a subfolder inside your music library root.</div>
+              <div class="label-row"><label>ChartHound Download Path</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">Where grabs from The Sniffer and The Bloodhound are saved — typed the way your DOWNLOAD CLIENT sees it inside its own container (e.g. /newmusic/ChartHound), not the server path. Pick a folder inside a library your media server scans so new music shows up. SABnzbd uses its charthound-music category folder instead.</div></div></div>
+              <input type="text" id="cSnifferPath" placeholder="/downloads/music/ChartHound">
+              <div class="field-hint">As your download client sees it (its container path). After saving, ChartHound checks it against the folders your client already uses.</div>
               <button class="btn btn-outline btn-sm" onclick="saveSnifferPath()" style="margin-top:.3rem">💾 SAVE PATH</button>
               <div class="conn-feedback" id="cFeedback-snifferpath"></div>
+              <div id="cSnifferPathCheck" class="dl-check"></div>
             </div>
           </div>
 
@@ -497,6 +517,7 @@
               <div class="conn-card-title"><div class="conn-card-dot" id="cDot-sabnzbd"></div>📦 USENET CLIENT</div>
               <div class="conn-verified" id="cVerified-sabnzbd">NOT VERIFIED</div>
             </div>
+              <div class="conn-usedby">Used by: Sniffer &amp; Bloodhound Usenet grabs · optional</div>
             <p style="font-family:var(--mono);font-size:.57rem;color:var(--muted);line-height:1.7;margin-bottom:.65rem">
               Optional — only needed if you have Usenet indexers (e.g. NZBGeek) in Prowlarr.
               NZB grabs are tagged with <strong style="color:var(--amber)">charthound-music</strong> category.
@@ -527,6 +548,7 @@
               <div class="conn-card-title"><div class="conn-card-dot" id="cDot-discogs"></div>🔵 DISCOGS</div>
               <div class="conn-verified" id="cVerified-discogs">NOT VERIFIED</div>
             </div>
+              <div class="conn-usedby">Used by: Genre Engine (biggest vote weight) · <b>recommended</b></div>
             <p style="font-family:var(--mono);font-size:.57rem;color:var(--muted);line-height:1.7;margin-bottom:.65rem">Excellent genre and style data — significantly improves metadata quality especially for classic rock, jazz, soul and artists where MusicBrainz tags are sparse.</p>
             <div class="label-row"><label>Personal Access Token</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">Get your free token at discogs.com/settings/developers — click "Generate new token". No credit card needed. Rate limit: 60 requests/minute.</div></div></div>
             <input type="password" id="cToken-discogs" placeholder="Stored encrypted · never logged">
@@ -595,9 +617,10 @@
               <input id="ger-search" type="text" placeholder="Search artist or title…" onkeydown="if(event.key==='Enter')geLoad(1)" class="ger-in" style="flex:1;min-width:180px">
               <select id="ger-scope" onchange="geLoad(1)" class="ger-in">
                 <option value="changed" selected>Genre would change</option>
-                <option value="conflict">⚠ Conflicts (worth a look)</option>
+                <option value="conflict">⚠ Conflicts to check</option>
                 <option value="thin">? Little data (usually fine)</option>
                 <option value="empty">Files with no genre</option>
+                <option value="nogenre">No genre found (no source knew)</option>
                 <option value="manual">My edits</option>
                 <option value="all">All songs</option>
               </select>
@@ -605,14 +628,17 @@
               <input id="ger-folder" type="text" placeholder="Folder e.g. /music/Eagles" onkeydown="if(event.key==='Enter')geLoad(1)" class="ger-in" style="width:190px">
               <button class="btn btn-outline" onclick="geLoad(1)" style="font-size:.65rem;font-family:var(--mono)">🔍 APPLY</button>
               <label class="ger-hide"><input type="checkbox" id="ger-hide-same" checked onchange="geLoad(1)"> Hide songs already correct<span class="grm-q" tabindex="0" data-tip="Hides songs whose file already has exactly this genre (any order). Writing them would change nothing, so there is nothing to decide. Untick to see every song.">?</span></label>
-              <span class="ger-keys" tabindex="0" data-tip="Keyboard (when not typing in a box):&#10;↓ / ↑ or J / K — move between songs&#10;Space — play / stop&#10;X — select / unselect&#10;E — edit genre&#10;W — why? (what each source said)&#10;C — copy folder path&#10;Esc — close the editor">⌨ KEYS</span>
+              <span class="ger-keys" tabindex="0" data-tip="Keyboard (when not typing in a box):&#10;↓ / ↑ or J / K — move between songs&#10;Space — play / stop&#10;X — select / unselect&#10;E — edit genre&#10;Y — ✓ looks right (keep this genre)&#10;W — why? (what each source said)&#10;C — copy folder path&#10;Esc — close the editor">⌨ KEYS</span>
             </div>
             <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:.5rem;margin-bottom:.5rem">
               <div id="ger-count" style="font-family:var(--mono);font-size:.8rem;color:var(--muted)"></div>
-              <div style="display:flex;gap:.4rem;align-items:center">
+              <div style="display:flex;flex-wrap:wrap;justify-content:flex-end;gap:.4rem;align-items:center">
                 <button class="btn btn-outline" onclick="geLoad(_ger.page-1)" style="font-size:.65rem;font-family:var(--mono)">◀</button>
                 <span id="ger-page" style="font-family:var(--mono);font-size:.65rem;color:var(--muted)"></span>
                 <button class="btn btn-outline" onclick="geLoad(_ger.page+1)" style="font-size:.65rem;font-family:var(--mono)">▶</button>
+                <button class="btn btn-outline" id="ger-ok-page" onclick="geApprove('page')" style="font-size:.65rem;font-family:var(--mono);color:var(--green);border-color:var(--green)" data-tip="Keep the genre for every flagged song on this page (up to 100) as your own decision.">✓ THIS PAGE (0)</button>
+                <button class="btn btn-outline" id="ger-ok-all" onclick="geApprove('all')" style="font-size:.65rem;font-family:var(--mono);color:var(--green);border-color:var(--green)" data-tip="Keep the genre for every flagged song matching the current filters, on all pages. You'll be asked to confirm. Tip: back up first on The Veterinarian.">✓ ALL 0 MATCHING</button>
+                <button class="btn btn-outline" id="ger-ok-sel" onclick="geApprove(true)" style="font-size:.65rem;font-family:var(--mono);color:var(--green);border-color:var(--green)" data-tip="Keep the genre shown for the selected songs as your own decision. They stop counting as conflicts and the engine never changes them.">✓ LOOKS RIGHT (0)</button>
                 <button class="btn" id="ger-write-sel" onclick="geWrite(true)" style="font-size:.65rem;font-family:var(--mono);background:var(--teal);color:#000">✎ WRITE SELECTED (0)</button>
                 <button class="btn btn-outline" id="ger-write-all" onclick="geWrite(false)" style="font-size:.65rem;font-family:var(--mono);color:var(--teal);border-color:var(--teal)">✎ WRITE ALL MATCHING</button>
               </div>
@@ -1803,14 +1829,14 @@
 
 <div id="toastWrap"></div>
 
-<script src="/static/js/core.js?v=m8c4"></script>
-<script src="/static/js/start.js?v=m8c4"></script>
-<script src="/static/js/retriever.js?v=m8c4"></script>
-<script src="/static/js/topdogs.js?v=m8c4"></script>
-<script src="/static/js/sniffer.js?v=m8c4"></script>
-<script src="/static/js/bloodhound.js?v=m8c4"></script>
-<script src="/static/js/vet.js?v=m8c4"></script>
-<script src="/static/js/tracker.js?v=m8c4"></script>
-<script src="/static/js/guide.js?v=m8c4"></script>
+<script src="/static/js/core.js?v=m8d2"></script>
+<script src="/static/js/start.js?v=m8d2"></script>
+<script src="/static/js/retriever.js?v=m8d2"></script>
+<script src="/static/js/topdogs.js?v=m8d2"></script>
+<script src="/static/js/sniffer.js?v=m8d2"></script>
+<script src="/static/js/bloodhound.js?v=m8d2"></script>
+<script src="/static/js/vet.js?v=m8d2"></script>
+<script src="/static/js/tracker.js?v=m8d2"></script>
+<script src="/static/js/guide.js?v=m8d2"></script>
 </body>
 </html>

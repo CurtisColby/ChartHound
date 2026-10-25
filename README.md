@@ -269,7 +269,7 @@ ChartHound supports four download clients. You only need the ones relevant to yo
 
 **qBittorrent** — uses username/password authentication, not an API key. Open the qBittorrent Web UI settings and confirm Web UI is enabled, then put the URL (`http://your-server:8080`), username (default `admin`), and password into ChartHound's qBittorrent card. ChartHound logs in once per session and uses the cookie. Works with qBittorrent 4.x and 5.x, including the "bypass authentication for whitelisted IPs" setup common behind Gluetun. After each grab, ChartHound makes sure every file in the torrent is ticked and started — waiting up to 15 minutes for slow magnet links to fetch their file list.
 
-> **Important:** the **ChartHound Download Path** in The Kennel must be a folder your *download client* can see (its own container path), and that folder should be inside a library your media server scans.
+> **Important:** the **ChartHound Download Path** in The Kennel must be a folder your *download client* can see (its own container path), and that folder should be inside a library your media server scans. After you save it, ChartHound asks your download client which folders it already uses and shows ✓ or a ⚠ warning. For SABnzbd, the `charthound-music` category's folder decides where Usenet grabs go.
 
 **Deluge** — uses the Deluge WebUI password. Make sure the WebUI plugin is enabled in Deluge preferences. Enter the WebUI URL (`http://your-server:8112`) and the WebUI password into ChartHound's Deluge card. ChartHound authenticates via Deluge's JSON-RPC interface.
 
@@ -340,7 +340,7 @@ The **Genre Engine** gives every song **one family plus up to three styles** —
 | Discogs album genres, MusicBrainz, Last.fm track tags | 2 |
 | Last.fm artist tags | 1 |
 
-Lookups are batched **one per album** and cached, so the first run takes 1–3 hours for a large library and later runs only look up new music. Songs where sources disagree are marked **⚠ CONFLICT**; songs few sources know are **? LITTLE DATA**. Broad families win over obscure community tags, and subjective tags ("awesome", "favorites") are ignored.
+Lookups are batched **one per album** and cached, so the first run takes 1–3 hours for a large library and later runs only look up new music. Songs where sources disagree are marked **⚠ CONFLICT**; songs few sources know are **? LITTLE DATA**. Mark a flagged song **✓ looks right** to keep its genre as your decision. When a song's artist tag is really an album name or several artists, the engine retries with the artist from the file name or the first listed artist; anything still unknown appears under **No genre found** to set by hand. Broad families win over obscure community tags, and subjective tags ("awesome", "favorites") are ignored.
 
 1. **▶ RUN ENGINE** — look everything up and vote. **RE-VOTE** re-decides from the cache in seconds, no lookups.
 2. **REVIEW & WRITE** — page through every change, filter by family, folder or conflicts, edit any song or a whole artist, then write selected or all. Your edits are saved as **manual** and never overwritten.

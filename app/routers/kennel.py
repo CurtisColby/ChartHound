@@ -467,6 +467,133 @@ async def get_sniffer_path(user: dict = Depends(require_auth)):
         return {"download_path": ""}
 
 
+# ── DOWNLOAD PATH CHECK (M8d) ────────────────────────────────────────────────
+# ChartHound can't see inside a download client's container, but it can ask the
+# client which folders it already saves to. A path inside one of those is almost
+# certainly visible to the client. Read-only; never blocks saving.
+
+def _dl_inside(path: str, folder: str) -> bool:
+    p, f = path.rstrip("/"), (folder or "").rstrip("/")
+    return bool(f) and (p == f or p.startswith(f + "/"))
+
+
+def _dl_join(base: str, sub: str) -> str:
+    if not sub:
+        return ""
+    return sub if sub.startswith("/") or not base else base.rstrip("/") + "/" + sub
+
+
+async def _dl_conn(db, svc: str):
+    row = await (await db.execute(
+        "SELECT base_url, token_enc, extra_json FROM connections WHERE service=? AND base_url IS NOT NULL",
+        (svc,))).fetchone()
+    if not row or not row["base_url"]:
+        return None
+    return (row["base_url"].rstrip("/"), decrypt_token(row["token_enc"] or ""),
+            json.loads(row["extra_json"] or "{}"))
+
+
+async def _dl_qbittorrent(c, base, token, extra) -> list:
+    r = await c.post(f"{base}/api/v2/auth/login",
+                     data={"username": extra.get("username", "admin"), "password": token})
+    cookies = {"SID": r.cookies.get("SID")} if r.cookies.get("SID") else {}
+    p = (await c.get(f"{base}/api/v2/app/preferences", cookies=cookies)).json()
+    root = p.get("save_path", "")
+    out = [root]
+    if p.get("temp_path_enabled"):
+        out.append(p.get("temp_path", ""))
+    try:
+        cats = (await c.get(f"{base}/api/v2/torrents/categories", cookies=cookies)).json()
+        out += [_dl_join(root, v.get("savePath", "")) for v in cats.values()]
+    except Exception:
+        pass
+    try:   # folders existing torrents already use (covers extra mounts like /newmusic)
+        tors = (await c.get(f"{base}/api/v2/torrents/info", cookies=cookies)).json()
+        out += list({t.get("save_path", "") for t in tors})[:200]
+    except Exception:
+        pass
+    return out
+
+
+async def _dl_deluge(c, base, token, extra) -> list:
+    rpc = f"{base}/json"
+    await c.post(rpc, json={"method": "auth.login", "params": [token], "id": 1})
+    r = (await c.post(rpc, json={"method": "core.get_config_values",
+                                 "params": [["download_location", "move_completed_path"]], "id": 2})).json()
+    res = r.get("result") or {}
+    if not res:
+        raise ValueError((r.get("error") or {}).get("message") or "Deluge did not report its folders")
+    return [res.get("download_location", ""), res.get("move_completed_path", "")]
+
+
+async def _dl_transmission(c, base, token, extra) -> list:
+    rpc = f"{base}/transmission/rpc"
+    user = extra.get("username", "")
+    auth = (user, token) if user else None
+    sid = (await c.get(rpc, auth=auth)).headers.get("X-Transmission-Session-Id", "")
+    r = (await c.post(rpc, auth=auth, headers={"X-Transmission-Session-Id": sid},
+                      json={"method": "session-get"})).json()
+    a = r.get("arguments") or {}
+    return [a.get("download-dir", ""), a.get("incomplete-dir", "") if a.get("incomplete-dir-enabled") else ""]
+
+
+async def _dl_sabnzbd(c, base, token, extra) -> tuple:
+    r = (await c.get(f"{base}/api", params={"mode": "get_config", "apikey": token, "output": "json"})).json()
+    cfg = r.get("config") or {}
+    misc = cfg.get("misc") or {}
+    root = misc.get("complete_dir", "")
+    cats = {x.get("name"): _dl_join(root, x.get("dir", "")) for x in (cfg.get("categories") or [])}
+    return [root, misc.get("download_dir", "")] + [v for v in cats.values() if v], cats.get("charthound-music")
+
+
+_DL_NAMES = {"qbittorrent": "qBittorrent", "deluge": "Deluge", "transmission": "Transmission", "sabnzbd": "SABnzbd"}
+
+
+@router.get("/download-path-check")
+async def download_path_check(user: dict = Depends(require_auth)):
+    async with aiosqlite.connect(settings.database_url) as db:
+        db.row_factory = aiosqlite.Row
+        row = await (await db.execute(
+            "SELECT value FROM app_settings WHERE key='sniffer_download_path'")).fetchone()
+        path = (row["value"] if row else "") or ""
+        torrent = None
+        for svc in ("qbittorrent", "deluge", "transmission"):   # same order The Sniffer grabs with
+            conn = await _dl_conn(db, svc)
+            if conn:
+                torrent = (svc, conn)
+                break
+        sab = await _dl_conn(db, "sabnzbd")
+
+    clients = []
+    async with httpx.AsyncClient(timeout=httpx.Timeout(10.0), verify=False) as c:
+        if torrent:
+            svc, (base, token, extra) = torrent
+            item = {"service": svc, "name": _DL_NAMES[svc], "folders": [], "error": None, "ok": None}
+            try:
+                fn = {"qbittorrent": _dl_qbittorrent, "deluge": _dl_deluge, "transmission": _dl_transmission}[svc]
+                item["folders"] = sorted({f.rstrip("/") for f in await fn(c, base, token, extra) if f})
+                if path:
+                    item["ok"] = any(_dl_inside(path, f) for f in item["folders"])
+            except Exception as e:
+                item["error"] = f"Couldn't ask {_DL_NAMES[svc]} for its folders ({type(e).__name__})."
+            clients.append(item)
+        if sab:
+            base, token, extra = sab
+            item = {"service": "sabnzbd", "name": "SABnzbd", "folders": [], "error": None, "ok": None,
+                    "category_dir": None}
+            try:
+                folders, cat_dir = await _dl_sabnzbd(c, base, token, extra)
+                item["folders"] = sorted({f.rstrip("/") for f in folders if f})
+                item["category_dir"] = cat_dir.rstrip("/") if cat_dir else None
+                # SABnzbd ignores the path; its 'charthound-music' category decides where grabs go
+                if path:
+                    item["ok"] = bool(cat_dir) and cat_dir.rstrip("/") == path.rstrip("/")
+            except Exception as e:
+                item["error"] = f"Couldn't ask SABnzbd for its folders ({type(e).__name__})."
+            clients.append(item)
+    return {"download_path": path, "clients": clients}
+
+
 @router.get("/secret-key-status")
 async def secret_key_status(user: dict = Depends(require_auth)):
     """

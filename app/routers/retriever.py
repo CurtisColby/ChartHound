@@ -558,6 +558,26 @@ async def _ge_mb_phase(artists: dict):
         await db.commit()
 
 
+# Second chance for songs no source knew: a better artist name, taken from the file name
+# ("05. Sylvester - You Make Me Feel") or the first of several tagged artists ("Mabel; R3hab").
+_GE_FILE_AT = re.compile(r"^\s*(?:\d{1,3}\s*[-._)]*\s*)?(.+?)\s+-\s+(.+?)\s*$")
+_GE_SPLIT = re.compile(r"\s*(?:;|,|&|/|\s\+\s|\bfeat\.?(?=\s)|\bft\.?(?=\s)|\bfeaturing\b|\bwith\b|\bx\b|\bvs\.?(?=\s))\s*", re.I)
+
+
+def _ge_alt_artist(artist: str, title: str, fp: str) -> Optional[str]:
+    from app.routers.groomer import _artist_key, _title_key
+    ak, tk = _artist_key(artist or ""), _title_key(title or "")
+    m = _GE_FILE_AT.match(os.path.splitext(os.path.basename(fp or ""))[0])
+    if m and tk:
+        a, ft = re.sub(r"^\d{1,3}\s*[-._)]+\s*", "", m.group(1)).strip(), _title_key(m.group(2))
+        if a and not re.fullmatch(r"[\d\s._-]+", a) and ft and (ft == tk or tk in ft or ft in tk) and _artist_key(a) and _artist_key(a) != ak:
+            return a
+    parts = [p.strip() for p in _GE_SPLIT.split(artist or "") if p and p.strip()]
+    if len(parts) > 1 and _artist_key(parts[0]) and _artist_key(parts[0]) != ak:
+        return parts[0]
+    return None
+
+
 async def _run_genre_engine():
     global _ge_job
     from app.routers.groomer import _artist_key, _title_key, _FEAT_RE, _migrate_chart_data
@@ -657,7 +677,7 @@ async def _run_genre_engine():
                 if tid not in mine:
                     mine[tid] = [g for g in (g1, g2, g3) if g]
             rules = sorted(await _ge_get_rules(), key=lambda r: -len(r["prefix"]))
-            out, n_check, n_conflict, n_skip = [], 0, 0, 0
+            out, n_check, n_conflict, n_skip, retry = [], 0, 0, 0, []
             for tid, artist, title, fp, alb in tracks:
                 ak, tk = _artist_key(artist), _title_key(title)
                 d = disc.get(track_album.get(tid)) or disc.get(f"artist:{ak}")
@@ -689,11 +709,68 @@ async def _run_genre_engine():
                     v = {"family": fam, "styles": sty, "confidence": "high",
                          "sources": (v["sources"] if v else []) + [why]}
                 if not v:
+                    retry.append((tid, artist, title, fp))
                     continue
                 n_check += v["confidence"] in ("conflict", "thin")
                 n_conflict += v["confidence"] == "conflict"
                 out.append((tid, v["family"], json.dumps(v["styles"]), v["confidence"],
                             ",".join(v["sources"])))
+            # ── Retry songs no source knew, with a better artist name ──
+            alt_for = {}
+            for tid, artist, title, fp in retry:
+                alt = _ge_alt_artist(artist, title, fp)
+                if alt:
+                    alt_for[tid] = alt
+            n_alt = 0
+            if alt_for:
+                alt_names = {_artist_key(a): _FEAT_RE.sub("", a) for a in alt_for.values()}
+                if not _ge_revote_only["flag"] and not _ge_stop["flag"]:
+                    mb2 = {k: n for k, n in alt_names.items() if k not in mb and not fresh(mcache.get(k))}
+                    dc2 = {f"artist:{k}": n for k, n in alt_names.items()
+                           if f"artist:{k}" not in disc and not fresh(dcache.get(f"artist:{k}"))}
+                    if mb2 or dc2:
+                        _ge_job.update({"phase": "lookups", "albums_done": 0, "artists_done": 0,
+                                        "message": f"Second try for {len(alt_for):,} songs using a better artist name…"})
+                        jobs2 = [_guard("MusicBrainz", _ge_mb_phase(mb2))] if mb2 else []
+                        if token and dc2:
+                            jobs2.append(_guard("Discogs", _ge_discogs_phase({}, dc2, token)))
+                        await asyncio.gather(*jobs2)
+                        _ge_job.update({"phase": "voting", "message": "Voting on genres…"})
+                keys = list(alt_names)
+                for i in range(0, len(keys), 500):
+                    part = keys[i:i + 500]
+                    qm = ",".join("?" * len(part))
+                    for k, t in await (await db.execute(
+                            f"SELECT artist_key, tags FROM ge_mb_artists WHERE status='ok' AND artist_key IN ({qm})",
+                            part)).fetchall():
+                        mb[k] = json.loads(t or "[]")
+                    akeys = [f"artist:{k}" for k in part]
+                    for k, g, st in await (await db.execute(
+                            f"SELECT lookup_key, genres, styles FROM ge_discogs WHERE status='ok' AND lookup_key IN ({qm})",
+                            akeys)).fetchall():
+                        disc[k] = (json.loads(g or "[]"), json.loads(st or "[]"))
+                for tid, artist, title, fp in retry:
+                    alt = alt_for.get(tid)
+                    if not alt:
+                        continue
+                    k2, tk = _artist_key(alt), _title_key(title)
+                    d = disc.get(f"artist:{k2}")
+                    v = _ge_vote([
+                        ("discogs", _ge_tag_keys(d[1] if d else [])),
+                        ("discogs_g", _ge_tag_keys(d[0] if d else [])),
+                        ("mb", _ge_tag_keys(mb.get(k2))),
+                        ("lfm_track", _ge_tag_keys(lt.get((k2, tk)))),
+                        ("lfm_artist", _ge_tag_keys(la.get(k2))),
+                    ])
+                    if not v:
+                        continue
+                    n_alt += 1
+                    n_check += v["confidence"] in ("conflict", "thin")
+                    n_conflict += v["confidence"] == "conflict"
+                    out.append((tid, v["family"], json.dumps(v["styles"]), v["confidence"],
+                                ",".join(v["sources"] + ["alt"])))
+            if alt_for:
+                log.info(f"Genre Engine: second try with a better artist name — {n_alt:,} of {len(retry):,} songs decided")
             # Manual edits are never overwritten by a re-run
             await db.execute("DELETE FROM track_genres WHERE confidence != 'manual'")
             await db.executemany(
@@ -873,14 +950,43 @@ _og_job = {"status": "idle", "done": 0, "total": 0, "written": 0, "failed": 0, "
 _og_stop = {"flag": False}
 
 
+async def _ge_nogenre_rows(db, folder: Optional[str], search: Optional[str]) -> list:
+    """Songs the engine couldn't decide (no source knew them). Skip-rule folders excluded."""
+    q = ("SELECT t.track_id, t.file_path, COALESCE(t.tag_artist, a.name, ''), t.title, "
+         "t.genre_1, t.genre_2, t.genre_3 FROM tracks t "
+         "LEFT JOIN track_genres g ON g.track_id = t.track_id "
+         "LEFT JOIN artists a ON t.artist_id = a.artist_id "
+         "WHERE g.track_id IS NULL AND t.file_path IS NOT NULL "
+         "AND COALESCE(t.manually_verified, 0) = 0 AND COALESCE(t.missing, 0) = 0")
+    params = []
+    if folder:
+        q += " AND t.file_path LIKE ?"
+        params.append(_ge_norm_prefix(folder) + "/%")
+    rows = await (await db.execute(q, params)).fetchall()
+    skips = [r["prefix"] for r in await _ge_get_rules() if r["family"] == "skip"]
+    needle = (search or "").strip().lower()
+    out = []
+    for tid, fp, artist, title, g1, g2, g3 in rows:
+        if any(fp == p or fp.startswith(p + "/") for p in skips):
+            continue
+        if needle and needle not in (artist or "").lower() and needle not in (title or "").lower():
+            continue
+        out.append((tid, fp, artist, title, [g for g in (g1, g2, g3) if g], [], "none", None, [], ""))
+    from app.routers.groomer import _artist_key
+    out.sort(key=lambda r: (_artist_key(r[2] or ""), (r[2] or "").lower(), (r[3] or "").lower()))
+    return out
+
+
 async def _online_genre_rows(scope: str, folder: Optional[str], search: Optional[str] = None,
                              family: Optional[str] = None, track_ids: Optional[List[int]] = None,
                              hide_same: bool = False) -> list:
     """[(track_id, file_path, artist, title, current, proposed, confidence, family, styles)]."""
     await _ge_migrate()
     async with aiosqlite.connect(settings.database_url) as db:
+        if scope == "nogenre" and not track_ids:
+            return await _ge_nogenre_rows(db, folder, search)
         q = ("SELECT t.track_id, t.file_path, COALESCE(t.tag_artist, a.name, ''), t.title, "
-             "t.genre_1, t.genre_2, t.genre_3, g.family, g.styles, g.confidence "
+             "t.genre_1, t.genre_2, t.genre_3, g.family, g.styles, g.confidence, g.sources "
              "FROM track_genres g JOIN tracks t ON t.track_id = g.track_id "
              "LEFT JOIN artists a ON t.artist_id = a.artist_id "
              "WHERE COALESCE(t.manually_verified, 0) = 0 AND COALESCE(t.missing, 0) = 0")
@@ -897,14 +1003,14 @@ async def _online_genre_rows(scope: str, folder: Optional[str], search: Optional
         rows = await (await db.execute(q, params)).fetchall()
     needle = (search or "").strip().lower()
     out = []
-    for tid, fp, artist, title, g1, g2, g3, fam, styles, conf in rows:
+    for tid, fp, artist, title, g1, g2, g3, fam, styles, conf, src in rows:
         st = json.loads(styles or "[]")
         proposed = _ge_display(fam, st)
         current = [g for g in (g1, g2, g3) if g]
         same = [c.lower() for c in current] == [p.lower() for p in proposed[:3]]
         if needle and needle not in (artist or "").lower() and needle not in (title or "").lower():
             continue
-        if hide_same and not track_ids and current and \
+        if hide_same and not track_ids and current and conf != "conflict" and \
                 {c.lower() for c in current} == {p.lower() for p in proposed[:3]}:
             continue
         if not track_ids:
@@ -920,8 +1026,9 @@ async def _online_genre_rows(scope: str, folder: Optional[str], search: Optional
                 continue
             if scope == "manual" and conf != "manual":
                 continue
-        out.append((tid, fp, artist, title, current, proposed, conf, fam, st))
-    out.sort(key=lambda r: ((r[2] or "").lower(), (r[3] or "").lower()))
+        out.append((tid, fp, artist, title, current, proposed, conf, fam, st, src or ""))
+    from app.routers.groomer import _artist_key
+    out.sort(key=lambda r: (_artist_key(r[2] or ""), (r[2] or "").lower(), (r[3] or "").lower()))
     return out
 
 
@@ -983,9 +1090,12 @@ async def _run_online_genres(req: OnlineGenreRequest):
         _og_job["total"] = len(rows)
         loop = asyncio.get_event_loop()
         async with aiosqlite.connect(settings.database_url, timeout=30) as db:
-            for i, (tid, fp, artist, title, current, proposed, _conf, _f, _s) in enumerate(rows):
+            for i, (tid, fp, artist, title, current, proposed, _conf, _f, _s, _src) in enumerate(rows):
                 if _og_stop["flag"]:
                     break
+                if not proposed:          # no decision yet (No genre found) — nothing to write
+                    _og_job["done"] = i + 1
+                    continue
                 if not fp or not os.path.exists(_real_write_path(fp)):
                     # File moved/deleted or on a folder ChartHound can't see — mark it, don't count as a failure
                     await db.execute("UPDATE tracks SET missing=1 WHERE track_id=?", (tid,))
@@ -1060,6 +1170,7 @@ async def genre_engine_review(req: OnlineGenreRequest, page: int = 1, size: int 
     rows = await _online_genre_rows(req.scope, req.folder, req.search, req.family, hide_same=req.hide_same)
     size = max(20, min(size, 500))
     host = await _host_path_fn()
+    from app.routers.groomer import _artist_key
     page = max(1, page)
     chunk = rows[(page - 1) * size: page * size]
     return {
@@ -1068,7 +1179,9 @@ async def genre_engine_review(req: OnlineGenreRequest, page: int = 1, size: int 
         "conflict": sum(1 for r in rows if r[6] == "conflict"),
         "rows": [{"track_id": r[0], "artist": r[2], "title": r[3], "current": r[4],
                   "proposed": r[5], "confidence": r[6], "family": r[7], "styles": r[8],
-                  "ext": os.path.splitext(r[1] or "")[1].lower(), "path": host(r[1] or "")} for r in chunk],
+                  "ext": os.path.splitext(r[1] or "")[1].lower(), "path": host(r[1] or ""),
+                  "checked": "approved" in (r[9] or "").split(","),
+                  "akey": _artist_key(r[2] or "")} for r in chunk],
     }
 
 
@@ -1108,6 +1221,43 @@ async def genre_engine_override(req: GenreOverride, user: dict = Depends(require
             [(tid, req.family, json.dumps(styles)) for tid in ids])
         await db.commit()
     return {"ok": True, "updated": len(ids), "genre": _ge_display(req.family, styles)}
+
+
+class GenreApprove(BaseModel):
+    track_ids: Optional[List[int]] = None
+    artist:    Optional[str] = None      # every song by this artist
+    filters:   Optional[OnlineGenreRequest] = None   # every flagged song matching the Review filters
+
+
+@router.post("/genre-engine/approve")
+async def genre_engine_approve(req: GenreApprove, user: dict = Depends(require_auth)):
+    """✓ Looks right: keep the engine's genre as your own decision (never overwritten, no longer a conflict)."""
+    from app.routers.groomer import _artist_key
+    await _ge_migrate()
+    async with aiosqlite.connect(settings.database_url, timeout=60) as db:
+        ids = list(req.track_ids or [])
+        if req.artist:
+            want = _artist_key(req.artist)
+            rows = await (await db.execute(
+                "SELECT t.track_id, COALESCE(t.tag_artist, a.name, '') FROM tracks t "
+                "LEFT JOIN artists a ON t.artist_id = a.artist_id")).fetchall()
+            ids += [tid for tid, ar in rows if _artist_key(ar) == want]
+        if req.filters:
+            f = req.filters
+            rows = await _online_genre_rows(f.scope, f.folder, f.search, f.family, None, f.hide_same)
+            ids += [r[0] for r in rows if r[6] in ("conflict", "thin", "check")]
+        ids = sorted(set(ids))
+        if not ids:
+            raise HTTPException(400, "No flagged songs match.")
+        n = 0
+        for i in range(0, len(ids), 500):
+            part = ids[i:i + 500]
+            cur = await db.execute(
+                f"UPDATE track_genres SET confidence='manual', sources=TRIM(COALESCE(sources, '') || ',approved', ','), updated_at=datetime('now') "
+                f"WHERE confidence != 'manual' AND track_id IN ({','.join('?' * len(part))})", part)
+            n += cur.rowcount
+        await db.commit()
+    return {"ok": True, "checked": n}
 
 
 @router.post("/genre-engine/revote")
@@ -1232,6 +1382,10 @@ async def genre_engine_why(track_id: int, user: dict = Depends(require_auth)):
         if not row:
             raise HTTPException(404, "Song not found.")
         artist, title, fp, alb = row
+        g = await (await db.execute("SELECT sources, confidence FROM track_genres WHERE track_id=?",
+                                    (track_id,))).fetchone()
+        used = (g[0] or "").split(",") if g else []
+        alt = _ge_alt_artist(artist, title, fp) if "alt" in used else None
         folder = await (await db.execute(
             "SELECT COALESCE(t.tag_artist, a.name, ''), t.file_path, t.album_title "
             "FROM tracks t LEFT JOIN artists a ON t.artist_id = a.artist_id WHERE substr(t.file_path, 1, ?) = ?",
@@ -1243,9 +1397,9 @@ async def genre_engine_why(track_id: int, user: dict = Depends(require_auth)):
             k = _artist_key(a)
             if k:
                 counts[k] = counts.get(k, 0) + 1
-        ak, tk = _artist_key(artist), _title_key(title)
+        ak, tk = _artist_key(alt or artist), _title_key(title)
         keys = []
-        if counts:
+        if counts and not alt:
             top_ak, top_n = max(counts.items(), key=lambda kv: kv[1])
             album = _ge_album_name(folder[0][2], folder[0][1])
             is_comp = (len(counts) >= 4 and top_n / len(folder) < 0.5) or "various" in album.lower()
@@ -1267,14 +1421,12 @@ async def genre_engine_why(track_id: int, user: dict = Depends(require_auth)):
             la = await one("SELECT tags FROM lastfm_artists WHERE artist_key=? AND status='ok'", (ak,))
         except Exception:
             lt = la = None
-        g = await one("SELECT sources, confidence FROM track_genres WHERE track_id=?", (track_id,))
 
     def tags(r, i=0):
         try:
             return [str(x) for x in json.loads(r[i] or "[]")][:5] if r else []
         except Exception:
             return []
-    used = (g[0] or "").split(",") if g else []
     return {
         "sources": [
             {"name": "Discogs album styles", "weight": 3, "tags": tags(disc, 1)},
@@ -1284,5 +1436,7 @@ async def genre_engine_why(track_id: int, user: dict = Depends(require_auth)):
             {"name": "Last.fm artist",       "weight": 1, "tags": tags(la)},
         ],
         "decided_by": "folder rule" if "rule" in used else ("your own tags" if "your tags" in used else None),
+        "alt_artist": alt,
+        "checked": "approved" in used,
         "confidence": g[1] if g else None,
     }

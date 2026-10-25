@@ -73,7 +73,7 @@ async function geLoad(page) {
     const r = await fetch(`${API}/api/retriever/genre-engine/review?page=${page}&size=100`, {method:'POST', headers:authHdrs(), body:JSON.stringify(_gerFilters())});
     const d = await r.json();
     if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
-    Object.assign(_ger, {page: d.page, pages: Math.max(1, Math.ceil(d.total / d.size)), total: d.total, rows: d.rows, cur: -1});
+    Object.assign(_ger, {page: d.page, pages: Math.max(1, Math.ceil(d.total / d.size)), total: d.total, rows: d.rows, cur: -1, flagged: d.check || 0});
     _ger.sel.clear();
     const thin = (d.check || 0) - (d.conflict || 0);
     document.getElementById('ger-count').innerHTML = `${d.total.toLocaleString()} songs`
@@ -88,21 +88,25 @@ function geRender() {
   if (!_ger.rows.length) { body.innerHTML = '<tr><td colspan="5" style="padding:2rem;text-align:center;color:var(--muted2)">Nothing matches. Run the Genre Engine first, or change the filters.</td></tr>'; geSyncSel(); return; }
   let html = '', last = null;
   _ger.rows.forEach((x, i) => {
-    if (x.artist !== last) {
-      last = x.artist;
-      const n = _ger.rows.filter(r => r.artist === x.artist).length;
-      html += `<tr class="ger-artist"><td><input type="checkbox" onchange="geSelectArtist(${JSON.stringify(x.artist).replace(/"/g,'&quot;')}, this.checked)"></td>
+    const ak = x.akey || x.artist;
+    if (ak !== last) {
+      last = ak;
+      const n = _ger.rows.filter(r => (r.akey || r.artist) === ak).length;
+      html += `<tr class="ger-artist"><td><input type="checkbox" onchange="geSelectArtist(${JSON.stringify(ak).replace(/"/g,'&quot;')}, this.checked)"></td>
         <td colspan="4">${esc(x.artist || '(unknown artist)')} <span style="color:var(--muted2);font-weight:normal">· ${n} on this page</span>
-        <a href="#" onclick="geEditArtist(${i});return false" style="margin-left:.75rem;color:var(--amber);font-weight:normal;font-size:.62rem">✎ set genre for ALL songs by this artist</a>${geArtistLinks(x.artist)}</td></tr>
+        <a href="#" onclick="geEditArtist(${i});return false" style="margin-left:.75rem;color:var(--amber);font-weight:normal;font-size:.62rem">✎ set genre for ALL songs by this artist</a>${_ger.rows.some(r => (r.akey || r.artist) === ak && _geCanOk(r)) ? `<a href="#" class="ger-okall" onclick="geApprove(false, ${JSON.stringify(x.artist).replace(/"/g,'&quot;')});return false" data-tip="Keep the current genre for every song by this artist (all pages) as your own decision.">✓ all by this artist look right</a>` : ''}${geArtistLinks(x.artist)}</td></tr>
         <tr class="ger-edit" id="ger-aedit-${i}" style="display:none"><td></td><td colspan="4" id="ger-aedit-cell-${i}"></td></tr>`;
     }
     const why = `<a href="#" class="ger-why" onclick="geWhy(${i});return false" data-tip="Show what each source (Discogs, MusicBrainz, Last.fm) said about this song.">why?</a>`;
-    const conf = x.confidence === 'conflict' ? `<span style="color:var(--red)" title="Sources disagree — worth a look">⚠ CONFLICT</span>${why}`
-               : (x.confidence === 'thin' || x.confidence === 'check') ? `<span style="color:var(--amber)" title="Only one source knew this song — usually fine">? LITTLE DATA</span>${why}`
-               : x.confidence === 'manual' ? '<span style="color:var(--pink)">EDITED</span>' : `<span style="color:var(--muted2)">ok</span>${why}`;
+    const ok = _geCanOk(x) ? `<button class="ger-ok" onclick="geApprove([${x.track_id}])" data-tip="Looks right — keep this genre as your decision. It stops counting as a conflict and the engine never changes it. (Key: Y)">✓</button>` : '';
+    const conf = x.confidence === 'conflict' ? `${ok}<span style="color:var(--red)" title="Sources disagree — worth a look">⚠ CONFLICT</span>${why}`
+               : (x.confidence === 'thin' || x.confidence === 'check') ? `${ok}<span style="color:var(--amber)" title="Only one source knew this song — usually fine">? LITTLE DATA</span>${why}`
+               : x.confidence === 'none' ? '<span style="color:var(--muted2)" title="No source knew this song — set its genre by hand">no data</span>'
+               : x.confidence === 'manual' ? (x.checked ? `<span style="color:var(--green)">✓ CHECKED</span>${why}` : '<span style="color:var(--pink)">EDITED</span>')
+               : `<span style="color:var(--muted2)">ok</span>${why}`;
     html += `<tr id="ger-row-${i}"><td><input type="checkbox" class="ger-cb" data-i="${i}" ${_ger.sel.has(x.track_id) ? 'checked' : ''} onchange="geToggle(${i}, this.checked)"></td>
       <td>${gePlayBtn(x)}${esc(x.title)}${x.path ? `<button class="ger-copy" onclick="geCopyPath(${i}, event.shiftKey)" data-tip="Copies the folder this song lives in on your server (Shift-click: the file itself). In your file manager press Ctrl+L, paste, Enter. Delete it there if you want — the next Top Dogs ① SCAN drops missing songs.">📋</button>` : ''}</td>
-      <td><span class="ger-new" onclick="geEditRow(${i})">${esc(x.proposed.join('; '))}</span></td>
+      <td><span class="ger-new" onclick="geEditRow(${i})">${x.proposed.length ? esc(x.proposed.join('; ')) : '<i style="color:var(--muted2)">— set genre</i>'}</span></td>
       <td style="color:var(--muted2)">${esc(x.current.join('; ') || '—')}</td><td>${conf}</td></tr>
       <tr class="ger-edit" id="ger-edit-${i}" style="display:none"><td></td><td colspan="4" id="ger-edit-cell-${i}"></td></tr>
       <tr class="ger-whyrow" id="ger-why-${i}" style="display:none"><td></td><td colspan="4" id="ger-why-cell-${i}"></td></tr>`;
@@ -113,8 +117,12 @@ function geRender() {
 }
 function geToggle(i, on) { const id = _ger.rows[i].track_id; on ? _ger.sel.add(id) : _ger.sel.delete(id); geSyncSel(); }
 function geSelectAll(on) { _ger.rows.forEach(r => on ? _ger.sel.add(r.track_id) : _ger.sel.delete(r.track_id)); geRender(); }
-function geSelectArtist(artist, on) { _ger.rows.filter(r => r.artist === artist).forEach(r => on ? _ger.sel.add(r.track_id) : _ger.sel.delete(r.track_id)); geRender(); }
+function geSelectArtist(ak, on) { _ger.rows.filter(r => (r.akey || r.artist) === ak).forEach(r => on ? _ger.sel.add(r.track_id) : _ger.sel.delete(r.track_id)); geRender(); }
 function geSyncSel() {
+  const flagged = _ger.rows.filter(_geCanOk).length;
+  const pg = document.getElementById('ger-ok-page'); if (pg) { pg.textContent = `✓ THIS PAGE (${flagged})`; pg.disabled = !flagged; pg.style.opacity = flagged ? '1' : '.4'; }
+  const al = document.getElementById('ger-ok-all'); if (al) { const n = _ger.flagged || 0; al.textContent = `✓ ALL ${n.toLocaleString()} MATCHING`; al.disabled = !n; al.style.opacity = n ? '1' : '.4'; }
+  const o = document.getElementById('ger-ok-sel'); if (o) { o.textContent = `✓ LOOKS RIGHT (${_ger.sel.size})`; o.disabled = !_ger.sel.size; o.style.opacity = _ger.sel.size ? '1' : '.4'; }
   const b = document.getElementById('ger-write-sel'); if (b) { b.textContent = `✎ WRITE SELECTED (${_ger.sel.size})`; b.disabled = !_ger.sel.size; b.style.opacity = _ger.sel.size ? '1' : '.4'; }
   const a = document.getElementById('ger-write-all'); if (a) a.textContent = `✎ WRITE ALL ${_ger.total.toLocaleString()} MATCHING`;
 }
@@ -444,7 +452,8 @@ async function geWhy(i) {
     const d = await r.json();
     if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
     const lines = d.sources.map(s => `<div><span class="ger-src">${esc(s.name)} <i>×${s.weight}</i></span>${s.tags.length ? esc(s.tags.join(', ')) : '<span style="color:var(--muted2)">— nothing found</span>'}</div>`).join('');
-    cell.innerHTML = `<div class="ger-whybox">${lines}${d.decided_by ? `<div style="color:var(--amber);margin-top:.3rem">Family decided by ${esc(d.decided_by)}; the sources above only picked the style.</div>` : ''}<div style="color:var(--muted2);margin-top:.3rem">×N = vote weight. Tags that aren't real genres ("seen live", "favorites") are ignored.</div></div>`;
+    const altNote = d.alt_artist ? `<div style="color:var(--teal);margin-bottom:.3rem">Looked up as <b>${esc(d.alt_artist)}</b> — the tagged artist found nothing, so the file name or first listed artist was used.</div>` : '';
+    cell.innerHTML = `<div class="ger-whybox">${altNote}${lines}${d.decided_by ? `<div style="color:var(--amber);margin-top:.3rem">Family decided by ${esc(d.decided_by)}; the sources above only picked the style.</div>` : ''}<div style="color:var(--muted2);margin-top:.3rem">×N = vote weight. Tags that aren't real genres ("seen live", "favorites") are ignored.</div></div>`;
   } catch (e) { cell.innerHTML = `<span style="color:var(--red)">${esc(e.message)}</span>`; }
 }
 
@@ -493,5 +502,30 @@ document.addEventListener('keydown', e => {
   else if (k === 'x') { const cb = document.querySelector(`.ger-cb[data-i="${cur}"]`); if (cb) { cb.checked = !cb.checked; geToggle(cur, cb.checked); } }
   else if (k === 'e') { geEditRow(cur); geCursor(cur, false); e.preventDefault(); }
   else if (k === 'w') geWhy(cur);
+  else if (k === 'y') { if (_geCanOk(x)) { geApprove([x.track_id], null, cur); } }
   else if (k === 'c') geCopyPath(cur, e.shiftKey);
 });
+
+
+// ── ✓ Looks right: keep the engine's genre as your own decision ──
+function _geCanOk(x) { return ['conflict', 'thin', 'check'].includes(x.confidence); }
+async function geApprove(idsOrSel, artist, keepCursor) {
+  let body;
+  if (artist) body = {artist};
+  else if (idsOrSel === 'page') body = {track_ids: _ger.rows.filter(_geCanOk).map(r => r.track_id)};
+  else if (idsOrSel === 'all') body = {filters: _gerFilters()};
+  else body = {track_ids: idsOrSel === true ? [..._ger.sel] : idsOrSel};
+  if (body.track_ids && !body.track_ids.length) return;
+  if (artist && !confirm(`Keep the current genre for every song by ${artist} (all pages)?`)) return;
+  if (idsOrSel === 'all' && !confirm(`Keep the current genre for ALL ${(_ger.flagged || 0).toLocaleString()} flagged songs matching these filters (every page)?\n\nThey become your decisions: they stop counting as conflicts and the engine never changes them. Back up first (Veterinarian) if you want an undo.`)) return;
+  try {
+    const r = await fetch(`${API}/api/retriever/genre-engine/approve`, {method: 'POST', headers: authHdrs(), body: JSON.stringify(body)});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    toast(`✓ ${d.checked.toLocaleString()} song${d.checked === 1 ? '' : 's'} marked as checked`, 'ok');
+    if (typeof _thAt !== 'undefined') _thAt = 0;
+    const cur = keepCursor;
+    await geLoad(_ger.page);
+    if (cur !== undefined && cur !== null) geCursor(Math.min(cur, _ger.rows.length - 1));
+  } catch (e) { toast('Could not save: ' + e.message, 'error'); }
+}

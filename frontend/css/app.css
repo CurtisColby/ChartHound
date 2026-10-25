@@ -531,3 +531,17 @@ details.adv[open]>summary{margin-bottom:.7rem}
 .ger-keys{align-self:center;font-family:var(--mono);font-size:.58rem;letter-spacing:1px;color:var(--muted);border:1px solid var(--border2);border-radius:4px;padding:.2rem .45rem;cursor:help}
 .ger-keys:hover,.ger-keys:focus{color:var(--teal);border-color:var(--teal);outline:none}
 #grm-tip{white-space:pre-line}
+.conn-usedby{font-family:var(--mono);font-size:.55rem;color:var(--muted2);line-height:1.5;margin:-.15rem 0 .55rem}
+.dl-check{display:flex;flex-direction:column;gap:.3rem;margin-top:.45rem}
+.dl-ok,.dl-warn{font-family:var(--mono);font-size:.58rem;line-height:1.6;border-radius:5px;padding:.4rem .55rem}
+.dl-ok{color:var(--green);background:rgba(74,222,128,.07);border:1px solid rgba(74,222,128,.25)}
+.dl-warn{color:var(--amber);background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.3)}
+.st-first{background:rgba(45,212,191,.06);border:1px solid rgba(45,212,191,.3);border-radius:8px;padding:1rem 1.25rem}
+.st-first-title{font-family:var(--display);font-size:1.15rem;letter-spacing:2px;color:var(--teal)}
+.st-first-sub{font-family:var(--body);font-size:.85rem;color:var(--muted);margin:.3rem 0}
+.st-first ul{margin:.4rem 0 .4rem 1.3rem;display:flex;flex-direction:column;gap:.3rem}
+.st-first li{font-family:var(--body);font-size:.88rem;color:var(--text)} .st-first b{color:var(--teal);font-weight:600}
+.conn-usedby b{color:var(--teal);font-weight:normal}
+.ger-ok{margin-right:.4rem;width:1.35rem;height:1.35rem;border-radius:50%;border:1px solid var(--green);background:none;color:var(--green);cursor:pointer;font-size:.62rem;line-height:1;padding:0;vertical-align:middle}
+.ger-ok:hover{background:var(--green);color:#000}
+.ger-okall{margin-left:.75rem;color:var(--green);font-weight:normal;font-size:.62rem}

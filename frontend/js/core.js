@@ -120,7 +120,7 @@ async function doLogin() {
     localStorage.setItem('ch_token', authToken); localStorage.setItem('ch_user', currentUser);
     const hr = await fetch(`${API}/api/health`, {headers: authHdrs()});
     const hd = hr.ok ? await hr.json() : {};
-    showApp(hd.secret_key_placeholder);
+    showApp(hd.secret_key_placeholder, authMode === 'register');
   } catch { errEl.textContent = 'Cannot reach server. Is Docker running?'; }
 }
 document.addEventListener('keydown', e => {
@@ -135,7 +135,7 @@ function doLogout() {
   document.getElementById('loginScreen').classList.remove('hidden');
   document.getElementById('loginPass').value = '';
 }
-async function showApp(isPlaceholderKey = false) {
+async function showApp(isPlaceholderKey = false, newAccount = false) {
   document.getElementById('loginScreen').classList.add('hidden');
   document.getElementById('appHeader').style.display = 'flex';
   document.getElementById('appShell').style.display = 'flex';
@@ -145,7 +145,8 @@ async function showApp(isPlaceholderKey = false) {
   await loadPathSettings();
   startHeartbeat();
   stLoad();
-  toast(`Welcome back, ${currentUser}.`, 'ok');
+  if (newAccount) { switchTab('start'); toast('Account created — follow Start Here, step 1.', 'ok'); }
+  else toast(`Welcome back, ${currentUser}.`, 'ok');
   checkForUpdate();
 }
 
@@ -174,9 +175,16 @@ function switchTab(name) {
   document.getElementById(`panel-${name}`).classList.add('active');
   document.getElementById('vinylIcon').classList.toggle('spinning', ['retriever','sniffer','bloodhound','tracker'].includes(name));
   if (name !== 'retriever' && typeof gePlayStop === 'function') gePlayStop();
+  if (name === 'kennel' && typeof checkDownloadPath === 'function') checkDownloadPath();
   if (name === 'start') stLoad();
   else tabHeader(name);
-  if (name === 'retriever') retInjectScrollNav();
+  if (name === 'retriever') {
+    retInjectScrollNav();
+    if (['conflict', 'nogenre'].includes(window._stWantView)) {
+      const sc = document.getElementById('ger-scope'); if (sc) sc.value = window._stWantView;
+      window._stWantView = null; geOpenReview();
+    }
+  }
   if (name === 'groomer') grmInit();
   if (name === 'sniffer') snfInit();
   if (name === 'bloodhound') bhInit();
@@ -524,8 +532,9 @@ const TAB_HELP = {
     what: 'Gives every song one genre family plus up to 3 styles and writes it into the music file.',
     next: '<b>▶ RUN ENGINE</b>, then <b>REVIEW &amp; WRITE</b>. Look over the ⚠ CONFLICT songs first.',
     live: s => { const g = s.genres; if (!g.decided) return '⚠️ Engine not run yet.';
-      return (g.pending ? `⚠️ ${stN(g.pending)} songs have no genre yet — run the engine.` : '✅ Every song has a genre.')
-        + (g.conflicts ? ` · ${stN(g.conflicts)} conflicts to review` : ''); } },
+      return (g.pending_new ? `⚠️ ${stN(g.pending_new)} new songs need genres — ▶ RUN ENGINE.` : '✅ Every song has been looked up.')
+        + (g.conflicts ? ` · <a href="#" onclick="stGo('retriever','conflict');return false">${stN(g.conflicts)} conflicts to check</a>` : '')
+        + (g.no_source ? ` · <a href="#" onclick="stGo('retriever','nogenre');return false">${stN(g.no_source)} songs no source knows</a> — set by hand or with a folder rule` : ''); } },
   groomer: {
     what: 'Scores every song 0–100 from its chart history and builds road-trip playlists from the biggest hits.',
     next: '<b>① SCAN</b> after new music arrives, then <b>② BUILD</b> and push to your media server.',
