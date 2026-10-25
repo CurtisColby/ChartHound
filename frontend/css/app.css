@@ -569,3 +569,19 @@ details.adv[open]>summary{margin-bottom:.7rem}
 .ger-ok{margin-right:.4rem;width:1.35rem;height:1.35rem;border-radius:50%;border:1px solid var(--green);background:none;color:var(--green);cursor:pointer;font-size:.62rem;line-height:1;padding:0;vertical-align:middle}
 .ger-ok:hover{background:var(--green);color:#000}
 .ger-okall{margin-left:.75rem;color:var(--green);font-weight:normal;font-size:.62rem}
+
+/* ── Top Dogs ✎ genre editor (M10b) ── */
+.grm-gcell{cursor:pointer;position:relative}
+.grm-gedit{margin-left:.25rem;font-size:.6rem;color:var(--muted2);opacity:0;transition:opacity .15s}
+.grm-gcell:hover .grm-gedit{opacity:1;color:var(--pink)}
+.grm-gpill{display:inline-block;font-family:var(--mono);font-size:.48rem;padding:.1rem .35rem;border-radius:6px;background:rgba(244,114,182,.12);border:1px solid rgba(244,114,182,.35);color:var(--pink);white-space:nowrap;margin:.1rem .15rem .1rem 0}
+.grm-gmodal{display:none;position:fixed;inset:0;z-index:900;background:rgba(0,0,0,.55);align-items:center;justify-content:center;padding:1rem}
+.grm-gpanel{background:var(--surface);border:1px solid var(--pink);border-radius:10px;padding:1rem 1.2rem;width:min(640px,100%);font-family:var(--mono);font-size:.72rem;color:var(--text)}
+.grm-gtitle{font-family:var(--display);letter-spacing:2px;color:var(--pink);font-size:1.05rem;margin-bottom:.5rem}
+.grm-gsong{margin-bottom:.7rem;line-height:1.5} .grm-gmeta{color:var(--muted2);font-size:.62rem;margin:.15rem 0 0 2.1rem}
+.grm-geditor select{width:auto!important;display:inline-block;margin:0 .3rem .4rem 0!important;max-width:13rem}
+.grm-gscope{margin:.4rem 0;color:var(--muted);display:flex;flex-wrap:wrap;gap:.8rem;align-items:center}
+.grm-gscope label,.grm-gwrite{cursor:pointer;color:var(--text)} .grm-gscope input,.grm-gwrite input{accent-color:var(--pink);margin-right:.25rem}
+.grm-gwrite{display:block;margin:.4rem 0 .8rem}
+.grm-gbtns{display:flex;justify-content:flex-end;gap:.5rem}
+.grm-gbtns .btn{width:auto!important}

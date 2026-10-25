@@ -1275,7 +1275,28 @@ async def genre_engine_override(req: GenreOverride, user: dict = Depends(require
             "updated_at=excluded.updated_at",
             [(tid, req.family, json.dumps(styles)) for tid in ids])
         await db.commit()
-    return {"ok": True, "updated": len(ids), "genre": _ge_display(req.family, styles)}
+    return {"ok": True, "updated": len(ids), "genre": _ge_display(req.family, styles), "track_ids": ids[:5000]}
+
+
+@router.get("/genre-engine/track/{track_id}")
+async def genre_engine_track(track_id: int, user: dict = Depends(require_auth)):
+    """One song's current genre decision — for the Top Dogs ✎ editor."""
+    await _ge_migrate()
+    async with aiosqlite.connect(settings.database_url) as db:
+        t = await (await db.execute(
+            "SELECT COALESCE(t.tag_artist, a.name, ''), COALESCE(t.title, ''), t.album_title, t.file_path, "
+            "t.genre_1, t.genre_2, t.genre_3 FROM tracks t LEFT JOIN artists a ON t.artist_id = a.artist_id "
+            "WHERE t.track_id=?", (track_id,))).fetchone()
+        g = await (await db.execute("SELECT family, styles, confidence FROM track_genres WHERE track_id=?",
+                                    (track_id,))).fetchone()
+    if not t:
+        raise HTTPException(404, "Song not found.")
+    return {"track_id": track_id, "artist": t[0], "title": t[1],
+            "album": _ge_album_display(_ge_album_name(t[2], t[3] or ""), t[0]) or "(no album)",
+            "current": [x for x in t[4:7] if x],
+            "ext": os.path.splitext(t[3] or "")[1].lower(),
+            "family": g[0] if g else None, "styles": json.loads(g[1] or "[]") if g else [],
+            "confidence": g[2] if g else "none"}
 
 
 class GenreApprove(BaseModel):
