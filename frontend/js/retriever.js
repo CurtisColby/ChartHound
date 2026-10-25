@@ -172,7 +172,7 @@ function geFillStyles(ed, initial) {
   const fits = Object.entries(_geTax.styles).filter(([, v]) => v.families.includes(fam));
   const keep = initial || [...ed.querySelectorAll('[data-st]')].map(s => s.value);
   ed.querySelectorAll('[data-st]').forEach((sel, j) => {
-    sel.innerHTML = '<option value="">— style —</option>' + fits.map(([k, v]) => `<option value="${k}">${esc(v.label)}${v.families.length > 1 ? ' ↔' : ''}</option>`).join('');
+    sel.innerHTML = '<option value="">— style —</option>' + fits.map(([k, v]) => `<option value="${k}">${esc(v.label)}${v.families.length > 1 && !v.any ? ' ↔' : ''}</option>`).join('');
     if (keep[j] && fits.some(([k]) => k === keep[j])) sel.value = keep[j];
   });
 }
@@ -256,6 +256,21 @@ async function geSaveRules() {
   toast(`${d.rules.length} folder rule${d.rules.length === 1 ? '' : 's'} saved — click RE-VOTE to apply`, 'success');
 }
 
+async function geLoadUnmatched() {
+  const el = document.getElementById('ge-unmatched');
+  el.innerHTML = '<span style="color:var(--muted2)">Counting…</span>';
+  try {
+    const r = await fetch(`${API}/api/retriever/genre-engine/unmatched-tags`, {headers: authHdrs()});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    if (!d.tags.length) { el.innerHTML = '<span style="color:var(--muted2)">Nothing unmatched with 15+ songs.</span>'; return; }
+    el.innerHTML = '<table style="width:100%;font-family:var(--mono);font-size:.55rem;border-collapse:collapse">'
+      + d.tags.map(t => {
+        const tip = `${t.artists.join(', ')} — ${Object.entries(t.sources).map(([k, v]) => `${k} ${v.toLocaleString()}`).join(' · ')}`;
+        return `<tr data-tip="${esc(tip).replace(/"/g, '&quot;')}"><td style="padding:.12rem 0;color:var(--text)">${esc(t.tag)}</td><td style="text-align:right;color:var(--teal)">${t.songs.toLocaleString()}</td></tr>`;
+      }).join('') + '</table>';
+  } catch (e) { el.innerHTML = `<span style="color:var(--red)">${esc(e.message)}</span>`; }
+}
 async function geRevote(btn) {
   btn.disabled = true; const t = btn.textContent; btn.textContent = 'RE-VOTING…';
   try {

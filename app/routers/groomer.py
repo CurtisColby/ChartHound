@@ -1641,6 +1641,7 @@ async def get_results(
     ohw:         bool = False,           # one-hit wonders only
     genre_mode:  str = "main",           # main = online genres (engine → Last.fm → file tags); any = file tags
     crossovers:  bool = True,            # bridge styles cross families (Pop Rock in Pop playlists)
+    holiday:     str = "hide",           # hide | include | only — Genre Engine Holiday style (M10c)
     limit:       int = 500,
     offset:      int = 0,
     _=Depends(require_auth),
@@ -1652,6 +1653,11 @@ async def get_results(
     """
     conditions = []
     params: list = []
+
+    if holiday == "only":
+        conditions.append("tg.styles LIKE '%\"holiday\"%'")
+    elif holiday != "include":
+        conditions.append("(tg.styles IS NULL OR tg.styles NOT LIKE '%\"holiday\"%')")
 
     # charts param removed — genre filtering now by file tags via genre param
 
@@ -1853,6 +1859,7 @@ class PlaylistBuildRequest(BaseModel):
     genre:        Optional[str] = None          # same keys as /results genre filter
     genre_mode:   str = "main"
     crossovers:   bool = True
+    holiday:      str = "hide"                  # hide | include | only
     decades:      List[int] = []                # [1980, 1990]
     min_score:    int = 0
     ohw_only:     bool = False
@@ -1871,7 +1878,7 @@ async def playlist_build(req: PlaylistBuildRequest, _=Depends(require_auth)):
         min_score=req.min_score or None,
         decades=",".join(str(d) for d in req.decades) or None,
         ohw=req.ohw_only, genre_mode=req.genre_mode, crossovers=req.crossovers,
-        limit=50000, offset=0, _=None,
+        holiday=req.holiday, limit=50000, offset=0, _=None,
     )
     # One version per song (strip "(Remastered)", "feat." etc.)
     best: dict = {}

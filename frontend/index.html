@@ -7,7 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐕</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/css/app.css?v=m10b1">
+<link rel="stylesheet" href="/static/css/app.css?v=m10c1">
 <script>try{document.documentElement.style.fontSize=(+localStorage.getItem('ch_textsize')||18)+'px'}catch(e){}</script>
 </head>
 <body>
@@ -595,6 +595,11 @@
                 <button class="btn btn-outline" onclick="geSaveRules()" style="flex:1;font-size:.55rem;font-family:var(--mono);color:var(--teal);border-color:var(--teal)">SAVE</button>
               </div>
             </details>
+            <details style="margin-top:.35rem;border:1px solid var(--border);border-radius:6px;padding:.45rem .55rem" ontoggle="if(this.open)geLoadUnmatched()">
+              <summary style="cursor:pointer;font-family:var(--mono);font-size:.58rem;color:var(--muted);letter-spacing:1px">🏷 UNMATCHED TAGS</summary>
+              <div style="font-family:var(--mono);font-size:.52rem;color:var(--muted2);line-height:1.6;margin:.4rem 0">Tags the sources use that no family or style catches yet, by number of your songs. Read-only — use it to pick new styles. Hover a tag for its top artists and sources.</div>
+              <div id="ge-unmatched" style="max-height:340px;overflow-y:auto"></div>
+            </details>
             <button class="btn btn-outline" onclick="geRevote(this)" title="Recalculate genres and CHECK flags from saved lookups — no internet lookups, takes seconds. Your manual edits are kept." style="width:100%;margin-top:.35rem;font-size:.58rem;font-family:var(--mono);color:var(--muted)">↻ RE-VOTE (no lookups)</button>
             <div id="og-status" style="font-family:var(--mono);font-size:.55rem;color:var(--muted2);line-height:1.6;margin-top:.4rem;word-break:break-word"></div>
           </div>
@@ -663,6 +668,7 @@
                 <option value="thin">? Little data (usually fine)</option>
                 <option value="empty">Files with no genre</option>
                 <option value="nogenre">No genre found (no source knew)</option>
+                <option value="holiday">🎄 Holiday songs</option>
                 <option value="manual">My edits</option>
                 <option value="all">All songs</option>
               </select>
@@ -1106,6 +1112,12 @@
               </div>
               <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.7rem;color:var(--muted)">
                 <input type="checkbox" id="grm-cross" checked onchange="grmSearch()" style="accent-color:var(--teal)"> Include crossovers<span class="grm-q" tabindex="0" data-tip="ON: bridge styles cross families — picking Pop also brings in Rock songs tagged Pop Rock; picking Folk brings in Folk Rock. OFF: only songs whose own family you picked.">?</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:.5rem;font-size:.7rem;color:var(--muted)">
+                🎄 Holiday songs
+                <select id="grm-holiday" onchange="grmSearch()" class="ger-in" style="font-size:.65rem;padding:.15rem .3rem">
+                  <option value="hide" selected>Hide</option><option value="include">Include</option><option value="only">Only</option>
+                </select><span class="grm-q" tabindex="0" data-tip="Songs the Genre Engine marked with the Holiday style (Christmas albums, carols, Christmas tags). HIDE keeps them out of road-trip playlists; ONLY builds a Christmas playlist. Run RE-VOTE on The Retriever once to mark them.">?</span>
               </label>
               <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.7rem;color:var(--muted)">
                 <input type="checkbox" id="grm-ohw" onchange="grmSearch()" style="accent-color:var(--pink)"> One-hit wonders only<span class="grm-q" tabindex="0" data-tip="Artists with exactly one Top 40 Hot 100 hit — and this is it. Fun for a themed playlist; pair with a lower Min Hit Score (40–50).">?</span>
@@ -1888,14 +1900,14 @@
 
 <div id="toastWrap"></div>
 
-<script src="/static/js/core.js?v=m10b1"></script>
-<script src="/static/js/start.js?v=m10b1"></script>
-<script src="/static/js/retriever.js?v=m10b1"></script>
-<script src="/static/js/topdogs.js?v=m10b1"></script>
-<script src="/static/js/sniffer.js?v=m10b1"></script>
-<script src="/static/js/bloodhound.js?v=m10b1"></script>
-<script src="/static/js/vet.js?v=m10b1"></script>
-<script src="/static/js/tracker.js?v=m10b1"></script>
-<script src="/static/js/guide.js?v=m10b1"></script>
+<script src="/static/js/core.js?v=m10c1"></script>
+<script src="/static/js/start.js?v=m10c1"></script>
+<script src="/static/js/retriever.js?v=m10c1"></script>
+<script src="/static/js/topdogs.js?v=m10c1"></script>
+<script src="/static/js/sniffer.js?v=m10c1"></script>
+<script src="/static/js/bloodhound.js?v=m10c1"></script>
+<script src="/static/js/vet.js?v=m10c1"></script>
+<script src="/static/js/tracker.js?v=m10c1"></script>
+<script src="/static/js/guide.js?v=m10c1"></script>
 </body>
 </html>

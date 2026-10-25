@@ -308,6 +308,36 @@ GE_TAGS = {
     "christian alternative": "ccm-rock", "christian alternative rock": "ccm-rock",
     "christian contemporary": "ccm", "worship music": "worship", "religious": "ccm",
 }
+# Holiday (M10c): a style any family can carry — kept out of GE_STYLES so it never bridges families.
+GE_EXTRA = {"holiday": "Holiday"}
+_HOL_TAGS = {"christmas", "xmas", "x-mas", "christmas music", "christmas songs", "christmas carols",
+             "christmas song", "holiday", "holidays", "holiday music", "navidad", "hanukkah"}
+_HOL_ALBUM_RE = re.compile(r"\b(christmas|xmas|x-mas|navidad|holidays|hanukkah|winter wonderland|"
+                           r"holiday (songs|hits|classics|collection|album|music|favou?rites|cheer|season|celebration))\b", re.I)
+_HOL_TITLE_RE = re.compile(
+    r"\b(christmas|xmas|x-mas|santa claus|santa baby|jingle bells?|sleigh ride|rudolph|mistletoe|"
+    r"silent night|holy night|feliz navidad|deck the halls?|frosty the snowman|let it snow|joy to the world|"
+    r"come,? all ye faithful|hark,? the herald|little drummer boy|winter wonderland|first noel|"
+    r"away in a manger|god rest ye|we three kings|auld lang syne|hanukkah|chanukah)\b", re.I)
+
+
+def _ge_is_holiday(tag_lists: list, album: str, title: str) -> bool:
+    """Album-level Discogs styles/genres, Last.fm song tags, album title or song title say Christmas/holiday."""
+    if _HOL_TITLE_RE.search(title or "") or _HOL_ALBUM_RE.search(album or ""):
+        return True
+    t_has_holiday = "holiday" in (title or "").lower()   # Madonna's "Holiday" is not a Christmas song
+    for tags in tag_lists:
+        for t in (tags or [])[:6]:
+            t = str(t).strip().lower()
+            if t in _HOL_TAGS and not (t_has_holiday and t.startswith("holiday")):
+                return True
+    return False
+
+
+def _ge_add_holiday(styles: list) -> list:
+    return [x for x in styles if x != "holiday"][:2] + ["holiday"]
+
+
 GE_WEIGHTS = {"discogs": 3.0, "discogs_g": 2.0, "mb": 2.0, "lfm_track": 2.0, "lfm_artist": 1.0,
               "mine": 5.0}   # your own Christian/Gospel tags — the strongest voice
 GE_SACRED = {"ccm", "gospel"}
@@ -419,7 +449,7 @@ def _ge_vote(sources: list) -> Optional[dict]:
 
 
 def _ge_display(family: str, styles: list) -> list:
-    return [GE_FAMILIES[family]] + [GE_STYLES[s][0] for s in styles]
+    return [GE_FAMILIES[family]] + [GE_STYLES[s][0] if s in GE_STYLES else GE_EXTRA.get(s, s) for s in styles]
 
 
 async def _ge_migrate():
@@ -613,6 +643,35 @@ def _ge_alt_artist(artist: str, title: str, fp: str) -> Optional[str]:
     return None
 
 
+def _ge_group_albums(tracks) -> tuple:
+    """tracks [(tid, artist, title, fp, album_title)] → (track_id→album key, album key→(artist, album), artist key→name).
+    An album = one folder; compilations (many artists) get no album key."""
+    from app.routers.groomer import _artist_key, _title_key, _FEAT_RE
+    folders = {}
+    for tid, artist, title, fp, alb in tracks:
+        folders.setdefault(os.path.dirname(fp), []).append((tid, artist, title, fp, alb))
+    track_album, album_names, names = {}, {}, {}
+    for folder, items in folders.items():
+        counts = {}
+        for _, artist, *_r in items:
+            ak = _artist_key(artist)
+            if ak:
+                counts[ak] = counts.get(ak, 0) + 1
+                names.setdefault(ak, _FEAT_RE.sub("", artist))
+        if not counts:
+            continue
+        top_ak, top_n = max(counts.items(), key=lambda kv: kv[1])
+        album = _ge_album_name(items[0][4], items[0][3])
+        is_comp = (len(counts) >= 4 and top_n / len(items) < 0.5) or "various" in album.lower()
+        if is_comp or not album:
+            continue
+        key = f"album:{top_ak}|{_title_key(album)}"
+        for it in items:
+            track_album[it[0]] = key
+        album_names.setdefault(key, (names[top_ak], album))
+    return track_album, album_names, names
+
+
 async def _run_genre_engine():
     global _ge_job
     from app.routers.groomer import _artist_key, _title_key, _FEAT_RE, _migrate_chart_data
@@ -642,29 +701,8 @@ async def _run_genre_engine():
             return age < (365 if c[0] == "ok" else 90) * 86400
 
         # Group by album folder; detect compilations
-        folders = {}
-        for tid, artist, title, fp, alb in tracks:
-            folders.setdefault(os.path.dirname(fp), []).append((tid, artist, title, fp, alb))
-        track_album, albums, names = {}, {}, {}
-        for folder, items in folders.items():
-            counts = {}
-            for _, artist, *_r in items:
-                ak = _artist_key(artist)
-                if ak:
-                    counts[ak] = counts.get(ak, 0) + 1
-                    names.setdefault(ak, _FEAT_RE.sub("", artist))
-            if not counts:
-                continue
-            top_ak, top_n = max(counts.items(), key=lambda kv: kv[1])
-            album = _ge_album_name(items[0][4], items[0][3])
-            is_comp = (len(counts) >= 4 and top_n / len(items) < 0.5) or "various" in album.lower()
-            if is_comp or not album:
-                continue
-            key = f"album:{top_ak}|{_title_key(album)}"
-            for it in items:
-                track_album[it[0]] = key
-            if not fresh(dcache.get(key)):
-                albums[key] = (names[top_ak], album)
+        track_album, album_names, names = _ge_group_albums(tracks)
+        albums = {k: v for k, v in album_names.items() if not fresh(dcache.get(k))}
         # Artist-level Discogs profile only for artists with songs outside a real album
         # (compilations, loose files) — keeps the first run to roughly one call per album.
         need_art = {_artist_key(artist) for tid, artist, *_r in tracks if tid not in track_album}
@@ -713,9 +751,14 @@ async def _run_genre_engine():
                     mine[tid] = [g for g in (g1, g2, g3) if g]
             rules = sorted(await _ge_get_rules(), key=lambda r: -len(r["prefix"]))
             out, n_check, n_conflict, n_skip, retry = [], 0, 0, 0, []
+            hol, n_hol = set(), 0
             for tid, artist, title, fp, alb in tracks:
                 ak, tk = _artist_key(artist), _title_key(title)
-                d = disc.get(track_album.get(tid)) or disc.get(f"artist:{ak}")
+                d_alb = disc.get(track_album.get(tid))
+                d = d_alb or disc.get(f"artist:{ak}")
+                if _ge_is_holiday([d_alb[1] if d_alb else [], d_alb[0] if d_alb else [], lt.get((ak, tk))],
+                                  _ge_album_name(alb, fp or ""), title):
+                    hol.add(tid)
                 sources = [
                     ("discogs", _ge_tag_keys(d[1] if d else [])),     # album styles
                     ("discogs_g", _ge_tag_keys(d[0] if d else [])),   # album genres (unordered)
@@ -746,6 +789,8 @@ async def _run_genre_engine():
                 if not v:
                     retry.append((tid, artist, title, fp))
                     continue
+                if tid in hol:
+                    v["styles"] = _ge_add_holiday(v["styles"])
                 n_check += v["confidence"] in ("conflict", "thin")
                 n_conflict += v["confidence"] == "conflict"
                 out.append((tid, v["family"], json.dumps(v["styles"]), v["confidence"],
@@ -799,11 +844,20 @@ async def _run_genre_engine():
                     ])
                     if not v:
                         continue
+                    if tid in hol:
+                        v["styles"] = _ge_add_holiday(v["styles"])
                     n_alt += 1
                     n_check += v["confidence"] in ("conflict", "thin")
                     n_conflict += v["confidence"] == "conflict"
                     out.append((tid, v["family"], json.dumps(v["styles"]), v["confidence"],
                                 ",".join(v["sources"] + ["alt"])))
+            # Christmas songs no source knew: still filed as Holiday (Pop, little data) so they can be hidden
+            decided = {r[0] for r in out}
+            for tid, *_r in retry:
+                if tid in hol and tid not in decided:
+                    out.append((tid, "pop", json.dumps(["holiday"]), "thin", "holiday"))
+                    n_check += 1
+            n_hol = sum(1 for r in out if '"holiday"' in r[2])
             if alt_for:
                 log.info(f"Genre Engine: second try with a better artist name — {n_alt:,} of {len(retry):,} songs decided")
             # Manual edits are never overwritten by a re-run
@@ -818,6 +872,7 @@ async def _run_genre_engine():
                         "message": (f"{'Stopped — partial results saved' if stopped else 'Done'}: "
                                     f"{len(out):,} songs have a genre · ⚠ {n_conflict:,} conflicts · "
                                     f"? {n_check - n_conflict:,} little data"
+                                    + (f" · 🎄 {n_hol:,} holiday" if n_hol else "")
                                     + (f" · {n_skip:,} skipped by folder rule" if n_skip else "")
                                     + (f" · ⚠ {'; '.join(_ge_job.get('warnings', []))[:200]}"
                                        if _ge_job.get("warnings") else ""))})
@@ -1046,7 +1101,7 @@ async def _online_genre_rows(scope: str, folder: Optional[str], search: Optional
         same = [c.lower() for c in current] == [p.lower() for p in proposed[:3]]
         if needle and needle not in (artist or "").lower() and needle not in (title or "").lower():
             continue
-        if hide_same and not track_ids and current and conf != "conflict" and \
+        if hide_same and not track_ids and scope != "holiday" and current and conf != "conflict" and \
                 {c.lower() for c in current} == {p.lower() for p in proposed[:3]}:
             continue
         if not track_ids:
@@ -1062,6 +1117,8 @@ async def _online_genre_rows(scope: str, folder: Optional[str], search: Optional
                 continue
             if scope == "manual" and conf != "manual":
                 continue
+            if scope == "holiday" and "holiday" not in st:
+                continue
         out.append((tid, fp, artist, title, current, proposed, conf, fam, st, src or ""))
     from app.routers.groomer import _artist_key
     out.sort(key=lambda r: (_artist_key(r[2] or ""), (r[2] or "").lower(),
@@ -1070,7 +1127,7 @@ async def _online_genre_rows(scope: str, folder: Optional[str], search: Optional
 
 
 class OnlineGenreRequest(BaseModel):
-    scope:     str = "changed"            # empty | changed | all | check | manual
+    scope:     str = "changed"            # empty | changed | all | check | manual | holiday
     folder:    Optional[str] = None       # /music/... subfolder, optional
     search:    Optional[str] = None       # artist or title contains
     family:    Optional[str] = None       # family key
@@ -1195,10 +1252,68 @@ async def online_genres_stop(user: dict = Depends(require_auth)):
     return {"ok": True}
 
 
+_UT_JUNK = re.compile(
+    r"^(\d0s|\d{4}s?|\d{2}s|seen live|favou?rites?|my favou?rites?|love|loved|awesome|beautiful|best|"
+    r"amazing|cool|great|good|fun|sexy|catchy|classic|oldies|male vocalists?|female vocalists?|"
+    r"under \d+ listeners|all|music|songs?|cover|covers|soundtrack|live|remix|unknown)$", re.I)
+
+
+@router.get("/genre-engine/unmatched-tags")
+async def genre_engine_unmatched_tags(min_songs: int = 15, limit: int = 150,
+                                      user: dict = Depends(require_auth)):
+    """Read-only: the most common source tags no family/style catches, counted per song."""
+    from app.routers.groomer import _artist_key, _title_key, _migrate_chart_data
+    await _migrate_chart_data()
+    await _ge_migrate()
+    async with aiosqlite.connect(settings.database_url, timeout=60) as db:
+        tracks = await (await db.execute("""
+            SELECT t.track_id, COALESCE(t.tag_artist, a.name, ''), t.title, t.file_path, t.album_title
+            FROM tracks t LEFT JOIN artists a ON t.artist_id = a.artist_id
+            WHERE t.file_path IS NOT NULL AND COALESCE(t.missing, 0) = 0""")).fetchall()
+        disc = {k: (json.loads(g or "[]"), json.loads(st or "[]")) for k, g, st in await (await db.execute(
+            "SELECT lookup_key, genres, styles FROM ge_discogs WHERE status='ok'")).fetchall()}
+        mb = {k: json.loads(t or "[]") for k, t in await (await db.execute(
+            "SELECT artist_key, tags FROM ge_mb_artists WHERE status='ok'")).fetchall()}
+        try:
+            lt = {(a, t): json.loads(g or "[]") for a, t, g in await (await db.execute(
+                "SELECT artist_key, title_key, tags FROM lastfm_tracks WHERE status='ok'")).fetchall()}
+            la = {a: json.loads(g or "[]") for a, g in await (await db.execute(
+                "SELECT artist_key, tags FROM lastfm_artists WHERE status='ok'")).fetchall()}
+        except Exception:
+            lt, la = {}, {}
+    track_album, _alb, _names = _ge_group_albums(tracks)
+    known = set(GE_TAGS) | _HOL_TAGS
+    count, by_src, artists = {}, {}, {}
+    for tid, artist, title, fp, alb in tracks:
+        ak, tk = _artist_key(artist), _title_key(title)
+        d = disc.get(track_album.get(tid)) or disc.get(f"artist:{ak}")
+        seen = {}
+        for src, tags in (("Discogs", (d[1] + d[0]) if d else []), ("MusicBrainz", (mb.get(ak) or [])[:6]),
+                          ("Last.fm song", (lt.get((ak, tk)) or [])[:6]), ("Last.fm artist", (la.get(ak) or [])[:6])):
+            for t in tags:
+                t = str(t).strip().lower()
+                if not t or t in known or _UT_JUNK.match(t) or t == ak or _artist_key(t) == ak:
+                    continue
+                seen.setdefault(t, set()).add(src)
+        for t, srcs in seen.items():
+            count[t] = count.get(t, 0) + 1
+            for sname in srcs:
+                by_src.setdefault(t, {})[sname] = by_src.setdefault(t, {}).get(sname, 0) + 1
+            a = artists.setdefault(t, {})
+            if artist:
+                a[artist] = a.get(artist, 0) + 1
+    top = sorted(((t, n) for t, n in count.items() if n >= max(1, min_songs)), key=lambda kv: -kv[1])
+    return {"songs": len(tracks), "total_tags": len(top),
+            "tags": [{"tag": t, "songs": n, "sources": by_src.get(t, {}),
+                      "artists": [x for x, _ in sorted(artists[t].items(), key=lambda kv: -kv[1])[:5]]}
+                     for t, n in top[:max(1, min(limit, 500))]]}
+
+
 @router.get("/genre-engine/taxonomy")
 async def genre_engine_taxonomy(user: dict = Depends(require_auth)):
     return {"families": GE_FAMILIES,
-            "styles": {k: {"label": v[0], "families": list(v[1])} for k, v in GE_STYLES.items()}}
+            "styles": {**{k: {"label": v[0], "families": list(v[1])} for k, v in GE_STYLES.items()},
+                       **{k: {"label": v, "families": list(GE_FAMILIES), "any": True} for k, v in GE_EXTRA.items()}}}
 
 
 @router.post("/genre-engine/review")
@@ -1245,7 +1360,7 @@ async def genre_engine_override(req: GenreOverride, user: dict = Depends(require
         raise HTTPException(400, "Unknown family.")
     styles = []
     for st in req.styles[:3]:
-        if st and st in GE_STYLES and req.family in GE_STYLES[st][1] and st not in styles:
+        if st and (st in GE_EXTRA or (st in GE_STYLES and req.family in GE_STYLES[st][1])) and st not in styles:
             styles.append(st)
     await _ge_migrate()
     async with aiosqlite.connect(settings.database_url, timeout=60) as db:
