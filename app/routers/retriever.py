@@ -316,12 +316,12 @@ GE_TAGS = {
     "christian contemporary": "ccm", "worship music": "worship", "religious": "ccm",
     # M10c — from the unmatched-tags report
     "art rock": "artrock", "new romantic": "newwave", "yacht rock": "yachtrock",
-    "british invasion": "britinv", "merseybeat": "britinv", "beat": "britinv", "beat music": "britinv", "mod": "britinv",
+    "british invasion": "britinv", "merseybeat": "britinv", "beat music": "britinv", "mod": "britinv",
     "nu metal": "altmetal", "alternative metal": "altmetal", "funk metal": "altmetal", "rap rock": "altmetal",
     "traditional pop": "standards", "standards": "standards", "swing": "swing", "big band": "swing",
     "alternative r&b": "contrnb", "downtempo": "chill", "ambient": "chill", "trip hop": "chill",
     "trip-hop": "chill", "chillout": "chill", "chill out": "chill", "new age": "chill",
-    "stage & screen": "soundtrack", "soundtrack": "soundtrack", "score": "soundtrack", "theme": "soundtrack",
+    "stage & screen": "soundtrack", "soundtrack": "soundtrack",
     "concert film": "soundtrack", "disney": "soundtrack", "show tunes": "soundtrack", "musical": "soundtrack",
     "reggae": "reggae", "ska": "reggae", "skinhead reggae": "reggae", "dub": "reggae", "reggae-pop": "reggae",
     "latin": "latin", "latin pop": "latin", "celtic": "celtic", "world": "world",
@@ -345,7 +345,7 @@ GE_TAGS = {
     "jazz-rock": "jazzfusion", "cool jazz": "jazz", "contemporary folk": "folk",
     "progressive house": "house", "electro house": "house", "deep house": "house", "garage house": "house",
     "tech house": "house", "progressive trance": "trance", "uplifting trance": "trance", "vocal trance": "trance",
-    "idm": "techno", "minimal": "techno", "dubstep": "edm", "drum n bass": "edm", "drum and bass": "edm",
+    "idm": "techno", "dubstep": "edm", "drum n bass": "edm", "drum and bass": "edm",
     "breaks": "edm", "breakbeat": "edm", "electro": "dance",
 }
 # Holiday (M10c): a style any family can carry — kept out of GE_STYLES so it never bridges families.
@@ -428,6 +428,7 @@ GE_NEIGHBORS = {frozenset(p) for p in (
     ("pop", "rnb"), ("rock", "metal"), ("country", "folk"), ("rnb", "hiphop"), ("jazz", "blues"),
     ("rnb", "blues"), ("pop", "dance"), ("rock", "blues"), ("rock", "folk"), ("ccm", "gospel"),
     ("dance", "rnb"), ("pop", "hiphop"), ("world", "pop"), ("world", "folk"),
+    ("world", "rock"), ("world", "rnb"), ("world", "dance"), ("world", "hiphop"),
 )}
 
 
@@ -1318,7 +1319,7 @@ _UT_IGNORE = {
     "vocalist", "ballad", "acoustic", "guitar", "piano", "instrumental", "compilation", "special purpose",
     "special purpose artist", "bogus artist", "interview", "american idol", "my top songs", "non-music",
     "experimental", "progressive", "hardcore", "groove", "2008 universal fire victim", "death by plane crash",
-    "aln-sh", "chanson",
+    "aln-sh", "chanson", "beat", "theme", "score", "minimal",
 }
 _UT_JUNK = re.compile(
     r"^(\d0s|\d{4}s?|\d{2}s|seen live|favou?rites?|my favou?rites?|love|loved|awesome|beautiful|best|"
