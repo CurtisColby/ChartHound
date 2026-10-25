@@ -515,3 +515,57 @@ async function vetBackupDownload(name) {
     a.download = name; document.body.appendChild(a); a.click(); a.remove();
   } catch (e) { toast('Download failed: ' + e.message, 'error'); }
 }
+
+// ── Fix Moved Files (M10e) ───────────────────────────────────────────────────
+let _mvPoll = null;
+async function vetMovedCheck() {
+  try {
+    const r = await fetch(`${API}/api/groomer/vet/moved/check`, {method:'POST', headers:authHdrs()});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    document.getElementById('mv-preview').innerHTML = '';
+    document.getElementById('mv-apply').style.display = 'none';
+    _vetMovedPoll();
+  } catch (e) { toast(e.message, 'error'); }
+}
+function _vetMovedPoll() {
+  clearTimeout(_mvPoll);
+  _mvPoll = setTimeout(async () => {
+    try {
+      const d = await (await fetch(`${API}/api/groomer/vet/moved/status`, {headers:authHdrs()})).json();
+      const st = document.getElementById('mv-status');
+      if (d.status === 'running') {
+        st.textContent = d.phase === 'checking' ? `Checking files… ${d.checked.toLocaleString()} / ${d.total.toLocaleString()}` : (d.message || 'Searching…');
+        return _vetMovedPoll();
+      }
+      st.textContent = d.message || '';
+      if (d.status === 'done' && d.preview) _vetMovedShow(d.preview);
+    } catch (e) { _vetMovedPoll(); }
+  }, 1500);
+}
+function _vetMovedShow(p) {
+  const esc2 = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const list = (rows, showNew) => rows.map(r => `<div style="margin:.15rem 0 .35rem .6rem;line-height:1.5"><span style="color:var(--text)">${esc2(r.artist)} — ${esc2(r.title)}</span><br>
+      <span style="color:var(--muted2)">${esc2(r.old)}</span>${showNew && r.new ? `<br><span style="color:var(--teal)">→ ${esc2(r.new)}</span>` : ''}</div>`).join('');
+  const sec = (n, label, color, rows, showNew, tip) => n ? `<details style="margin-top:.35rem"><summary style="cursor:pointer;color:${color}" title="${tip}">${n.toLocaleString()} ${label}</summary>${list(rows, showNew)}${n > rows.length ? `<div style="color:var(--muted2);margin-left:.6rem">…and ${(n - rows.length).toLocaleString()} more</div>` : ''}</details>` : '';
+  const total = p.found + p.dup + p.gone + p.back;
+  document.getElementById('mv-preview').innerHTML = !total
+    ? '<span style="color:var(--green)">✓ Every song is where ChartHound expects it.</span>'
+    : sec(p.found, 'moved — found in a new place (will be relinked)', 'var(--teal)', p.examples.found, true, 'The saved path is updated; genre edits and history stay attached.')
+    + sec(p.dup, 'moved — a scan already added the new copy (will be merged)', 'var(--amber)', p.examples.dup, true, 'Your genre edit is copied to the new copy and the old entry is hidden.')
+    + sec(p.gone, 'gone — not found, or more than one possible match (will be hidden)', 'var(--red)', p.examples.gone, false, 'Hidden from every list. If the file comes back, the next CHECK brings it back.')
+    + (p.back ? `<div style="margin-top:.35rem;color:var(--green)">${p.back.toLocaleString()} hidden songs are back (will be shown again)</div>` : '');
+  document.getElementById('mv-apply').style.display = total ? '' : 'none';
+}
+async function vetMovedApply() {
+  if (!confirm('Apply these changes to ChartHound\'s database?\n\nYour music files are not touched. Tip: back up first (💾 BACKUPS).')) return;
+  try {
+    const r = await fetch(`${API}/api/groomer/vet/moved/apply`, {method:'POST', headers:authHdrs()});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    toast(d.message, 'success');
+    document.getElementById('mv-status').textContent = d.message;
+    document.getElementById('mv-preview').innerHTML = '';
+    document.getElementById('mv-apply').style.display = 'none';
+  } catch (e) { toast(e.message, 'error'); }
+}

@@ -136,6 +136,208 @@ async def vet_integrity_check(_=Depends(require_auth)):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+#  VETERINARIAN — FIX MOVED FILES (M10e)
+#  Songs whose file is no longer at the saved path are looked for in every music
+#  folder mounted in the container (matched on file name + parent folders).
+#  Preview first; Apply changes ChartHound's database only — never your files.
+# ══════════════════════════════════════════════════════════════════════════════
+_MV_AUDIO = {".mp3", ".flac", ".m4a", ".aac", ".ogg", ".opus", ".wav", ".wma", ".alac", ".aiff", ".ape", ".wv", ".mp4"}
+_MV_ROOT_PREFIXES = ("/music", "/media", "/mnt", "/newmusic", "/srv", "/volume", "/share", "/storage", "/data/music")
+_mv_job = {"status": "idle", "phase": "", "checked": 0, "total": 0, "message": "", "preview": None}
+_mv_plan = {"found": [], "dup": [], "gone": [], "back": []}
+
+
+def _mv_prefixes() -> tuple:
+    server, docker = settings.media_server_music_prefix or "", settings.docker_music_prefix or "/music"
+    try:
+        conn = sqlite3.connect(_DYNAMIC_DB, check_same_thread=False)
+        m = dict(conn.execute("SELECT key, value FROM app_settings "
+                              "WHERE key IN ('path_server_prefix','path_docker_prefix')").fetchall())
+        conn.close()
+        server, docker = m.get("path_server_prefix") or server, m.get("path_docker_prefix") or docker
+    except Exception:
+        pass
+    return server.rstrip("/"), docker.rstrip("/") or "/music"
+
+
+def _mv_exists(fp: str, server: str, docker: str) -> bool:
+    if not fp:
+        return False
+    if os.path.exists(fp):
+        return True
+    if server and docker and fp.startswith(docker + "/"):
+        return os.path.exists(server + fp[len(docker):])
+    return False
+
+
+def _mv_roots(docker: str) -> list:
+    """Music folders mounted into the container; the same folder mounted twice is walked once."""
+    pts = []
+    try:
+        with open("/proc/self/mountinfo") as f:
+            for line in f:
+                mp = line.split()[4].replace("\\040", " ")
+                if mp.startswith(_MV_ROOT_PREFIXES) and os.path.isdir(mp):
+                    pts.append(mp)
+    except Exception:
+        pass
+    if os.path.isdir(docker):
+        pts.append(docker)
+    pts = sorted(set(pts), key=lambda p: (not p.startswith(docker), len(p)))
+    seen, roots = set(), []
+    for p in pts:
+        try:
+            st = os.stat(p)
+        except OSError:
+            continue
+        if (st.st_dev, st.st_ino) in seen or any(p.startswith(r + "/") for r in roots):
+            continue
+        seen.add((st.st_dev, st.st_ino))
+        roots.append(p)
+    return roots
+
+
+def _mv_tail_score(a: str, b: str) -> int:
+    x, y = a.lower().split("/")[::-1], b.lower().split("/")[::-1]
+    n = 0
+    for i, j in zip(x, y):
+        if i != j:
+            break
+        n += 1
+    return n
+
+
+def _mv_check_sync() -> dict:
+    server, docker = _mv_prefixes()
+    conn = sqlite3.connect(_DYNAMIC_DB, check_same_thread=False)
+    rows = conn.execute("SELECT track_id, file_path, COALESCE(missing, 0), COALESCE(tag_artist, ''), "
+                        "COALESCE(title, '') FROM tracks WHERE file_path IS NOT NULL AND file_path != ''").fetchall()
+    conn.close()
+    _mv_job.update({"phase": "checking", "total": len(rows), "checked": 0})
+    lost, back = [], []
+    for i, (tid, fp, miss, artist, title) in enumerate(rows):
+        ok = _mv_exists(fp, server, docker)
+        if not ok and not miss:
+            lost.append((tid, fp, artist, title))
+        elif ok and miss:
+            back.append((tid, fp, artist, title))
+        if i % 500 == 0:
+            _mv_job["checked"] = i
+    _mv_job["checked"] = len(rows)
+    found, dup, gone = [], [], []
+    if lost:
+        _mv_job["phase"] = "searching"
+        index = {}
+        for root in _mv_roots(docker):
+            _mv_job["message"] = f"Looking through {root}…"
+            for d, _subs, files in os.walk(root):
+                for fn in files:
+                    if os.path.splitext(fn)[1].lower() in _MV_AUDIO:
+                        p = os.path.join(d, fn)
+                        if server and p.startswith(server + "/"):
+                            p = docker + p[len(server):]   # store in the same form the scan uses
+                        index.setdefault(fn.lower(), []).append(p)
+        known = {r[1] for r in rows}
+        taken = set()
+        for tid, fp, artist, title in lost:
+            cands = [c for c in set(index.get(os.path.basename(fp).lower(), [])) if c != fp]
+            if not cands:
+                gone.append((tid, fp, artist, title, None))
+                continue
+            scored = sorted(((_mv_tail_score(fp, c), c) for c in cands), reverse=True)
+            best, new = scored[0]
+            if (len(scored) > 1 and scored[1][0] == best) or (len(cands) > 1 and best < 2) or new in taken:
+                gone.append((tid, fp, artist, title, None))   # ambiguous — leave it to the user
+                continue
+            taken.add(new)
+            (dup if new in known else found).append((tid, fp, artist, title, new))
+    return {"found": found, "dup": dup, "gone": gone, "back": back}
+
+
+async def _mv_run_check():
+    global _mv_plan
+    _mv_job.update({"status": "running", "phase": "checking", "message": "Checking every song's file…", "preview": None})
+    try:
+        plan = await asyncio.get_event_loop().run_in_executor(None, _mv_check_sync)
+        _mv_plan = plan
+        ex = lambda lst: [{"artist": r[2], "title": r[3], "old": r[1], "new": r[4] if len(r) > 4 else None}
+                          for r in lst[:25]]
+        _mv_job.update({"status": "done", "phase": "", "preview": {
+            "found": len(plan["found"]), "dup": len(plan["dup"]), "gone": len(plan["gone"]),
+            "back": len(plan["back"]),
+            "examples": {"found": ex(plan["found"]), "dup": ex(plan["dup"]), "gone": ex(plan["gone"])}},
+            "message": (f"{len(plan['found']) + len(plan['dup']):,} moved and found · {len(plan['gone']):,} gone"
+                        f" · {len(plan['back']):,} back again")})
+        log.info(f"Fix moved files (preview): {_mv_job['message']}")
+    except Exception as e:
+        log.exception("Moved-files check failed")
+        _mv_job.update({"status": "failed", "phase": "", "message": f"Error: {e}"})
+
+
+@router.post("/vet/moved/check")
+async def vet_moved_check(_=Depends(require_auth)):
+    if _mv_job.get("status") == "running":
+        raise HTTPException(409, "Already checking.")
+    asyncio.create_task(_mv_run_check())
+    return {"ok": True}
+
+
+@router.get("/vet/moved/status")
+async def vet_moved_status(_=Depends(require_auth)):
+    return _mv_job
+
+
+@router.post("/vet/moved/apply")
+async def vet_moved_apply(_=Depends(require_auth)):
+    """Apply the last preview. ChartHound's database only — files are never touched."""
+    global _mv_plan
+    p = _mv_plan
+    if _mv_job.get("status") == "running" or not any(p.values()):
+        raise HTTPException(400, "Run CHECK first.")
+    n = {"relinked": 0, "merged": 0, "hidden": 0, "restored": 0}
+    async with aiosqlite.connect(_DYNAMIC_DB, timeout=60) as db:
+        for tid, _old, _a, _t, new in p["found"]:
+            try:
+                await db.execute("UPDATE tracks SET file_path=?, missing=0 WHERE track_id=?", (new, tid))
+                n["relinked"] += 1
+            except sqlite3.IntegrityError:   # a scan added the new path meanwhile — treat as duplicate
+                p["dup"].append((tid, _old, _a, _t, new))
+        has_genres = (await (await db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='track_genres'")).fetchone()) is not None
+        for tid, _old, _a, _t, new in p["dup"]:
+            row = await (await db.execute("SELECT track_id FROM tracks WHERE file_path=?", (new,))).fetchone()
+            if row and has_genres:
+                # Carry your own genre decision to the row at the new path (unless it already has one)
+                await db.execute(
+                    "INSERT OR IGNORE INTO track_genres (track_id, family, styles, confidence, sources, updated_at) "
+                    "SELECT ?, family, styles, confidence, sources, updated_at FROM track_genres "
+                    "WHERE track_id=? AND confidence='manual'", (row[0], tid))
+                await db.execute(
+                    "UPDATE track_genres SET family=(SELECT family FROM track_genres WHERE track_id=?), "
+                    "styles=(SELECT styles FROM track_genres WHERE track_id=?), confidence='manual', "
+                    "sources=(SELECT sources FROM track_genres WHERE track_id=?), updated_at=datetime('now') "
+                    "WHERE track_id=? AND confidence!='manual' AND EXISTS "
+                    "(SELECT 1 FROM track_genres WHERE track_id=? AND confidence='manual')",
+                    (tid, tid, tid, row[0], tid))
+            await db.execute("UPDATE tracks SET missing=1 WHERE track_id=?", (tid,))
+            n["merged"] += 1
+        for tid, *_r in p["gone"]:
+            await db.execute("UPDATE tracks SET missing=1 WHERE track_id=?", (tid,))
+            n["hidden"] += 1
+        for tid, *_r in p["back"]:
+            await db.execute("UPDATE tracks SET missing=0 WHERE track_id=?", (tid,))
+            n["restored"] += 1
+        await db.commit()
+    _mv_plan = {"found": [], "dup": [], "gone": [], "back": []}
+    _mv_job.update({"status": "idle", "preview": None,
+                    "message": (f"Done — {n['relinked']:,} songs relinked to their new place, "
+                                f"{n['merged']:,} merged into the copy a scan already found, "
+                                f"{n['hidden']:,} hidden (file gone), {n['restored']:,} back again.")})
+    log.info(f"Fix moved files: {_mv_job['message']}")
+    return {"ok": True, **n, "message": _mv_job["message"]}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 #  VETERINARIAN — DATABASE BACKUPS
 #  VACUUM INTO makes a clean, consistent copy while the app keeps running.
 #  Newest 5 kept in /data/backups. Downloads use a 10-minute pass (like the

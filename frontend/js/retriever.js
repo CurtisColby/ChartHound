@@ -84,30 +84,47 @@ async function geLoad(page) {
   } catch (e) { body.innerHTML = `<tr><td colspan="5" style="padding:1.5rem;color:var(--red)">${esc(e.message)}</td></tr>`; }
 }
 function geRender() {
+  const se = document.getElementById('ger-seledit'); if (se) { se.innerHTML = ''; se.style.display = 'none'; }
   const body = document.getElementById('ger-body');
   if (!_ger.rows.length) { body.innerHTML = '<tr><td colspan="5" style="padding:2rem;text-align:center;color:var(--muted2)">Nothing matches. Run the Genre Engine first, or change the filters.</td></tr>'; geSyncSel(); return; }
-  let html = '', last = null;
+  const q = v => JSON.stringify(v).replace(/"/g, '&quot;');
+  const keyOf = r => r.akey || r.artist;
+  let html = '', last = null, lastAl = null, multi = false;
   _ger.rows.forEach((x, i) => {
-    const ak = x.akey || x.artist;
+    const ak = keyOf(x);
     if (ak !== last) {
-      last = ak;
-      const n = _ger.rows.filter(r => (r.akey || r.artist) === ak).length;
-      html += `<tr class="ger-artist"><td><input type="checkbox" onchange="geSelectArtist(${JSON.stringify(ak).replace(/"/g,'&quot;')}, this.checked)"></td>
-        <td colspan="4">${esc(x.artist || '(unknown artist)')} <span style="color:var(--muted2);font-weight:normal">· ${n} on this page</span>
-        <a href="#" onclick="geEditArtist(${i});return false" style="margin-left:.75rem;color:var(--amber);font-weight:normal;font-size:.62rem">✎ set genre for ALL songs by this artist</a>${_ger.rows.some(r => (r.akey || r.artist) === ak && _geCanOk(r)) ? `<a href="#" class="ger-okall" onclick="geApprove(false, ${JSON.stringify(x.artist).replace(/"/g,'&quot;')});return false" data-tip="Keep the current genre for every song by this artist (all pages) as your own decision.">✓ all by this artist look right</a>` : ''}${geArtistLinks(x.artist)}</td></tr>
+      last = ak; lastAl = null;
+      const grp = _ger.rows.filter(r => keyOf(r) === ak);
+      multi = new Set(grp.map(r => r.alkey)).size > 1;
+      const okAll = grp.some(_geCanOk) ? `<a href="#" class="ger-chip ok" onclick="geApprove(false, ${q(x.artist)});return false" data-tip="Keep the current genre for every song by this artist (all pages) as your own decision.">✓ artist</a>` : '';
+      const alChip = multi ? '' : `<a href="#" class="ger-chip" onclick="geEditAlbum(${i});return false" data-tip="Set one genre for every song in this album's folder (all pages, CD1/Disc 2 included). Other albums are not touched.">✎ album</a>`;
+      html += `<tr class="ger-artist"><td><input type="checkbox" ${grp.every(r => _ger.sel.has(r.track_id)) ? 'checked' : ''} onchange="geSelectArtist(${q(ak)}, this.checked)"></td>
+        <td colspan="4"><span class="ger-aname">${esc(x.artist || '(unknown artist)')}</span>${multi ? '' : `<span class="ger-alname">💿 ${esc(x.album || '(no album)')}</span>`}<span class="ger-cnt">${grp.length}</span>
+        <span class="ger-chips"><a href="#" class="ger-chip" onclick="geEditArtist(${i});return false" data-tip="Set one genre for EVERY song by this artist (all pages).">✎ artist</a>${alChip}${okAll}${geArtistLinks(x.artist)}</span></td></tr>
         <tr class="ger-edit" id="ger-aedit-${i}" style="display:none"><td></td><td colspan="4" id="ger-aedit-cell-${i}"></td></tr>`;
+      if (!multi) { lastAl = x.alkey; html += `<tr class="ger-edit" id="ger-bedit-${i}" style="display:none"><td></td><td colspan="4" id="ger-bedit-cell-${i}"></td></tr>`; }
     }
-    const why = `<a href="#" class="ger-why" onclick="geWhy(${i});return false" data-tip="Show what each source (Discogs, MusicBrainz, Last.fm) said about this song.">why?</a>`;
+    if (multi && x.alkey !== lastAl) {
+      lastAl = x.alkey;
+      const grp = _ger.rows.filter(r => keyOf(r) === ak && r.alkey === x.alkey);
+      html += `<tr class="ger-album"><td><input type="checkbox" ${grp.every(r => _ger.sel.has(r.track_id)) ? 'checked' : ''} onchange="geSelectAlbum(${i}, this.checked)"></td>
+        <td colspan="4">💿 ${esc(x.album || '(no album)')}<span class="ger-cnt">${grp.length}</span>
+        <span class="ger-chips"><a href="#" class="ger-chip" onclick="geEditAlbum(${i});return false" data-tip="Set one genre for every song in this album's folder (all pages, CD1/Disc 2 included). Other albums are not touched.">✎ album</a></span></td></tr>
+        <tr class="ger-edit" id="ger-bedit-${i}" style="display:none"><td></td><td colspan="4" id="ger-bedit-cell-${i}"></td></tr>`;
+    }
+    const why = `<a href="#" class="ger-why" onclick="geWhy(${i});return false" data-tip="Show what each source (Discogs, MusicBrainz, Last.fm) said about this song. (Key: W)">why?</a>`;
     const ok = _geCanOk(x) ? `<button class="ger-ok" onclick="geApprove([${x.track_id}])" data-tip="Looks right — keep this genre as your decision. It stops counting as a conflict and the engine never changes it. (Key: Y)">✓</button>` : '';
-    const conf = x.confidence === 'conflict' ? `${ok}<span style="color:var(--red)" title="Sources disagree — worth a look">⚠ CONFLICT</span>${why}`
-               : (x.confidence === 'thin' || x.confidence === 'check') ? `${ok}<span style="color:var(--amber)" title="Only one source knew this song — usually fine">? LITTLE DATA</span>${why}`
-               : x.confidence === 'none' ? '<span style="color:var(--muted2)" title="No source knew this song — set its genre by hand">no data</span>'
-               : x.confidence === 'manual' ? (x.checked ? `<span style="color:var(--green)">✓ CHECKED</span>${why}` : '<span style="color:var(--pink)">EDITED</span>')
-               : `<span style="color:var(--muted2)">ok</span>${why}`;
-    html += `<tr id="ger-row-${i}"><td><input type="checkbox" class="ger-cb" data-i="${i}" ${_ger.sel.has(x.track_id) ? 'checked' : ''} onchange="geToggle(${i}, this.checked)"></td>
+    const redo = `<button class="ger-redo" onclick="geReset(${i})" data-tip="Let the engine decide again — removes your edit or ✓ for this song and re-votes it from saved lookups (no internet, a few seconds).">↻</button>`;
+    const badge = (cls, txt, tip) => `<span class="ger-badge ${cls}" data-tip="${tip}">${txt}</span>`;
+    const conf = x.confidence === 'conflict' ? ok + badge('bad', '⚠ CONFLICT', 'Sources disagree — worth a look') + why
+               : (x.confidence === 'thin' || x.confidence === 'check') ? ok + badge('warn', '? LITTLE', 'Only one source knew this song — usually fine') + why
+               : x.confidence === 'none' ? badge('none', 'NO DATA', 'No source knew this song — set its genre by hand')
+               : x.confidence === 'manual' ? (x.checked ? badge('good', '✓ CHECKED', 'You confirmed this genre') : badge('edit', 'EDITED', 'You set this genre by hand')) + redo + (x.checked ? why : '')
+               : badge('fine', 'ok', 'Sources agree') + why;
+    html += `<tr id="ger-row-${i}" class="ger-song"><td><input type="checkbox" class="ger-cb" data-i="${i}" ${_ger.sel.has(x.track_id) ? 'checked' : ''} onchange="geToggle(${i}, this.checked)"></td>
       <td>${gePlayBtn(x)}${esc(x.title)}${x.path ? `<button class="ger-copy" onclick="geCopyPath(${i}, event.shiftKey)" data-tip="Copies the folder this song lives in on your server (Shift-click: the file itself). In your file manager press Ctrl+L, paste, Enter. Delete it there if you want — the next Top Dogs ① SCAN drops missing songs.">📋</button>` : ''}</td>
       <td><span class="ger-new" onclick="geEditRow(${i})">${x.proposed.length ? esc(x.proposed.join('; ')) : '<i style="color:var(--muted2)">— set genre</i>'}</span></td>
-      <td style="color:var(--muted2)">${esc(x.current.join('; ') || '—')}</td><td>${conf}</td></tr>
+      <td style="color:var(--muted2)">${esc(x.current.join('; ') || '—')}</td><td class="ger-conf">${conf}</td></tr>
       <tr class="ger-edit" id="ger-edit-${i}" style="display:none"><td></td><td colspan="4" id="ger-edit-cell-${i}"></td></tr>
       <tr class="ger-whyrow" id="ger-why-${i}" style="display:none"><td></td><td colspan="4" id="ger-why-cell-${i}"></td></tr>`;
   });
@@ -115,14 +132,30 @@ function geRender() {
   geSyncSel();
   geCursor(Math.min(_ger.cur ?? -1, _ger.rows.length - 1), false);
 }
+async function geReset(i) {
+  const x = _ger.rows[i];
+  if (!confirm(`Let the engine decide "${x.title}" again?\n\nYour edit / ✓ for this song is removed. Saved lookups only — no internet.`)) return;
+  toast('Re-deciding…', 'info');
+  try {
+    const r = await fetch(`${API}/api/retriever/genre-engine/reset`, {method:'POST', headers:authHdrs(), body:JSON.stringify({track_ids: [x.track_id]})});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    const s = d.songs[0] || {};
+    toast(s.genre && s.genre.length ? `Engine says: ${s.genre.join('; ')}` : 'No source knows this song — set it by hand.', 'success');
+    geLoad(_ger.page);
+  } catch (e) { toast(e.message, 'error'); }
+}
 function geToggle(i, on) { const id = _ger.rows[i].track_id; on ? _ger.sel.add(id) : _ger.sel.delete(id); geSyncSel(); }
 function geSelectAll(on) { _ger.rows.forEach(r => on ? _ger.sel.add(r.track_id) : _ger.sel.delete(r.track_id)); geRender(); }
+function geSelectAlbum(i, on) { const x = _ger.rows[i], ak = x.akey || x.artist; _ger.rows.filter(r => (r.akey || r.artist) === ak && r.alkey === x.alkey).forEach(r => on ? _ger.sel.add(r.track_id) : _ger.sel.delete(r.track_id)); geRender(); }
 function geSelectArtist(ak, on) { _ger.rows.filter(r => (r.akey || r.artist) === ak).forEach(r => on ? _ger.sel.add(r.track_id) : _ger.sel.delete(r.track_id)); geRender(); }
 function geSyncSel() {
+  const hd = document.getElementById('ger-all'); if (hd) hd.checked = _ger.rows.length > 0 && _ger.rows.every(r => _ger.sel.has(r.track_id));
   const flagged = _ger.rows.filter(_geCanOk).length;
   const pg = document.getElementById('ger-ok-page'); if (pg) { pg.textContent = `✓ THIS PAGE (${flagged})`; pg.disabled = !flagged; pg.style.opacity = flagged ? '1' : '.4'; }
   const al = document.getElementById('ger-ok-all'); if (al) { const n = _ger.flagged || 0; al.textContent = `✓ ALL ${n.toLocaleString()} MATCHING`; al.disabled = !n; al.style.opacity = n ? '1' : '.4'; }
   const o = document.getElementById('ger-ok-sel'); if (o) { o.textContent = `✓ LOOKS RIGHT (${_ger.sel.size})`; o.disabled = !_ger.sel.size; o.style.opacity = _ger.sel.size ? '1' : '.4'; }
+  const es = document.getElementById('ger-edit-sel'); if (es) { es.textContent = `✎ EDIT SELECTED (${_ger.sel.size})`; es.disabled = !_ger.sel.size; es.style.opacity = _ger.sel.size ? '1' : '.4'; }
   const b = document.getElementById('ger-write-sel'); if (b) { b.textContent = `✎ WRITE SELECTED (${_ger.sel.size})`; b.disabled = !_ger.sel.size; b.style.opacity = _ger.sel.size ? '1' : '.4'; }
   const a = document.getElementById('ger-write-all'); if (a) a.textContent = `✎ WRITE ALL ${_ger.total.toLocaleString()} MATCHING`;
 }
@@ -152,6 +185,23 @@ function _geOpenEditor(rowId, cellId, fam, styles, saveCall) {
 }
 function geEditRow(i) { const x = _ger.rows[i]; _geOpenEditor(`ger-edit-${i}`, `ger-edit-cell-${i}`, x.family, x.styles, `geSaveRow(${i}, this.parentNode)`); }
 function geEditArtist(i) { const x = _ger.rows[i]; _geOpenEditor(`ger-aedit-${i}`, `ger-aedit-cell-${i}`, x.family, x.styles, `geSaveArtist(${i}, this.parentNode)`); }
+function geEditAlbum(i) { const x = _ger.rows[i]; _geOpenEditor(`ger-bedit-${i}`, `ger-bedit-cell-${i}`, x.family, x.styles, `geSaveAlbum(${i}, this.parentNode)`); }
+function geSaveAlbum(i, ed) {
+  const x = _ger.rows[i];
+  if (!confirm(`Set this genre for every song in "${x.album}" (all pages)?\n\nOther albums by ${x.artist || 'this artist'} are not changed.`)) return;
+  _geSave({..._geReadEditor(ed), album_of: x.track_id});
+}
+function geEditSelected() {
+  if (!_ger.sel.size) return;
+  const first = _ger.rows.find(r => _ger.sel.has(r.track_id)) || {};
+  geRender();
+  const box = document.getElementById('ger-seledit');
+  box.innerHTML = `<div style="font-family:var(--mono);font-size:.65rem;color:var(--muted);margin-bottom:.35rem">Genre for the ${_ger.sel.size} selected song${_ger.sel.size > 1 ? 's' : ''} only — the artist's other songs are not changed:</div>`
+    + _geEditorHTML(first.family || Object.keys(_geTax.families)[0], first.styles || [], 'geSaveSelected(this.parentNode)');
+  box.style.display = '';
+  geFillStyles(box.querySelector('.ger-editor'), first.styles || []);
+}
+function geSaveSelected(ed) { _geSave({..._geReadEditor(ed), track_ids: [..._ger.sel]}); }
 function _geReadEditor(ed) {
   return {family: ed.querySelector('[data-fam]').value,
           styles: [...ed.querySelectorAll('[data-st]')].map(s => s.value).filter(Boolean)};
@@ -438,8 +488,8 @@ async function gePlay(id) {
 function geArtistLinks(artist) {
   if (!artist) return '';
   const q = encodeURIComponent(artist);
-  return `<span class="ger-links"><a href="https://en.wikipedia.org/w/index.php?search=${q}" target="_blank" rel="noopener" data-tip="Open this artist on Wikipedia — the box at the top right lists their genres.">🌐 Wikipedia</a>`
-    + `<a href="https://www.discogs.com/search/?q=${q}&type=artist" target="_blank" rel="noopener" data-tip="Open this artist on Discogs — Discogs carries the most weight in ChartHound's genre vote.">💿 Discogs</a></span>`;
+  return `<span class="ger-links"><a href="https://en.wikipedia.org/w/index.php?search=${q}" target="_blank" rel="noopener" class="ger-chip" data-tip="Open this artist on Wikipedia — the box at the top right lists their genres.">🌐</a>`
+    + `<a href="https://www.discogs.com/search/?q=${q}&type=artist" target="_blank" rel="noopener" class="ger-chip" data-tip="Open this artist on Discogs — Discogs carries the most weight in ChartHound's genre vote.">💿</a></span>`;
 }
 
 async function geWhy(i) {
@@ -528,4 +578,128 @@ async function geApprove(idsOrSel, artist, keepCursor) {
     await geLoad(_ger.page);
     if (cur !== undefined && cur !== null) geCursor(Math.min(cur, _ger.rows.length - 1));
   } catch (e) { toast('Could not save: ' + e.message, 'error'); }
+}
+
+// ══ ARTIST CHECK (M10d) — fix album names, run-together and multi-artist tags ══
+const _acr = {page: 1, pages: 1, total: 0, rows: [], sel: new Set(), edits: {}, poll: null};
+const _AC_BADGE = {joined: ['warn', 'RUN TOGETHER'], album: ['bad', 'ALBUM AS ARTIST'], multi: ['edit', 'SEVERAL'], twin: ['fine', 'SPELLING']};
+function acOpen() {
+  if (document.getElementById('ret-main').classList.contains('ge-reviewing')) geCloseReview();
+  document.getElementById('ret-main').classList.add('ac-reviewing');
+  document.getElementById('ac-review').style.display = '';
+  acLoad(1);
+}
+function acClose() {
+  gePlayStop();
+  document.getElementById('ret-main').classList.remove('ac-reviewing');
+  document.getElementById('ac-review').style.display = 'none';
+}
+function _acFilters() {
+  return {reason: document.getElementById('ac-reason').value, search: document.getElementById('ac-search').value.trim() || null};
+}
+async function acLoad(page) {
+  page = Math.max(1, Math.min(page, _acr.pages || 1));
+  const body = document.getElementById('ac-body');
+  body.innerHTML = '<tr><td colspan="5" style="padding:1.5rem;text-align:center;color:var(--muted2)">Checking every artist tag…</td></tr>';
+  try {
+    const r = await fetch(`${API}/api/retriever/artist-check/list?page=${page}&size=100`, {method:'POST', headers:authHdrs(), body:JSON.stringify(_acFilters())});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    Object.assign(_acr, {page: d.page, pages: Math.max(1, Math.ceil(d.total / d.size)), total: d.total, rows: d.rows});
+    _acr.sel.clear();
+    const c = d.counts;
+    document.getElementById('ac-count').innerHTML = `${d.total.toLocaleString()} songs`
+      + ` <span style="color:var(--muted2)">· run together ${c.joined} · album as artist ${c.album} · several ${c.multi} · spelling ${c.twin}`
+      + (c.nofix ? ` · <span style="color:var(--amber)">${c.nofix} need you</span>` : '') + '</span>';
+    document.getElementById('ac-page').textContent = `page ${_acr.page} / ${_acr.pages}`;
+    acRender();
+  } catch (e) { body.innerHTML = `<tr><td colspan="5" style="padding:1.5rem;color:var(--red)">${esc(e.message)}</td></tr>`; }
+}
+function _acVal(x) { return _acr.edits[x.track_id] || {artist: x.proposed, title: x.proposed_title}; }
+function acRender() {
+  const body = document.getElementById('ac-body');
+  if (!_acr.rows.length) { body.innerHTML = '<tr><td colspan="5" style="padding:2rem;text-align:center;color:var(--muted2)">No suspect artist tags here. 🎉</td></tr>'; acSyncSel(); return; }
+  const q = v => JSON.stringify(v).replace(/"/g, '&quot;');
+  let html = '', last = null;
+  _acr.rows.forEach((x, i) => {
+    if (x.artist !== last) {
+      last = x.artist;
+      const grp = _acr.rows.filter(r => r.artist === x.artist);
+      html += `<tr class="ger-artist"><td><input type="checkbox" ${grp.every(r => _acr.sel.has(r.track_id)) ? 'checked' : ''} onchange="acSelectGroup(${q(x.artist)}, this.checked)"></td>
+        <td colspan="4"><span class="ger-aname">${esc(x.artist)}</span><span class="ger-cnt">${grp.length}</span>
+        <span class="ger-chips"><a href="#" class="ger-chip" onclick="acSetGroup(${q(x.artist)});return false" data-tip="Type one artist for every song under this tag on this page.">✎ set for all</a>${geArtistLinks(x.proposed || x.artist)}</span></td></tr>`;
+    }
+    const v = _acVal(x), [cls, txt] = _AC_BADGE[x.reason] || ['fine', x.reason];
+    html += `<tr class="ger-song" id="ac-row-${i}"><td><input type="checkbox" ${_acr.sel.has(x.track_id) ? 'checked' : ''} onchange="acToggle(${i}, this.checked)"></td>
+      <td>${gePlayBtn(x)}${esc(x.title)}<div class="ac-album">💿 ${esc(x.album)}</div></td>
+      <td><input class="ac-in" value="${esc(v.artist || '').replace(/"/g, '&quot;')}" placeholder="type the artist" oninput="acEdit(${i}, 'artist', this.value)">${x.proposed_title ? `<div class="ac-tl">title → <input class="ac-in ac-in-t" value="${esc(v.title || '').replace(/"/g, '&quot;')}" oninput="acEdit(${i}, 'title', this.value)"></div>` : ''}</td>
+      <td><span class="ger-badge ${cls}" data-tip="${esc(x.why)}">${txt}</span></td>
+      <td class="ger-conf"><button class="ger-ok" onclick="acWrite([${i}])" data-tip="Write this artist${x.proposed_title ? ' and title' : ''} into the file now.">✓</button><button class="ger-redo" onclick="acIgnore([${x.track_id}])" data-tip="Keep the tag as it is — this song is never flagged again.">✕</button></td></tr>`;
+  });
+  body.innerHTML = html;
+  acSyncSel();
+}
+function acEdit(i, field, val) { const x = _acr.rows[i]; _acr.edits[x.track_id] = {..._acVal(x), [field]: val}; }
+function acToggle(i, on) { const id = _acr.rows[i].track_id; on ? _acr.sel.add(id) : _acr.sel.delete(id); acSyncSel(); }
+function acSelectAll(on) { _acr.rows.forEach(r => on ? _acr.sel.add(r.track_id) : _acr.sel.delete(r.track_id)); acRender(); }
+function acSelectGroup(a, on) { _acr.rows.filter(r => r.artist === a).forEach(r => on ? _acr.sel.add(r.track_id) : _acr.sel.delete(r.track_id)); acRender(); }
+function acSetGroup(a) {
+  const first = _acr.rows.find(r => r.artist === a);
+  const v = prompt(`Artist for every song tagged "${a}" on this page:`, first ? (_acVal(first).artist || '') : '');
+  if (v === null) return;
+  _acr.rows.filter(r => r.artist === a).forEach(r => { _acr.edits[r.track_id] = {..._acVal(r), artist: v.trim()}; _acr.sel.add(r.track_id); });
+  acRender();
+}
+function acSyncSel() {
+  const n = _acr.sel.size;
+  const hd = document.getElementById('ac-all'); if (hd) hd.checked = _acr.rows.length > 0 && _acr.rows.every(r => _acr.sel.has(r.track_id));
+  const w = document.getElementById('ac-write-sel'); w.textContent = `✓ WRITE SELECTED (${n})`; w.disabled = !n; w.style.opacity = n ? '1' : '.4';
+  const k = document.getElementById('ac-keep-sel'); k.textContent = `✕ KEEP AS IS (${n})`; k.disabled = !n; k.style.opacity = n ? '1' : '.4';
+  document.getElementById('ac-write-all').textContent = `✓ WRITE ALL ${_acr.total.toLocaleString()} MATCHING`;
+}
+async function acWrite(which) {
+  let body, n;
+  if (which === 'all') {
+    n = _acr.total;
+    if (!n || !confirm(`Write the suggested artist for every matching song (all pages)?\n\nSongs with no suggestion are skipped. Only the ARTIST tag changes (and TITLE for run-together tags).\nTip: back up first on The Veterinarian.`)) return;
+    body = {filters: _acFilters()};
+  } else {
+    const rows = which === 'sel' ? _acr.rows.filter(r => _acr.sel.has(r.track_id)) : which.map(i => _acr.rows[i]);
+    const items = rows.map(r => ({track_id: r.track_id, artist: (_acVal(r).artist || '').trim(), title: r.proposed_title ? ((_acVal(r).title || '').trim() || null) : null}))
+                      .filter(it => it.artist);
+    if (!items.length) { toast('Type an artist first.', 'error'); return; }
+    if (items.length < rows.length) toast(`${rows.length - items.length} song(s) skipped — no artist typed.`, 'info');
+    n = items.length;
+    if (n > 1 && !confirm(`Write the artist into ${n} music files?`)) return;
+    body = {items};
+  }
+  try {
+    const r = await fetch(`${API}/api/retriever/artist-check/write`, {method:'POST', headers:authHdrs(), body:JSON.stringify(body)});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    toast(`Writing ${d.count.toLocaleString()} file${d.count > 1 ? 's' : ''}…`, 'info');
+    acPoll();
+  } catch (e) { toast(e.message, 'error'); }
+}
+function acPoll() {
+  clearTimeout(_acr.poll);
+  _acr.poll = setTimeout(async () => {
+    try {
+      const d = await (await fetch(`${API}/api/retriever/artist-check/status`, {headers:authHdrs()})).json();
+      const el = document.getElementById('ac-status');
+      el.textContent = d.status === 'running' ? `Writing ${d.done.toLocaleString()} / ${d.total.toLocaleString()} — ${d.message}` : (d.message || '');
+      if (d.status === 'running') return acPoll();
+      toast(d.message, d.status === 'done' ? 'success' : 'error');
+      _acr.edits = {};
+      acLoad(_acr.page);
+    } catch (e) { acPoll(); }
+  }, 1200);
+}
+async function acIgnore(ids) {
+  if (ids === 'sel') ids = [..._acr.sel];
+  if (!ids.length) return;
+  const r = await fetch(`${API}/api/retriever/artist-check/ignore`, {method:'POST', headers:authHdrs(), body:JSON.stringify({track_ids: ids})});
+  if (!r.ok) { toast(`HTTP ${r.status}`, 'error'); return; }
+  toast(`Kept ${ids.length} as is — won't be flagged again.`, 'success');
+  acLoad(_acr.page);
 }

@@ -1093,8 +1093,18 @@ async def _resolve_track_id(db: aiosqlite.Connection, track: dict) -> Optional[i
             LIMIT 1
         """, (title, artist)) as cur:
             row = await cur.fetchone()
-            if row:
-                return row[0]
+        if row:
+            # M10e: same song at a new path and the old file is gone → it moved; follow it
+            if file_path:
+                try:
+                    async with db.execute("SELECT file_path FROM tracks WHERE track_id=?", (row[0],)) as cur:
+                        old = (await cur.fetchone() or [""])[0] or ""
+                    if old != file_path and old and not os.path.exists(old) and os.path.exists(file_path):
+                        await db.execute("UPDATE tracks SET file_path=? WHERE track_id=?", (file_path, row[0]))
+                        log.info(f"Moved: '{artist} — {title}' now at {file_path}")
+                except Exception:
+                    pass
+            return row[0]
 
     # ── 3. Insert minimal row so chart_data can reference it ─────────────────
     # Upsert by file_path to avoid duplicates if path already exists

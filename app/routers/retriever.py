@@ -400,6 +400,9 @@ def _ge_vote(sources: list) -> Optional[dict]:
     if not fam_score:
         return None
     family = max(fam_score.items(), key=lambda kv: kv[1])[0]
+    # Disco as the strongest style belongs in Dance, not R&B (Discogs files it under Funk / Soul)
+    if family == "rnb" and style_score and max(style_score, key=style_score.get) == "disco":
+        family = "dance"
 
     # Styles: must fit the family and have real support (drops one-off stragglers)
     cands = sorted(((k, v) for k, v in style_score.items() if family in GE_STYLES[k][1]),
@@ -436,6 +439,37 @@ async def _ge_migrate():
         if "missing" not in cols:
             await db.execute("ALTER TABLE tracks ADD COLUMN missing INTEGER DEFAULT 0")
         await db.commit()
+
+
+def _ge_album_dir(file_path: str) -> str:
+    """An album = the song's folder; CD1 / Disc 2 sub-folders count as their parent."""
+    d = os.path.dirname(file_path or "")
+    if re.fullmatch(r"(cd|disc|disk)\s*\d+", os.path.basename(d).strip(), re.I):
+        d = os.path.dirname(d)
+    return d
+
+
+_GE_ALB_FMT = re.compile(r"\b(flac|mp3|aac|m4a|alac|wav|web|cd|vinyl|lossless|hi[- ]?res|\d{2,3}\s*kbps|kbps|"
+                         r"(16|24)[- ]?bit(\s*[-/]?\s*\d+(\.\d+)?\s*k?hz)?|\d+(\.\d+)?\s*khz|remaster(ed)?\s*\d{4})\b", re.I)
+
+
+def _ge_album_display(name: str, artist: str = "") -> str:
+    """Display-only tidy-up of an album name: drops [tags], (2021), format words, 'Artist - ' prefix."""
+    raw = (name or "").strip()
+    t = raw
+    if " " not in t and t.count(".") >= 2:
+        t = t.replace(".", " ")
+    t = re.sub(r"\[[^\]]*\]|\{[^}]*\}", " ", t)
+    t = re.sub(r"\(\s*(?:\d{4}|[^)]*\b(?:flac|mp3|bit|khz|kbps|web|hi[- ]?res|remaster(?:ed)?)\b[^)]*)\s*\)", " ", t, flags=re.I)
+    t = _GE_ALB_FMT.sub(" ", t)
+    t = re.sub(r"^\s*va\s*-\s*", "", t, flags=re.I)
+    a = (artist or "").strip().lower()
+    if a and t.lower().startswith(a):
+        rest = t[len(a):]
+        if re.match(r"^\s*-\s*\S", rest):
+            t = re.sub(r"^\s*-\s*", "", rest)
+    t = re.sub(r"\s+", " ", t).strip(" -_.,")
+    return t or raw
 
 
 def _ge_album_name(album_title: Optional[str], file_path: str) -> str:
@@ -974,7 +1008,8 @@ async def _ge_nogenre_rows(db, folder: Optional[str], search: Optional[str]) -> 
             continue
         out.append((tid, fp, artist, title, [g for g in (g1, g2, g3) if g], [], "none", None, [], ""))
     from app.routers.groomer import _artist_key
-    out.sort(key=lambda r: (_artist_key(r[2] or ""), (r[2] or "").lower(), (r[3] or "").lower()))
+    out.sort(key=lambda r: (_artist_key(r[2] or ""), (r[2] or "").lower(),
+                            _ge_album_dir(r[1]).lower(), (r[3] or "").lower()))
     return out
 
 
@@ -1029,7 +1064,8 @@ async def _online_genre_rows(scope: str, folder: Optional[str], search: Optional
                 continue
         out.append((tid, fp, artist, title, current, proposed, conf, fam, st, src or ""))
     from app.routers.groomer import _artist_key
-    out.sort(key=lambda r: (_artist_key(r[2] or ""), (r[2] or "").lower(), (r[3] or "").lower()))
+    out.sort(key=lambda r: (_artist_key(r[2] or ""), (r[2] or "").lower(),
+                            _ge_album_dir(r[1]).lower(), (r[3] or "").lower()))
     return out
 
 
@@ -1174,6 +1210,12 @@ async def genre_engine_review(req: OnlineGenreRequest, page: int = 1, size: int 
     from app.routers.groomer import _artist_key
     page = max(1, page)
     chunk = rows[(page - 1) * size: page * size]
+    albums = {}
+    if chunk:
+        async with aiosqlite.connect(settings.database_url) as db:
+            albums = dict(await (await db.execute(
+                f"SELECT track_id, album_title FROM tracks WHERE track_id IN ({','.join('?' * len(chunk))})",
+                [r[0] for r in chunk])).fetchall())
     return {
         "total": len(rows), "page": page, "size": size,
         "check": sum(1 for r in rows if r[6] in ("check", "conflict", "thin")),
@@ -1182,7 +1224,9 @@ async def genre_engine_review(req: OnlineGenreRequest, page: int = 1, size: int 
                   "proposed": r[5], "confidence": r[6], "family": r[7], "styles": r[8],
                   "ext": os.path.splitext(r[1] or "")[1].lower(), "path": host(r[1] or ""),
                   "checked": "approved" in (r[9] or "").split(","),
-                  "akey": _artist_key(r[2] or "")} for r in chunk],
+                  "akey": _artist_key(r[2] or ""),
+                  "album": _ge_album_display(_ge_album_name(albums.get(r[0]), r[1] or ""), r[2] or "") or "(no album)",
+                  "alkey": _ge_album_dir(r[1] or "")} for r in chunk],
     }
 
 
@@ -1191,6 +1235,7 @@ class GenreOverride(BaseModel):
     styles:    List[str] = []
     track_ids: Optional[List[int]] = None
     artist:    Optional[str] = None      # apply to every song by this artist
+    album_of:  Optional[int] = None      # apply to every song in this song's album
 
 
 @router.put("/genre-engine/override")
@@ -1211,6 +1256,15 @@ async def genre_engine_override(req: GenreOverride, user: dict = Depends(require
                 "SELECT t.track_id, COALESCE(t.tag_artist, a.name, '') FROM tracks t "
                 "LEFT JOIN artists a ON t.artist_id = a.artist_id")).fetchall()
             ids += [tid for tid, ar in rows if _artist_key(ar) == want]
+        if req.album_of:
+            fp = await (await db.execute("SELECT file_path FROM tracks WHERE track_id=?",
+                                         (req.album_of,))).fetchone()
+            if fp and fp[0]:
+                ad = _ge_album_dir(fp[0])
+                rows = await (await db.execute(
+                    "SELECT track_id, file_path FROM tracks WHERE substr(file_path, 1, ?) = ?",
+                    (len(ad) + 1, ad + "/"))).fetchall()
+                ids += [tid for tid, p in rows if _ge_album_dir(p) == ad]
         ids = sorted(set(ids))
         if not ids:
             raise HTTPException(400, "No songs selected.")
@@ -1274,6 +1328,33 @@ async def genre_engine_revote(user: dict = Depends(require_auth)):
     finally:
         _ge_revote_only["flag"] = False
     return _ge_job
+
+
+class GenreReset(BaseModel):
+    track_ids: List[int]
+
+
+@router.post("/genre-engine/reset")
+async def genre_engine_reset(req: GenreReset, user: dict = Depends(require_auth)):
+    """↻ Drop your edit/approval on these songs and let the engine decide again (cached lookups only)."""
+    ids = sorted(set(req.track_ids or []))[:500]
+    if not ids:
+        raise HTTPException(400, "No songs selected.")
+    t = _ge_task["task"]
+    if t is not None and not t.done():
+        raise HTTPException(409, "The engine is running.")
+    qm = ",".join("?" * len(ids))
+    async with aiosqlite.connect(settings.database_url, timeout=60) as db:
+        await db.execute(f"DELETE FROM track_genres WHERE track_id IN ({qm})", ids)
+        await db.commit()
+    await genre_engine_revote(user)
+    async with aiosqlite.connect(settings.database_url) as db:
+        rows = await (await db.execute(
+            f"SELECT track_id, family, styles, confidence FROM track_genres WHERE track_id IN ({qm})", ids)).fetchall()
+    got = {r[0]: r for r in rows}
+    return {"ok": True, "songs": [
+        {"track_id": i, "genre": _ge_display(got[i][1], json.loads(got[i][2] or "[]")) if i in got else [],
+         "confidence": got[i][3] if i in got else "none"} for i in ids]}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1441,3 +1522,295 @@ async def genre_engine_why(track_id: int, user: dict = Depends(require_auth)):
         "checked": "approved" in used,
         "confidence": g[1] if g else None,
     }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  ARTIST CHECK (M10d) — find and fix bad ARTIST tags
+#  album/series name as artist · "Artist - Title" run together · several artists
+#  in one tag · spelling twins (10cc / 10 Cc). Proposals only; nothing is written
+#  until the user accepts. Writes ARTIST (and TITLE only for run-together tags).
+# ══════════════════════════════════════════════════════════════════════════════
+_AC_SERIES = re.compile(r"\b(greatest|essentials?|hits|songs|collection|compilation|best of|top \d+|vol(ume)?\.?\s*\d+|"
+                        r"various artists|now that'?s|anthology|\d{2,4}s)\b|\s-\s\d+\s-\s", re.I)
+_AC_REASONS = {"joined": "Artist and title run together", "album": "Album or series name as artist",
+               "multi": "Several artists in one tag", "twin": "Spelled differently elsewhere"}
+_ac_job = {"status": "idle", "done": 0, "total": 0, "written": 0, "failed": 0, "message": ""}
+
+
+def _ac_twin_key(a: str) -> str:
+    return re.sub(r"[^\w]", "", (a or "").lower())
+
+
+def _ac_clean_lead(s: str) -> str:
+    return re.sub(r"^\s*\d{1,3}\s*[-._)]+\s*", "", s or "").strip()
+
+
+async def _ac_migrate(db):
+    await db.execute("CREATE TABLE IF NOT EXISTS ac_ignore (track_id INTEGER PRIMARY KEY)")
+
+
+async def _ac_rows() -> list:
+    """Every suspect song: dicts with track_id, artist, title, proposed, proposed_title, reason, album, fp."""
+    from app.routers.groomer import _artist_key, _title_key
+    await _ge_migrate()
+    async with aiosqlite.connect(settings.database_url) as db:
+        await _ac_migrate(db)
+        await db.commit()
+        rows = await (await db.execute(
+            "SELECT t.track_id, t.file_path, COALESCE(t.tag_artist, a.name, ''), COALESCE(t.title, ''), t.album_title "
+            "FROM tracks t LEFT JOIN artists a ON t.artist_id = a.artist_id "
+            "WHERE COALESCE(t.missing, 0) = 0 AND t.file_path IS NOT NULL "
+            "AND t.track_id NOT IN (SELECT track_id FROM ac_ignore)")).fetchall()
+    # library-wide counts: exact spellings per twin key, and artist keys that exist on their own
+    spell, solo = {}, set()
+    for _tid, _fp, artist, _t, _al in rows:
+        if artist:
+            k = _ac_twin_key(artist)
+            spell.setdefault(k, {})
+            spell[k][artist] = spell[k].get(artist, 0) + 1
+            solo.add(_artist_key(artist))
+    out = []
+    for tid, fp, artist, title, alb in rows:
+        a = (artist or "").strip()
+        if not a:
+            continue
+        prop, ptitle, reason = None, None, None
+        # 1. "Artist - Title" run together (often in the title too)
+        if " - " in a:
+            left, right = a.split(" - ", 1)
+            left = _ac_clean_lead(left)
+            tk, rk = _title_key(title), _title_key(right)
+            if left and not re.fullmatch(r"[\d\s._-]+", left) and rk and (
+                    rk == tk or (tk and (rk in tk or tk in rk)) or _title_key(a) == tk):
+                reason, prop = "joined", left
+                if _title_key(a) == tk or _title_key(title).startswith(_title_key(left) + " "):
+                    ptitle = right.strip()
+        # 2. album / series name used as the artist
+        if not reason:
+            album = _ge_album_display(_ge_album_name(alb, fp or ""), "")
+            same = _norm_key(a) in (_norm_key(album), _norm_key(_ge_album_name(None, fp or "")))
+            alt = _ge_alt_artist(a, title, fp or "")
+            if same and (alt or _AC_SERIES.search(a)):
+                reason, prop = "album", alt
+            elif _AC_SERIES.search(a) and alt and _artist_key(alt) != _artist_key(a):
+                reason, prop = "album", alt
+        # 3. several artists in one tag
+        if not reason:
+            parts = None
+            if ";" in a:
+                parts = [p.strip() for p in a.split(";") if p.strip()]
+            elif " / " in a:
+                parts = [p.strip() for p in a.split(" / ") if p.strip()]
+            elif "," in a:
+                p = [x.strip() for x in a.split(",") if x.strip()]
+                if len(p) > 1 and _artist_key(p[0]) in solo and _artist_key(p[0]) != _artist_key(a):
+                    parts = p
+            if parts and len(parts) > 1:
+                reason, prop = "multi", parts[0]
+        # 4. spelling twin of a more common spelling
+        if not reason:
+            sp = spell.get(_ac_twin_key(a), {})
+            if len(sp) > 1:
+                best = max(sp.items(), key=lambda kv: (kv[1], kv[0] != kv[0].lower(), kv[0]))[0]
+                if best != a:
+                    reason, prop = "twin", best
+        if reason:
+            out.append({"track_id": tid, "fp": fp or "", "artist": a, "title": title, "album": alb,
+                        "proposed": prop or "", "proposed_title": ptitle or "", "reason": reason})
+    out.sort(key=lambda r: (_artist_key(r["artist"]), r["artist"].lower(),
+                            _ge_album_dir(r["fp"]).lower(), r["title"].lower()))
+    return out
+
+
+def _norm_key(s: str) -> str:
+    return re.sub(r"[^\w]", "", (s or "").lower())
+
+
+class ArtistCheckRequest(BaseModel):
+    reason: str = "all"            # all | joined | album | multi | twin | nofix
+    search: Optional[str] = None
+
+
+@router.post("/artist-check/list")
+async def artist_check_list(req: ArtistCheckRequest, page: int = 1, size: int = 100,
+                            user: dict = Depends(require_auth)):
+    from app.routers.groomer import _artist_key
+    rows = await _ac_rows()
+    counts = {k: sum(1 for r in rows if r["reason"] == k) for k in _AC_REASONS}
+    counts["nofix"] = sum(1 for r in rows if not r["proposed"])
+    if req.reason == "nofix":
+        rows = [r for r in rows if not r["proposed"]]
+    elif req.reason in _AC_REASONS:
+        rows = [r for r in rows if r["reason"] == req.reason]
+    needle = (req.search or "").strip().lower()
+    if needle:
+        rows = [r for r in rows if needle in r["artist"].lower() or needle in r["title"].lower()]
+    size = max(20, min(size, 500))
+    page = max(1, page)
+    chunk = rows[(page - 1) * size: page * size]
+    return {"total": len(rows), "page": page, "size": size, "counts": counts, "all": sum(counts[k] for k in _AC_REASONS),
+            "rows": [{"track_id": r["track_id"], "artist": r["artist"], "title": r["title"],
+                      "proposed": r["proposed"], "proposed_title": r["proposed_title"],
+                      "reason": r["reason"], "why": _AC_REASONS[r["reason"]],
+                      "album": _ge_album_display(_ge_album_name(r["album"], r["fp"]), "") or "(no album)",
+                      "akey": _artist_key(r["artist"]) or r["artist"].lower(),
+                      "ext": os.path.splitext(r["fp"])[1].lower()} for r in chunk]}
+
+
+class ArtistIgnore(BaseModel):
+    track_ids: List[int]
+
+
+@router.post("/artist-check/ignore")
+async def artist_check_ignore(req: ArtistIgnore, user: dict = Depends(require_auth)):
+    """✕ Keep as is — the song is never flagged again."""
+    async with aiosqlite.connect(settings.database_url) as db:
+        await _ac_migrate(db)
+        await db.executemany("INSERT OR IGNORE INTO ac_ignore (track_id) VALUES (?)",
+                             [(t,) for t in (req.track_ids or [])[:5000]])
+        await db.commit()
+    return {"ok": True, "ignored": len(req.track_ids or [])}
+
+
+def write_artist_title(filepath: str, artist: str, title: Optional[str] = None) -> bool:
+    """Replace ONLY the ARTIST tag (and TITLE when given). Everything else is untouched."""
+    path = _real_write_path(filepath)
+    ext = os.path.splitext(path)[1].lower()
+    try:
+        if ext == ".mp3":
+            from mutagen.id3 import ID3, TPE1, TIT2, ID3NoHeaderError
+            try:
+                tags = ID3(path)
+            except ID3NoHeaderError:
+                tags = ID3()
+            tags.delall("TPE1")
+            tags.add(TPE1(encoding=3, text=[artist]))
+            if title:
+                tags.delall("TIT2")
+                tags.add(TIT2(encoding=3, text=[title]))
+            tags.save(path, v2_version=3)
+        elif ext == ".flac":
+            import subprocess
+            cmd = ["metaflac", "--remove-tag=ARTIST", f"--set-tag=ARTIST={artist}"]
+            if title:
+                cmd += ["--remove-tag=TITLE", f"--set-tag=TITLE={title}"]
+            res = subprocess.run(cmd + ["--", path], capture_output=True, text=True)
+            if res.returncode != 0:
+                log.error(f"metaflac artist write failed for {path}: {res.stderr}")
+                return False
+        elif ext in (".m4a", ".aac", ".mp4", ".alac"):
+            from mutagen.mp4 import MP4
+            f = MP4(path)
+            f["\xa9ART"] = [artist]
+            if title:
+                f["\xa9nam"] = [title]
+            f.save()
+        else:
+            from mutagen import File as MFile
+            f = MFile(path, easy=True)
+            if f is None:
+                return False
+            f["artist"] = [artist]
+            if title:
+                f["title"] = [title]
+            f.save()
+        return True
+    except Exception as e:
+        log.error(f"Artist write failed for {path}: {e}")
+        return False
+
+
+class ArtistFix(BaseModel):
+    track_id: int
+    artist: str
+    title: Optional[str] = None
+
+
+class ArtistWriteRequest(BaseModel):
+    items: List[ArtistFix] = []
+    filters: Optional[ArtistCheckRequest] = None   # accept every proposal matching these filters (all pages)
+
+
+async def _run_artist_write(items: List[ArtistFix]):
+    global _ac_job
+    _ac_job = {"status": "running", "done": 0, "total": len(items), "written": 0, "failed": 0,
+               "message": "Writing…"}
+    loop = asyncio.get_event_loop()
+    try:
+        async with aiosqlite.connect(settings.database_url, timeout=30) as db:
+            for i, it in enumerate(items):
+                row = await (await db.execute(
+                    "SELECT t.file_path, COALESCE(t.tag_artist, a.name, ''), COALESCE(t.title, '') FROM tracks t "
+                    "LEFT JOIN artists a ON t.artist_id = a.artist_id WHERE t.track_id=?", (it.track_id,))).fetchone()
+                artist = (it.artist or "").strip()
+                title = (it.title or "").strip() or None
+                if not row or not artist:
+                    _ac_job["failed"] += 1
+                    continue
+                fp, old_a, old_t = row
+                if not fp or not os.path.exists(_real_write_path(fp)):
+                    await db.execute("UPDATE tracks SET missing=1 WHERE track_id=?", (it.track_id,))
+                    _ac_job["failed"] += 1
+                    continue
+                ok = await loop.run_in_executor(None, write_artist_title, fp, artist, title)
+                if ok:   # File-First: DB only follows a successful file write
+                    await db.execute("UPDATE tracks SET tag_artist=? WHERE track_id=?", (artist, it.track_id))
+                    if title:
+                        await db.execute("UPDATE tracks SET title=? WHERE track_id=?", (title, it.track_id))
+                    _ac_job["written"] += 1
+                else:
+                    _ac_job["failed"] += 1
+                for field, old, new in (("artist", old_a, artist), ("title", old_t, title)):
+                    if new:
+                        await db.execute(
+                            "INSERT INTO write_log (track_id, file_path, field_changed, old_value, new_value, "
+                            "write_status, error_msg) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                            (it.track_id, fp, field, old, new, "success" if ok else "failed",
+                             None if ok else "see container log"))
+                _ac_job["done"] = i + 1
+                _ac_job["message"] = f"{artist} — {title or old_t}"
+                if (i + 1) % 100 == 0:
+                    await db.commit()
+                    await asyncio.sleep(0)
+            await db.commit()
+        refreshed = await _refresh_media_servers() if _ac_job["written"] else []
+        engine = ""
+        t = _ge_task["task"]
+        if _ac_job["written"] and (t is None or t.done()):
+            _ge_task["task"] = asyncio.create_task(_run_genre_engine())
+            engine = " · Genre Engine started to look up the corrected artists"
+        _ac_job.update({"status": "done", "message": (
+            f"Done — {_ac_job['written']:,} files updated, {_ac_job['failed']:,} failed"
+            + (f" · refresh sent to {', '.join(refreshed)}" if refreshed else "") + engine
+            + ". Next: Top Dogs ① SCAN to restore Hit Scores.")})
+        log.info(f"Artist check: {_ac_job['message']}")
+    except Exception as e:
+        log.exception("Artist write failed")
+        _ac_job.update({"status": "failed", "message": f"Error: {e}"})
+
+
+@router.post("/artist-check/write")
+async def artist_check_write(req: ArtistWriteRequest, background_tasks: BackgroundTasks,
+                             user: dict = Depends(require_auth)):
+    if _ac_job.get("status") == "running":
+        raise HTTPException(409, "Already writing.")
+    items = [i for i in req.items[:5000] if (i.artist or "").strip()]
+    if req.filters:
+        f = req.filters
+        rows = await _ac_rows()
+        if f.reason in _AC_REASONS:
+            rows = [r for r in rows if r["reason"] == f.reason]
+        needle = (f.search or "").strip().lower()
+        if needle:
+            rows = [r for r in rows if needle in r["artist"].lower() or needle in r["title"].lower()]
+        items += [ArtistFix(track_id=r["track_id"], artist=r["proposed"], title=r["proposed_title"] or None)
+                  for r in rows if r["proposed"]][:5000]
+    if not items:
+        raise HTTPException(400, "Nothing to write — no artist given.")
+    background_tasks.add_task(_run_artist_write, items)
+    return {"ok": True, "count": len(items)}
+
+
+@router.get("/artist-check/status")
+async def artist_check_status(user: dict = Depends(require_auth)):
+    return _ac_job

@@ -7,7 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐕</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/css/app.css?v=m8d2">
+<link rel="stylesheet" href="/static/css/app.css?v=m10e">
 <script>try{document.documentElement.style.fontSize=(+localStorage.getItem('ch_textsize')||18)+'px'}catch(e){}</script>
 </head>
 <body>
@@ -585,6 +585,7 @@
               <button class="btn btn-outline" id="og-btn-preview" onclick="geOpenReview()" style="flex:1;font-size:.65rem;font-family:var(--mono)">📋 REVIEW &amp; WRITE</button>
               <button class="btn btn-outline" id="og-btn-stop" onclick="ogStop()" style="font-size:.65rem;font-family:var(--mono);display:none;color:var(--red);border-color:var(--red)">■ STOP</button>
             </div>
+            <button class="btn btn-outline" onclick="acOpen()" data-tip="Find songs whose ARTIST tag is really an album name, has the title glued on, lists several artists, or is spelled differently from your other songs — and fix them. Fixed artists get their Hit Scores back after a Top Dogs scan." style="width:100%;margin-top:.35rem;font-size:.65rem;font-family:var(--mono);color:var(--amber);border-color:var(--amber)">🎤 ARTIST CHECK</button>
             <details style="margin-top:.45rem;border:1px solid var(--border);border-radius:6px;padding:.45rem .55rem" ontoggle="if(this.open)geLoadRules()">
               <summary style="cursor:pointer;font-family:var(--mono);font-size:.58rem;color:var(--muted);letter-spacing:1px">📁 FOLDER RULES</summary>
               <div style="font-family:var(--mono);font-size:.52rem;color:var(--muted2);line-height:1.6;margin:.4rem 0">Everything inside a listed folder gets that family (e.g. FULL CHRISTIAN ALBUMS → Christian); the online sources then only pick the style. ⛔ Skip leaves a folder completely alone. Click RE-VOTE after saving.</div>
@@ -606,6 +607,47 @@
             <div style="font-family:var(--display);font-size:1.3rem;letter-spacing:2px;color:var(--teal)">GENRE REVIEW</div>
             <p style="font-family:var(--body);font-size:.9rem;color:var(--muted);line-height:1.6;margin:.5rem auto 1rem;max-width:520px">Run the engine on the left, then open the review to check and write genres into your files.</p>
             <button class="btn btn-teal" onclick="geOpenReview()" style="font-family:var(--mono);font-size:.7rem">📋 REVIEW &amp; WRITE</button>
+          </div>
+          <!-- ARTIST CHECK (M10d) -->
+          <div id="ac-review" style="display:none">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.4rem">
+              <div style="font-family:var(--display);font-size:1.3rem;letter-spacing:2px;color:var(--amber)">ARTIST CHECK</div>
+              <button class="btn btn-outline" onclick="acClose()" style="font-size:.65rem;font-family:var(--mono)">✕ CLOSE</button>
+            </div>
+            <div style="font-family:var(--mono);font-size:.62rem;color:var(--muted);line-height:1.6;margin-bottom:.6rem">Songs whose <b>ARTIST tag</b> looks wrong, with a suggested fix (edit it in the box). Nothing is written until you press ✓. Only the ARTIST tag changes — plus TITLE when artist and title were glued together. Afterwards the Genre Engine looks up the corrected names, and a Top Dogs <b>① SCAN</b> brings back their Hit Scores.</div>
+            <div style="display:flex;flex-wrap:wrap;gap:.4rem;align-items:center;margin-bottom:.6rem">
+              <input id="ac-search" type="text" placeholder="Search artist or title…" onkeydown="if(event.key==='Enter')acLoad(1)" class="ger-in" style="width:200px">
+              <select id="ac-reason" onchange="acLoad(1)" class="ger-in">
+                <option value="all">All problems</option>
+                <option value="joined">Artist and title run together</option>
+                <option value="album">Album or series name as artist</option>
+                <option value="multi">Several artists in one tag</option>
+                <option value="twin">Spelled differently elsewhere</option>
+                <option value="nofix">No suggestion — need you</option>
+              </select>
+              <button class="btn btn-outline" onclick="acLoad(1)" style="font-size:.65rem;font-family:var(--mono)">🔍 APPLY</button>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:.5rem;margin-bottom:.5rem">
+              <div id="ac-count" style="font-family:var(--mono);font-size:.8rem;color:var(--muted)"></div>
+              <div style="display:flex;flex-wrap:wrap;justify-content:flex-end;gap:.4rem;align-items:center">
+                <button class="btn btn-outline" onclick="acLoad(_acr.page-1)" style="font-size:.65rem;font-family:var(--mono)">◀</button>
+                <span id="ac-page" style="font-family:var(--mono);font-size:.65rem;color:var(--muted)"></span>
+                <button class="btn btn-outline" onclick="acLoad(_acr.page+1)" style="font-size:.65rem;font-family:var(--mono)">▶</button>
+                <button class="btn btn-outline" id="ac-keep-sel" onclick="acIgnore('sel')" style="font-size:.65rem;font-family:var(--mono)" data-tip="The selected tags are fine — never flag these songs again.">✕ KEEP AS IS (0)</button>
+                <button class="btn" id="ac-write-sel" onclick="acWrite('sel')" style="font-size:.65rem;font-family:var(--mono);background:var(--amber);color:#000">✓ WRITE SELECTED (0)</button>
+                <button class="btn btn-outline" id="ac-write-all" onclick="acWrite('all')" style="font-size:.65rem;font-family:var(--mono);color:var(--amber);border-color:var(--amber)" data-tip="Write the suggested artist for every matching song on all pages. Songs with no suggestion are skipped.">✓ WRITE ALL MATCHING</button>
+              </div>
+            </div>
+            <div id="ac-status" style="font-family:var(--mono);font-size:.62rem;color:var(--teal);margin-bottom:.4rem"></div>
+            <div style="overflow:auto;border:1px solid var(--border);border-radius:8px;max-height:calc(100vh - 360px)">
+              <table class="ger-table">
+                <thead><tr>
+                  <th style="width:28px"><input type="checkbox" id="ac-all" onchange="acSelectAll(this.checked)"></th>
+                  <th>TITLE</th><th>NEW ARTIST <span style="color:var(--muted2);font-weight:normal">(edit if needed)</span></th><th>PROBLEM</th><th></th>
+                </tr></thead>
+                <tbody id="ac-body"></tbody>
+              </table>
+            </div>
           </div>
           <!-- GENRE REVIEW (M5b-1.2) -->
           <div id="ge-review" style="display:none">
@@ -639,14 +681,16 @@
                 <button class="btn btn-outline" id="ger-ok-page" onclick="geApprove('page')" style="font-size:.65rem;font-family:var(--mono);color:var(--green);border-color:var(--green)" data-tip="Keep the genre for every flagged song on this page (up to 100) as your own decision.">✓ THIS PAGE (0)</button>
                 <button class="btn btn-outline" id="ger-ok-all" onclick="geApprove('all')" style="font-size:.65rem;font-family:var(--mono);color:var(--green);border-color:var(--green)" data-tip="Keep the genre for every flagged song matching the current filters, on all pages. You'll be asked to confirm. Tip: back up first on The Veterinarian.">✓ ALL 0 MATCHING</button>
                 <button class="btn btn-outline" id="ger-ok-sel" onclick="geApprove(true)" style="font-size:.65rem;font-family:var(--mono);color:var(--green);border-color:var(--green)" data-tip="Keep the genre shown for the selected songs as your own decision. They stop counting as conflicts and the engine never changes them.">✓ LOOKS RIGHT (0)</button>
+                <button class="btn btn-outline" id="ger-edit-sel" onclick="geEditSelected()" style="font-size:.65rem;font-family:var(--mono);color:var(--amber);border-color:var(--amber)" data-tip="Set one genre for the ticked songs only. The artist's other songs are not changed.">✎ EDIT SELECTED (0)</button>
                 <button class="btn" id="ger-write-sel" onclick="geWrite(true)" style="font-size:.65rem;font-family:var(--mono);background:var(--teal);color:#000">✎ WRITE SELECTED (0)</button>
                 <button class="btn btn-outline" id="ger-write-all" onclick="geWrite(false)" style="font-size:.65rem;font-family:var(--mono);color:var(--teal);border-color:var(--teal)">✎ WRITE ALL MATCHING</button>
               </div>
             </div>
+            <div id="ger-seledit" class="ger-seledit" style="display:none"></div>
             <div style="overflow:auto;border:1px solid var(--border);border-radius:8px;max-height:calc(100vh - 330px)">
               <table class="ger-table">
                 <thead><tr>
-                  <th style="width:28px"><input type="checkbox" onchange="geSelectAll(this.checked)"></th>
+                  <th style="width:28px"><input type="checkbox" id="ger-all" onchange="geSelectAll(this.checked)"></th>
                   <th>TITLE</th><th>NEW GENRE <span style="color:var(--muted2);font-weight:normal">(click to edit)</span></th><th>CURRENT IN FILE</th><th>CONF</th>
                 </tr></thead>
                 <tbody id="ger-body"></tbody>
@@ -1760,6 +1804,21 @@
             <div id="vet-bk-list" style="margin-top:.85rem"></div>
           </div>
 
+          <!-- Fix Moved Files (M10e) -->
+          <div class="card" style="padding:1.25rem 1.5rem">
+            <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.4rem">
+              <div style="font-family:var(--display);font-size:1.1rem;letter-spacing:1.5px;color:var(--red)">🔗 FIX MOVED FILES</div>
+              <span class="grm-q" tabindex="0" data-tip="If you move music to another drive or folder, ChartHound still remembers the old place — ▶ won't play and writes can't find the file. CHECK looks for every song's file and searches all your mounted music folders for the ones that moved. You see a preview first. APPLY only changes ChartHound's database, never your music files. Your genre edits, ✓ checks and history move with the song.">?</span>
+            </div>
+            <div style="font-family:var(--mono);font-size:.62rem;color:var(--muted);line-height:1.6;margin-bottom:.6rem">Moved music to another drive? Find where every song went — relink, merge duplicates, hide what's gone.</div>
+            <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+              <button class="btn btn-outline btn-sm" id="mv-check" onclick="vetMovedCheck()" style="font-size:.62rem">🔍 CHECK</button>
+              <button class="btn btn-sm" id="mv-apply" onclick="vetMovedApply()" style="font-size:.62rem;background:var(--red);color:#000;display:none">✓ APPLY</button>
+            </div>
+            <div id="mv-status" style="font-family:var(--mono);font-size:.62rem;color:var(--muted);margin-top:.6rem;line-height:1.7"></div>
+            <div id="mv-preview" style="font-family:var(--mono);font-size:.6rem;margin-top:.4rem"></div>
+          </div>
+
           <!-- Debug Console -->
           <div class="card" style="padding:1.25rem 1.5rem;margin-top:.75rem">
             <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.75rem">
@@ -1829,14 +1888,14 @@
 
 <div id="toastWrap"></div>
 
-<script src="/static/js/core.js?v=m8d2"></script>
-<script src="/static/js/start.js?v=m8d2"></script>
-<script src="/static/js/retriever.js?v=m8d2"></script>
-<script src="/static/js/topdogs.js?v=m8d2"></script>
-<script src="/static/js/sniffer.js?v=m8d2"></script>
-<script src="/static/js/bloodhound.js?v=m8d2"></script>
-<script src="/static/js/vet.js?v=m8d2"></script>
-<script src="/static/js/tracker.js?v=m8d2"></script>
-<script src="/static/js/guide.js?v=m8d2"></script>
+<script src="/static/js/core.js?v=m10e"></script>
+<script src="/static/js/start.js?v=m10e"></script>
+<script src="/static/js/retriever.js?v=m10e"></script>
+<script src="/static/js/topdogs.js?v=m10e"></script>
+<script src="/static/js/sniffer.js?v=m10e"></script>
+<script src="/static/js/bloodhound.js?v=m10e"></script>
+<script src="/static/js/vet.js?v=m10e"></script>
+<script src="/static/js/tracker.js?v=m10e"></script>
+<script src="/static/js/guide.js?v=m10e"></script>
 </body>
 </html>
