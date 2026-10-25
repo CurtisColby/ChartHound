@@ -227,6 +227,8 @@ async function geWrite(selectedOnly) {
   const r = await fetch(`${API}/api/retriever/online-genres/apply`, {method:'POST', headers:authHdrs(), body:JSON.stringify(body)});
   if (!r.ok) { const d = await r.json().catch(() => ({})); toast(d.detail || `HTTP ${r.status}`, 'error'); return; }
   toast('Writing genres in the background — progress shows in the left panel', 'ok');
+  _ogWasRunning = true;
+  if (selectedOnly) _ger.sel.clear();
   ogPoll();
 }
 let _geRules = [];
@@ -286,6 +288,7 @@ async function ogStop() {
   await fetch(`${API}/api/retriever/online-genres/stop`, {method:'POST', headers:authHdrs()});
   toast('Stopping after the current file', 'ok');
 }
+let _ogWasRunning = false;
 async function ogPoll() {
   try {
     const r = await fetch(`${API}/api/retriever/online-genres/status`, {headers:authHdrs()});
@@ -298,6 +301,8 @@ async function ogPoll() {
       : (d.status === 'idle' ? '' : esc(d.message || ''));
     clearTimeout(_ogTimer);
     if (running) _ogTimer = setTimeout(ogPoll, 2000);
+    else if (_ogWasRunning && document.getElementById('ge-review')?.style.display !== 'none') geLoad(_ger.page);
+    _ogWasRunning = running;
   } catch {}
 }
 document.addEventListener('DOMContentLoaded', () => setTimeout(ogPoll, 2500));

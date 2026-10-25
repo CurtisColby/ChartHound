@@ -714,7 +714,9 @@ const _GRM_TREE = [
     ['classicrock','Classic Rock',[]],['hardrock','Hard Rock',[]],
     ['softrock','Soft Rock',[]],['arenarock','Arena Rock',[]],
     ['indierock','Indie Rock',[]],['folkrock','Folk Rock',[]],
-    ['southernrock','Southern Rock',[]],['punkrock','Punk / New Wave',[]],
+    ['southernrock','Southern Rock',[]],['punkrock','Punk',[]],
+    ['newwave','New Wave ↔',[]],['artrock','Art Rock',[]],['yachtrock','Yacht Rock ↔',[]],
+    ['britinv','British Invasion ↔',[]],
     ['alternative','Alternative Rock',[]],['poprock','Pop Rock ↔',[]],
     ['countryrock','Country Rock ↔',[]],['bluesrock','Blues Rock ↔',[]],
     ['progrock','Progressive Rock',[]],['psychrock','Psychedelic Rock',[]],
@@ -724,7 +726,8 @@ const _GRM_TREE = [
     ['dancepop','Dance-Pop',[]],['synthpop','Synth-Pop',[]],
     ['teenpop','Teen Pop',[]],['powerpop','Power Pop',[]],
     ['adultpop','Adult Contemporary',[]],['indipop','Indie Pop',[]],
-    ['easylistening','Easy Listening',[]],
+    ['easylistening','Easy Listening',[]],['standards','Standards ↔',[]],
+    ['chill','Chill / Downtempo ↔',[]],['soundtrack','Soundtrack',[]],
   ]],
   ['country','Country',[
     ['tradcountry','Traditional Country',[]],['countrypop','Country Pop',[]],
@@ -735,6 +738,7 @@ const _GRM_TREE = [
     ['soul','Soul',[]],['neosoul','Neo-Soul',[]],['funk','Funk',[]],
     ['motown','Motown / Classic Soul',[]],['quietstorm','Quiet Storm',[]],
     ['newjack','New Jack Swing',[]],['doowop','Doo-Wop',[]],
+    ['contrnb','Contemporary R&B',[]],
   ]],
   ['hiphop','Hip-Hop / Rap',[
     ['trap','Trap',[]],['boombap','Boom Bap',[]],
@@ -744,7 +748,7 @@ const _GRM_TREE = [
   ['metal','Metal',[
     ['heavymetal','Heavy Metal',[]],['thrashmetal','Thrash Metal',[]],
     ['deathmetal','Death Metal',[]],['doommetal','Doom / Stoner Metal',[]],
-    ['glaemmetal','Glam Metal',[]],
+    ['glaemmetal','Glam Metal',[]],['altmetal','Alt Metal ↔',[]],
   ]],
   ['dance','Dance / Electronic',[
     ['edm','EDM',[]],['house','House',[]],['techno','Techno',[]],
@@ -757,6 +761,7 @@ const _GRM_TREE = [
   ['jazz','Jazz',[
     ['smoothjazz','Smooth Jazz',[]],['vocaljazz','Vocal Jazz',[]],
     ['bebop','Bebop',[]],['jazzfusion','Jazz Fusion',[]],
+    ['swing','Swing / Big Band',[]],
   ]],
   ['blues','Blues',[
     ['chicagoblues','Chicago Blues',[]],['deltablues','Delta Blues',[]],
@@ -764,6 +769,9 @@ const _GRM_TREE = [
   ]],
   ['classical','Classical',[
     ['orchestral','Orchestral',[]],['opera','Opera',[]],['baroque','Baroque',[]],
+  ]],
+  ['world','World',[
+    ['reggae','Reggae & Ska',[]],['latin','Latin',[]],['celtic','Celtic',[]],
   ]],
   ['mellow','🌙 Mellow / Easy Listening',[]],
   // CCM family — separator handled in render

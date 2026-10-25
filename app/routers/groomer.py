@@ -1047,7 +1047,7 @@ async def _enrich_genre_from_file(db: aiosqlite.Connection, track: dict, loop) -
     try:
         g1 = genres[0] if len(genres) > 0 else None
         g2 = genres[1] if len(genres) > 1 else None
-        g3 = genres[2] if len(genres) > 2 else None
+        g3 = "; ".join(genres[2:]) or None   # 4th+ genre (e.g. Holiday) kept with the 3rd
         await db.execute(
             "UPDATE tracks SET genre_1=?, genre_2=?, genre_3=? WHERE track_id=?",
             (g1, g2, g3, track_id)
@@ -1696,6 +1696,12 @@ async def get_results(
             genre_clauses = []
             for g in genre_list:
                 keywords = _GENRE_FILTER_KEYWORDS.get(g, set()) or set()
+                if not keywords:   # M10c styles/World: match the label written to the file
+                    from app.routers import retriever as _r
+                    if g in _r.GE_STYLES:
+                        keywords = {_r.GE_STYLES[g][0].lower()}
+                    elif g in _r.GE_FAMILIES:
+                        keywords = {_r.GE_FAMILIES[g].lower()}
                 kw_list  = list(keywords)
                 # Build the file-tag match clause
                 if kw_list:

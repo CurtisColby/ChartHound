@@ -212,14 +212,14 @@ async def get_write_log(limit: int = 50, user: dict = Depends(require_auth)):
 GE_FAMILIES = {
     "rock": "Rock", "pop": "Pop", "country": "Country", "rnb": "R&B", "hiphop": "Hip-Hop",
     "metal": "Metal", "dance": "Dance", "folk": "Folk", "jazz": "Jazz", "blues": "Blues",
-    "classical": "Classical", "ccm": "Christian", "gospel": "Gospel",
+    "classical": "Classical", "ccm": "Christian", "gospel": "Gospel", "world": "World",
 }
 # style key → (display, families it belongs to). Two families = a bridge style.
 GE_STYLES = {
     "classicrock": ("Classic Rock", ("rock",)), "hardrock": ("Hard Rock", ("rock",)),
     "softrock": ("Soft Rock", ("rock", "pop")), "arenarock": ("Arena Rock", ("rock",)),
     "indierock": ("Indie Rock", ("rock",)), "folkrock": ("Folk Rock", ("rock", "folk")),
-    "southernrock": ("Southern Rock", ("rock",)), "punkrock": ("Punk / New Wave", ("rock",)),
+    "southernrock": ("Southern Rock", ("rock",)), "punkrock": ("Punk", ("rock",)),
     "alternative": ("Alternative Rock", ("rock",)), "poprock": ("Pop Rock", ("rock", "pop")),
     "countryrock": ("Country Rock", ("country", "rock")), "bluesrock": ("Blues Rock", ("blues", "rock")),
     "progrock": ("Progressive Rock", ("rock",)), "psychrock": ("Psychedelic Rock", ("rock",)),
@@ -252,12 +252,19 @@ GE_STYLES = {
     "baroque": ("Baroque", ("classical",)),
     "ccm-rock": ("Christian Rock", ("ccm", "rock")), "ccm-pop": ("Christian Pop", ("ccm", "pop")),
     "worship": ("Worship", ("ccm",)), "sgospel": ("Southern Gospel", ("gospel",)),
+    # M10c new styles
+    "artrock": ("Art Rock", ("rock",)), "newwave": ("New Wave", ("rock", "pop")),
+    "yachtrock": ("Yacht Rock", ("rock", "pop")), "britinv": ("British Invasion", ("rock", "pop")),
+    "altmetal": ("Alt Metal", ("metal", "rock")), "standards": ("Standards", ("pop", "jazz")),
+    "swing": ("Swing / Big Band", ("jazz",)), "contrnb": ("Contemporary R&B", ("rnb",)),
+    "chill": ("Chill / Downtempo", ("dance", "pop")), "soundtrack": ("Soundtrack", ("pop",)),
+    "reggae": ("Reggae & Ska", ("world",)), "latin": ("Latin", ("world",)), "celtic": ("Celtic", ("world",)),
 }
 # Raw tag text (Discogs genres/styles, MusicBrainz, Last.fm) → family or style key.
 GE_TAGS = {
     # families
     "rock": "rock", "pop": "pop", "country": "country", "r&b": "rnb", "rnb": "rnb",
-    "rhythm and blues": "rnb", "rhythm & blues": "rnb", "contemporary r&b": "rnb", "funk / soul": "rnb",
+    "rhythm and blues": "rnb", "rhythm & blues": "rnb", "contemporary r&b": "contrnb", "funk / soul": "rnb",
     "hip hop": "hiphop", "hip-hop": "hiphop", "hiphop": "hiphop", "rap": "hiphop", "pop rap": "hiphop",
     "metal": "metal", "electronic": "dance", "electronica": "dance", "dance": "dance",
     "folk": "folk", "jazz": "jazz", "blues": "blues", "classical": "classical",
@@ -266,7 +273,7 @@ GE_TAGS = {
     # rock styles
     "classic rock": "classicrock", "hard rock": "hardrock", "soft rock": "softrock",
     "arena rock": "arenarock", "aor": "arenarock", "indie rock": "indierock", "folk rock": "folkrock",
-    "southern rock": "southernrock", "punk": "punkrock", "punk rock": "punkrock", "new wave": "punkrock",
+    "southern rock": "southernrock", "punk": "punkrock", "punk rock": "punkrock", "new wave": "newwave",
     "post-punk": "punkrock", "alternative": "alternative", "alternative rock": "alternative",
     "grunge": "alternative", "britpop": "alternative", "pop rock": "poprock", "pop/rock": "poprock",
     "country rock": "countryrock", "blues rock": "bluesrock", "progressive rock": "progrock",
@@ -307,6 +314,39 @@ GE_TAGS = {
     "christian hip hop": "ccm-pop", "christian rap": "ccm-pop", "christian metal": "ccm-rock",
     "christian alternative": "ccm-rock", "christian alternative rock": "ccm-rock",
     "christian contemporary": "ccm", "worship music": "worship", "religious": "ccm",
+    # M10c — from the unmatched-tags report
+    "art rock": "artrock", "new romantic": "newwave", "yacht rock": "yachtrock",
+    "british invasion": "britinv", "merseybeat": "britinv", "beat music": "britinv", "mod": "britinv",
+    "nu metal": "altmetal", "alternative metal": "altmetal", "funk metal": "altmetal", "rap rock": "altmetal",
+    "traditional pop": "standards", "standards": "standards", "swing": "swing", "big band": "swing",
+    "alternative r&b": "contrnb", "downtempo": "chill", "ambient": "chill", "trip hop": "chill",
+    "trip-hop": "chill", "chillout": "chill", "chill out": "chill", "new age": "chill",
+    "stage & screen": "soundtrack", "soundtrack": "soundtrack",
+    "concert film": "soundtrack", "disney": "soundtrack", "show tunes": "soundtrack", "musical": "soundtrack",
+    "reggae": "reggae", "ska": "reggae", "skinhead reggae": "reggae", "dub": "reggae", "reggae-pop": "reggae",
+    "latin": "latin", "latin pop": "latin", "celtic": "celtic", "world": "world",
+    "psychedelic": "psychrock", "psychedelic pop": "psychrock", "acid rock": "psychrock", "neo-psychedelia": "psychrock",
+    "boogie rock": "classicrock", "roots rock": "classicrock", "jam band": "classicrock",
+    "stadium rock": "arenarock", "melodic rock": "arenarock", "piano rock": "poprock",
+    "classic pop and rock": "poprock", "symphonic rock": "progrock", "crossover prog": "progrock",
+    "progressive metal": "progrock", "post-grunge": "alternative", "indie": "indierock",
+    "jangle pop": "indierock", "shoegaze": "indierock", "garage rock": "rocknroll", "surf": "rocknroll",
+    "nwobhm": "heavymetal", "pop punk": "punkrock", "emo": "punkrock",
+    "art pop": "indipop", "dream pop": "indipop", "alternative pop": "indipop", "bubblegum pop": "teenpop",
+    "jazz pop": "easylistening", "sunshine pop": "easylistening", "baroque pop": "easylistening",
+    "folk pop": "singersong", "pop soul": "soul", "smooth soul": "soul", "southern soul": "soul",
+    "blue-eyed soul": "soul", "british rhythm & blues": "soul", "funk rock": "funk", "jazz-funk": "funk",
+    "bayou funk": "funk", "rnb/swing": "newjack", "hardcore hip hop": "gangstarap",
+    "hardcore hip-hop": "gangstarap", "midwest hip hop": "hiphop", "contemporary country": "countrypop",
+    "modern country": "countrypop", "nashville sound": "tradcountry", "country blues": "deltablues",
+    "electric blues": "bluesrock", "british blues": "bluesrock", "country gospel": "sgospel",
+    "praise and worship": "worship", "praise": "worship", "hillsong": "worship",
+    "contemporary gospel": "gospel", "inspirational": "ccm", "contemporary jazz": "smoothjazz",
+    "jazz-rock": "jazzfusion", "cool jazz": "jazz", "contemporary folk": "folk",
+    "progressive house": "house", "electro house": "house", "deep house": "house", "garage house": "house",
+    "tech house": "house", "progressive trance": "trance", "uplifting trance": "trance", "vocal trance": "trance",
+    "idm": "techno", "dubstep": "edm", "drum n bass": "edm", "drum and bass": "edm",
+    "breaks": "edm", "breakbeat": "edm", "electro": "dance",
 }
 # Holiday (M10c): a style any family can carry — kept out of GE_STYLES so it never bridges families.
 GE_EXTRA = {"holiday": "Holiday"}
@@ -387,7 +427,8 @@ def _ge_tag_keys(tags) -> list:
 GE_NEIGHBORS = {frozenset(p) for p in (
     ("pop", "rnb"), ("rock", "metal"), ("country", "folk"), ("rnb", "hiphop"), ("jazz", "blues"),
     ("rnb", "blues"), ("pop", "dance"), ("rock", "blues"), ("rock", "folk"), ("ccm", "gospel"),
-    ("dance", "rnb"), ("pop", "hiphop"),
+    ("dance", "rnb"), ("pop", "hiphop"), ("world", "pop"), ("world", "folk"),
+    ("world", "rock"), ("world", "rnb"), ("world", "dance"), ("world", "hiphop"),
 )}
 
 
@@ -964,7 +1005,7 @@ async def genre_engine_rules_put(req: GenreRules, user: dict = Depends(require_a
 _GENRE_KEY_DISPLAY = {
     "rock": "Rock", "classicrock": "Classic Rock", "hardrock": "Hard Rock", "softrock": "Soft Rock",
     "arenarock": "Arena Rock", "indierock": "Indie Rock", "folkrock": "Folk Rock",
-    "southernrock": "Southern Rock", "punkrock": "Punk / New Wave", "alternative": "Alternative Rock",
+    "southernrock": "Southern Rock", "punkrock": "Punk", "alternative": "Alternative Rock",
     "pop": "Pop", "dancepop": "Dance-Pop", "synthpop": "Synth-Pop", "teenpop": "Teen Pop",
     "powerpop": "Power Pop", "adultpop": "Adult Contemporary", "indipop": "Indie Pop",
     "country": "Country", "tradcountry": "Traditional Country", "countrypop": "Country Pop",
@@ -984,6 +1025,26 @@ _GENRE_KEY_DISPLAY = {
     "ccm-rock": "Christian Rock", "ccm-pop": "Christian Pop", "worship": "Worship",
     "gospel": "Gospel", "sgospel": "Southern Gospel",
 }
+
+
+def _ge_db_genres(genres: list) -> list:
+    """tracks has 3 genre columns; a 4th+ genre is kept in genre_3 as 'Style; Holiday'."""
+    g = list(genres or [])
+    return [g[0] if g else None, g[1] if len(g) > 1 else None, "; ".join(g[2:]) or None]
+
+
+def _ge_split_db(*cols) -> list:
+    return [x.strip() for c in cols if c for x in str(c).split(";") if x.strip()]
+
+
+def _ge_same(current: list, proposed: list, ordered: bool = True) -> bool:
+    """File already has the proposed genres. Older rows kept only 3 — those count as same when the first 3 match."""
+    cl, pl = [c.lower() for c in current], [p.lower() for p in proposed]
+    if not ordered:
+        cl, pl = sorted(cl), sorted(pl)
+    if cl == pl:
+        return True
+    return len(current) == 3 and len(proposed) > 3 and [c.lower() for c in current] == [p.lower() for p in proposed[:3]]
 
 
 def _real_write_path(filepath: str) -> str:
@@ -1097,12 +1158,12 @@ async def _online_genre_rows(scope: str, folder: Optional[str], search: Optional
     for tid, fp, artist, title, g1, g2, g3, fam, styles, conf, src in rows:
         st = json.loads(styles or "[]")
         proposed = _ge_display(fam, st)
-        current = [g for g in (g1, g2, g3) if g]
-        same = [c.lower() for c in current] == [p.lower() for p in proposed[:3]]
+        current = _ge_split_db(g1, g2, g3)
+        same = _ge_same(current, proposed)
         if needle and needle not in (artist or "").lower() and needle not in (title or "").lower():
             continue
         if hide_same and not track_ids and scope != "holiday" and current and conf != "conflict" and \
-                {c.lower() for c in current} == {p.lower() for p in proposed[:3]}:
+                _ge_same(current, proposed, ordered=False):
             continue
         if not track_ids:
             if scope == "empty" and current:
@@ -1202,7 +1263,7 @@ async def _run_online_genres(req: OnlineGenreRequest):
                     continue
                 ok = await loop.run_in_executor(None, write_genre_only, fp, proposed)
                 if ok:   # File-First: DB only follows a successful file write
-                    g = (proposed + [None, None, None])[:3]
+                    g = _ge_db_genres(proposed)
                     await db.execute("UPDATE tracks SET genre_1=?, genre_2=?, genre_3=? WHERE track_id=?",
                                      (g[0], g[1], g[2], tid))
                     _og_job["written"] += 1
@@ -1252,10 +1313,18 @@ async def online_genres_stop(user: dict = Depends(require_auth)):
     return {"ok": True}
 
 
+_UT_IGNORE = {
+    "british", "american", "canadian", "uk", "usa", "english", "irish", "scottish", "dutch", "german", "swedish",
+    "australian", "estados unidos", "detroit", "new orleans", "vocal", "female vocals", "female fronted",
+    "vocalist", "ballad", "acoustic", "guitar", "piano", "instrumental", "compilation", "special purpose",
+    "special purpose artist", "bogus artist", "interview", "american idol", "my top songs", "non-music",
+    "experimental", "progressive", "hardcore", "groove", "2008 universal fire victim", "death by plane crash",
+    "aln-sh", "chanson", "beat", "theme", "score", "minimal",
+}
 _UT_JUNK = re.compile(
     r"^(\d0s|\d{4}s?|\d{2}s|seen live|favou?rites?|my favou?rites?|love|loved|awesome|beautiful|best|"
     r"amazing|cool|great|good|fun|sexy|catchy|classic|oldies|male vocalists?|female vocalists?|"
-    r"under \d+ listeners|all|music|songs?|cover|covers|soundtrack|live|remix|unknown)$", re.I)
+    r"under \d+ listeners|all|music|songs?|cover|covers|live|remix|unknown)$", re.I)
 
 
 @router.get("/genre-engine/unmatched-tags")
@@ -1292,7 +1361,7 @@ async def genre_engine_unmatched_tags(min_songs: int = 15, limit: int = 150,
                           ("Last.fm song", (lt.get((ak, tk)) or [])[:6]), ("Last.fm artist", (la.get(ak) or [])[:6])):
             for t in tags:
                 t = str(t).strip().lower()
-                if not t or t in known or _UT_JUNK.match(t) or t == ak or _artist_key(t) == ak:
+                if not t or t in known or t in _UT_IGNORE or _UT_JUNK.match(t) or t == ak or _artist_key(t) == ak:
                     continue
                 seen.setdefault(t, set()).add(src)
         for t, srcs in seen.items():
@@ -1464,14 +1533,14 @@ async def _ge_write_ids(ids: List[int]) -> tuple:
     written = failed = 0
     async with aiosqlite.connect(settings.database_url, timeout=60) as db:
         for tid, fp, _a, _t, current, proposed, *_ in rows:
-            if not proposed or [c.lower() for c in current] == [p.lower() for p in proposed[:3]]:
+            if not proposed or _ge_same(current, proposed):
                 continue
             if not fp or not os.path.exists(_real_write_path(fp)):
                 await db.execute("UPDATE tracks SET missing=1 WHERE track_id=?", (tid,))
                 continue
             ok = await loop.run_in_executor(None, write_genre_only, fp, proposed)
             if ok:
-                g = (proposed + [None, None, None])[:3]
+                g = _ge_db_genres(proposed)
                 await db.execute("UPDATE tracks SET genre_1=?, genre_2=?, genre_3=? WHERE track_id=?",
                                  (g[0], g[1], g[2], tid))
                 written += 1
