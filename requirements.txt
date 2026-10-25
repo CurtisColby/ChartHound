@@ -1,27 +1,55 @@
-fastapi==0.111.0
-uvicorn[standard]==0.29.0
-python-multipart==0.0.9
+# ChartHound — Python dependencies (M9a, October 2026)
+# Every version is pinned, including sub-dependencies, and was released at least
+# two weeks before it was chosen. Update deliberately, never with a bare `pip install -U`.
 
+# Web framework
+fastapi==0.143.0
+# ASGI toolkit under FastAPI (pinned: FastAPI allows any newer)
+starlette==1.7.0
+# Server
+uvicorn[standard]==0.54.0
 # Database
-aiosqlite==0.20.0
-
-# Auth & Encryption
-bcrypt==4.0.1
-python-jose[cryptography]==3.3.0
-cryptography==42.0.8
-
-# Music file tagging (File-First standard — Constitution §2)
-mutagen==1.47.0
-
-# HTTP client for Waterfall (MusicBrainz > iTunes > Last.fm)
-httpx==0.27.0
-
-# Background task scheduler (The Bloodhound + The Tracker)
-apscheduler==3.10.4
-
-# Billboard chart data (year-end + current week scraper)
+aiosqlite==0.22.1
+# Password hashing
+bcrypt==5.0.0
+# Session tokens + short-lived play/backup passes (replaces python-jose, unmaintained)
+PyJWT==2.15.1
+# Fernet encryption for stored API keys
+cryptography==50.0.2
+# File tag writing (File-First standard — Constitution §2)
+mutagen==1.48.1
+# HTTP client for all outside services
+httpx==0.28.1
+# Billboard chart pages (genre-chart importers)
 billboard.py==7.1.0
+# Data validation
+pydantic==2.14.0
+# Settings from docker-compose environment
+pydantic-settings==2.15.0
 
-# Pydantic for data validation
-pydantic==2.7.1
-pydantic-settings==2.2.1
+# ── Pinned sub-dependencies (pulled in by the packages above) ──
+annotated-doc==0.0.5
+annotated-types==0.8.0
+anyio==4.15.1
+beautifulsoup4==4.15.0
+certifi==2026.7.22
+cffi==2.1.1
+charset-normalizer==3.5.2
+click==8.5.0
+h11==0.16.0
+httpcore==1.0.9
+httptools==0.9.0
+idna==3.20
+opentelemetry-api==1.45.1
+pycparser==3.11
+pydantic-core==2.50.0
+python-dotenv==1.2.4
+pyyaml==6.0.3
+requests==2.34.2
+soupsieve==2.10
+typing-extensions==4.16.0
+typing-inspection==0.4.4
+urllib3==2.8.0
+uvloop==0.23.0
+watchfiles==1.3.0
+websockets==17.2

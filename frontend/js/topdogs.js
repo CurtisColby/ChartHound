@@ -277,6 +277,7 @@ function grmSetMode(mode) {
 }
 
 async function grmLoadStats() {
+  grmLibraryHits();
   try {
     const r = await fetch(`${API}/api/groomer/db_stats`, {headers:authHdrs()});
     if (!r.ok) return;
@@ -513,7 +514,6 @@ async function grmPollScan() {
     const cached    = d.cached    || 0;
     const failed    = d.failed    || 0;
     const pct = total > 0 ? Math.round((processed/total)*100) : 0;
-    const rate = total > 0 ? ((matched/Math.max(processed,1))*100).toFixed(1)+'%' : '—';
 
     document.getElementById('grm-scan-bar').style.width = `${pct}%`;
     if (pct > 0) document.getElementById('grm-scan-wrap').classList.remove('bar-pulsing');
@@ -521,7 +521,6 @@ async function grmPollScan() {
     document.getElementById('grm-s-scanned').textContent = processed.toLocaleString();
     document.getElementById('grm-s-hits').textContent    = matched.toLocaleString();
     document.getElementById('grm-s-cached').textContent  = cached.toLocaleString();
-    document.getElementById('grm-s-rate').textContent    = rate;
     document.getElementById('grm-s-failed').textContent  = failed.toLocaleString();
 
     if (d.status === 'running') {
@@ -592,11 +591,12 @@ async function grmPollScan() {
       clearInterval(grmLivePoll); grmLivePoll = null;
       grmScanDone(d.status === 'done');
       if (d.status === 'done') {
-        grmLog(`✓ Scan complete — ${matched.toLocaleString()} chart hits found!`, 'ok');
-        toast(`Scan done — ${matched} chart hits!`, 'success');
+        grmLog(`✓ Scan complete — ${matched.toLocaleString()} new chart hit${matched === 1 ? '' : 's'} this run`, 'ok');
+        toast(`Scan done — ${matched.toLocaleString()} new chart hit${matched === 1 ? '' : 's'}`, 'success');
         document.getElementById('grm-status-title').textContent = 'SCAN COMPLETE';
         document.getElementById('grm-status-sub').textContent =
-          `${matched.toLocaleString()} chart hits found in your library`;
+          `${matched.toLocaleString()} new chart hit${matched === 1 ? '' : 's'} this run`;
+        grmLibraryHits();
         grmSearch();  // populate results table
         grmLoadStats();
         // If write tags was enabled, verify a sample of written files
@@ -1499,7 +1499,7 @@ function grmRenderResults(results, append = false) {
       <td style="padding:.45rem .75rem"><input type="checkbox" onchange="grmToggleTrack(${t.track_id},this.checked)" style="accent-color:var(--pink)"></td>
       <td style="padding:.45rem .75rem;color:var(--muted)">${esc(artist)}</td>
       <td style="padding:.45rem .75rem;color:var(--text)">
-        ${esc(t.title||'')}${filePath
+        ${gePlayBtn({track_id: t.track_id, ext: filePath.includes('.') ? filePath.slice(filePath.lastIndexOf('.')).toLowerCase() : ''})}${esc(t.title||'')}${filePath
           ? `<button onclick="grmCopyPath('${esc(filePath)}',this)" title="Copy file path to clipboard"
               style="margin-left:.35rem;background:none;border:none;color:var(--muted2);cursor:pointer;
               font-size:.65rem;padding:.05rem .2rem;border-radius:3px;vertical-align:middle;
@@ -1507,7 +1507,7 @@ function grmRenderResults(results, append = false) {
               onmouseout="this.style.color='var(--muted2)'">📋</button>`
           : ''}
       </td>
-      <td style="padding:.45rem .75rem;max-width:180px">${genrePillsHTML}</td>
+      <td class="grm-gcell" style="padding:.45rem .75rem;max-width:180px" onclick="grmGenreEdit(${t.track_id})" title="Click to change this song's genre">${genrePillsHTML}<span class="grm-gedit">✎</span></td>
       <td style="padding:.45rem .75rem;color:var(--muted)">${t.chart_year||t.year||'—'}</td>
       <td style="padding:.45rem .75rem">${starsHTML}</td>
       <td style="padding:.45rem .75rem;white-space:nowrap">${scoreHTML}</td>
@@ -1829,3 +1829,86 @@ function startResize(e, name) {
 })();
 
 
+
+
+// ── Library-wide hit count for the scan card (M10b) ──────────────────────────
+async function grmLibraryHits() {
+  try {
+    const d = await (await fetch(`${API}/api/groomer/skip_cache/stats`, {headers:authHdrs()})).json();
+    const el = document.getElementById('grm-s-rate');
+    if (el && d.hit != null) el.textContent = d.hit.toLocaleString();
+    const sub = document.getElementById('grm-status-sub');
+    if (sub && d.hit != null && /this run$/.test(sub.textContent)) sub.textContent += ` · ${d.hit.toLocaleString()} in your library`;
+  } catch (e) {}
+}
+
+// ── ✎ Genre editor on Top Dogs (M10b) — same decisions as Genre Review ──────
+async function grmGenreEdit(id) {
+  try {
+    await geTaxonomy();
+    const r = await fetch(`${API}/api/retriever/genre-engine/track/${id}`, {headers:authHdrs()});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    let box = document.getElementById('grm-gedit-modal');
+    if (!box) {
+      box = document.createElement('div');
+      box.id = 'grm-gedit-modal';
+      box.className = 'grm-gmodal';
+      box.onclick = e => { if (e.target === box) grmGenreClose(); };
+      document.body.appendChild(box);
+    }
+    const fam = d.family || Object.keys(_geTax.families)[0];
+    const famOpts = Object.entries(_geTax.families).map(([k, v]) => `<option value="${k}" ${k === fam ? 'selected' : ''}>${esc(v)}</option>`).join('');
+    box.innerHTML = `<div class="grm-gpanel">
+      <div class="grm-gtitle">✎ GENRE</div>
+      <div class="grm-gsong">${gePlayBtn({track_id: id, ext: d.ext})}<b>${esc(d.artist)}</b> — ${esc(d.title)}<div class="grm-gmeta">💿 ${esc(d.album)} · in file now: ${esc(d.current.join('; ') || '—')}</div></div>
+      <div class="ger-editor grm-geditor" data-styles='${JSON.stringify(d.styles || [])}'>
+        <select data-fam onchange="geFillStyles(this.parentNode)">${famOpts}</select><select data-st="0"></select><select data-st="1"></select><select data-st="2"></select>
+      </div>
+      <div class="grm-gscope">Apply to:
+        <label><input type="radio" name="grm-gscope" value="song" checked> this song</label>
+        <label><input type="radio" name="grm-gscope" value="album"> this album</label>
+        <label><input type="radio" name="grm-gscope" value="artist"> every song by ${esc(d.artist || 'this artist')}</label>
+      </div>
+      <label class="grm-gwrite"><input type="checkbox" id="grm-gwrite" checked> Write to the music file now <span style="color:var(--muted2)">(GENRE tag only)</span></label>
+      <div class="grm-gbtns"><button class="btn btn-outline btn-sm" onclick="grmGenreClose()">CANCEL</button>
+        <button class="btn btn-sm" style="background:var(--pink);color:#000" onclick="grmGenreSave(${id}, ${JSON.stringify(d.artist).replace(/"/g, '&quot;')})">SAVE</button></div>
+    </div>`;
+    geFillStyles(box.querySelector('.ger-editor'), d.styles || []);
+    box.style.display = 'flex';
+  } catch (e) { toast(e.message, 'error'); }
+}
+function grmGenreClose() {
+  gePlayStop();
+  const b = document.getElementById('grm-gedit-modal'); if (b) b.style.display = 'none';
+}
+async function grmGenreSave(id, artist) {
+  const box = document.getElementById('grm-gedit-modal');
+  const ed = _geReadEditor(box.querySelector('.ger-editor'));
+  const scope = box.querySelector('input[name="grm-gscope"]:checked').value;
+  const body = {...ed, ...(scope === 'song' ? {track_ids: [id]} : scope === 'album' ? {album_of: id} : {artist})};
+  if (scope === 'artist' && !confirm(`Set this genre for EVERY song by ${artist}?`)) return;
+  try {
+    const r = await fetch(`${API}/api/retriever/genre-engine/override`, {method:'PUT', headers:authHdrs(), body:JSON.stringify(body)});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    const ids = d.track_ids || [id];
+    const g = d.genre.slice(0, 3);
+    // Show the new genre in the table right away
+    ids.forEach(tid => {
+      const tr = document.querySelector(`#grm-tbody tr[data-id="${tid}"]`);
+      if (!tr) return;
+      const cell = tr.querySelector('.grm-gcell');
+      if (cell) cell.innerHTML = g.map(x => `<span class="grm-gpill">${esc(x)}</span>`).join('') + '<span class="grm-gedit">✎</span>';
+      tr.dataset.genres = g.join(',');
+    });
+    let msg = `Saved: ${d.genre.join('; ')} — ${d.updated} song${d.updated > 1 ? 's' : ''}`;
+    if (document.getElementById('grm-gwrite').checked) {
+      const w = await fetch(`${API}/api/retriever/online-genres/apply`, {method:'POST', headers:authHdrs(),
+        body: JSON.stringify({scope: 'all', track_ids: ids})});
+      msg += w.ok ? ' · writing to file' + (ids.length > 1 ? 's' : '') + '…' : ' · file write busy — use Review & Write later';
+    }
+    toast(msg, 'success');
+    grmGenreClose();
+  } catch (e) { toast(e.message, 'error'); }
+}
