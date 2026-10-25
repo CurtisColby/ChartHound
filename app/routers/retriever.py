@@ -1875,6 +1875,10 @@ async def _ac_migrate(db):
     await db.execute("""CREATE TABLE IF NOT EXISTS ac_lookup (
         title_key TEXT PRIMARY KEY, status TEXT NOT NULL, artist TEXT, listeners INTEGER,
         fetched_at TEXT NOT NULL DEFAULT (datetime('now')))""")
+    await db.execute("""CREATE TABLE IF NOT EXISTS ac_fp (
+        file_path TEXT PRIMARY KEY, size INTEGER, mtime INTEGER, status TEXT NOT NULL,
+        artist TEXT, title TEXT, score REAL, tmatch INTEGER DEFAULT 0,
+        fetched_at TEXT NOT NULL DEFAULT (datetime('now')))""")
 
 
 async def _ac_rows() -> list:
@@ -1891,6 +1895,8 @@ async def _ac_rows() -> list:
             "AND t.track_id NOT IN (SELECT track_id FROM ac_ignore)")).fetchall()
         found = {k: (a, n) for k, a, n in await (await db.execute(
             "SELECT title_key, artist, listeners FROM ac_lookup WHERE status='ok'")).fetchall()}
+        heard = {f: (a, t, sc, tm) for f, a, t, sc, tm in await (await db.execute(
+            "SELECT file_path, artist, title, score, tmatch FROM ac_fp WHERE status='ok'")).fetchall()}
     # library-wide counts: exact spellings per twin key, and artist keys that exist on their own
     spell, solo = {}, set()
     for _tid, _fp, artist, _t, _al in rows:
@@ -1955,7 +1961,7 @@ async def _ac_rows() -> list:
         if reason:
             out.append({"track_id": tid, "fp": fp or "", "artist": a, "title": title, "album": alb,
                         "proposed": prop or "", "proposed_title": ptitle or "", "reason": reason,
-                        "source": ""})
+                        "source": "", "fpt": reason == "album" or not prop})
             if not prop:
                 pending.append(out[-1])
     if pending:
@@ -1969,6 +1975,17 @@ async def _ac_rows() -> list:
             elif _title_key(r["title"]) in found:   # 2. 🔎 FIND ARTISTS result (Last.fm)
                 prop, n = found[_title_key(r["title"])]
                 r["proposed"], r["source"] = prop, f"🔎 Last.fm · {_ac_fmt(n)} listeners"
+    for r in out:   # 🎧 fingerprint beats every title guess
+        h = heard.get(r["fp"]) if r["fpt"] else None
+        if h:
+            a, t, sc, tm = h
+            r["proposed"] = a
+            if _artist_key(a) == _artist_key(r["artist"]):
+                r["source"] = f"🎧 AcoustID · {round(sc * 100)}% · tag already right → ✕"
+            elif tm:
+                r["source"] = f"🎧 AcoustID · {round(sc * 100)}% match"
+            else:
+                r["source"] = f"🎧 AcoustID · {round(sc * 100)}% · heard as “{t}”"
     out.sort(key=lambda r: (_artist_key(r["artist"]), r["artist"].lower(),
                             _ge_album_dir(r["fp"]).lower(), r["title"].lower()))
     return out
@@ -2319,9 +2336,9 @@ _af_task = {"task": None}
 
 @router.post("/artist-check/find")
 async def artist_check_find(user: dict = Depends(require_auth)):
-    t = _af_task["task"]
-    if t is not None and not t.done():
-        raise HTTPException(409, "Already looking up artists.")
+    for t in (_af_task["task"], _fp_task.get("task")):
+        if t is not None and not t.done():
+            raise HTTPException(409, "A lookup is already running.")
     _af_task["task"] = asyncio.create_task(_run_find_artists())
     return {"ok": True}
 
@@ -2335,6 +2352,207 @@ async def artist_check_find_stop(user: dict = Depends(require_auth)):
 @router.get("/artist-check/find-status")
 async def artist_check_find_status(user: dict = Depends(require_auth)):
     return _af_job
+
+
+# ── 🎧 FINGERPRINT (M11): fpcalc → AcoustID → recording artist, for album-as-artist + no-suggestion songs ──
+_fp_job = {"status": "idle", "done": 0, "total": 0, "found": 0, "unsure": 0, "message": ""}
+_fp_stop = {"flag": False}
+_fp_task = {"task": None}
+_FP_MIN_SCORE = 0.80
+_FP_URL = "https://api.acoustid.org/v2/lookup"
+
+
+async def _get_acoustid_key() -> str:
+    try:
+        from app.security import decrypt_token
+        async with aiosqlite.connect(settings.database_url) as db:
+            row = await (await db.execute(
+                "SELECT token_enc FROM connections WHERE service='acoustid'")).fetchone()
+        return decrypt_token(row[0]) if row and row[0] else ""
+    except Exception:
+        return ""
+
+
+def _fp_calc(path: str):
+    """(duration, fingerprint) or None. Reads the first 120 s."""
+    import subprocess
+    try:
+        res = subprocess.run(["fpcalc", "-json", "-length", "120", path],
+                             capture_output=True, text=True, timeout=90)
+        d = json.loads(res.stdout or "{}")
+        if d.get("fingerprint") and d.get("duration"):
+            return int(d["duration"]), d["fingerprint"]
+    except Exception as e:
+        log.warning(f"fpcalc failed for {path}: {e}")
+    return None
+
+
+def _fp_clean(a: str) -> str:
+    return re.sub(r"\s+", " ", (a or "").replace("\u2010", "-").replace("\u2011", "-")
+                  .replace("\u2019", "'").replace("\u2018", "'")).strip()
+
+
+def _fp_pick(results: list, title: str, spell: dict):
+    """(status, artist, heard_title, score, title_match). Title-matching recordings win;
+    several different artists with no clear leader = unsure."""
+    from app.routers.groomer import _artist_key, _title_key
+    results = sorted(results or [], key=lambda r: -(r.get("score") or 0))
+    if not results:
+        return "none", None, None, 0.0, 0
+    top = float(results[0].get("score") or 0)
+    if top < _FP_MIN_SCORE:
+        return "unsure", None, None, top, 0
+    cand = []
+    for res in results:
+        sc = float(res.get("score") or 0)
+        if sc < _FP_MIN_SCORE:
+            break
+        for rec in res.get("recordings") or []:
+            arts = rec.get("artists") or []
+            name = _fp_clean(arts[0].get("name", "")) if arts else ""
+            ak = _artist_key(name)
+            if name and ak not in ("", "variousartists", "various") and not _AC_SERIES.search(name):
+                cand.append((ak, name, rec.get("title") or "", sc))
+    if not cand:
+        return "none", None, None, top, 0
+    tk = _title_key(title)
+    match = [c for c in cand if tk and _title_key(c[2]) == tk]
+    pool = match or cand
+    votes = {}
+    for ak, name, t, sc in pool:
+        v = votes.setdefault(ak, [0, name, t, sc])
+        v[0] += 1
+    ranked = sorted(votes.items(), key=lambda kv: -kv[1][0])
+    if len(ranked) > 1:
+        mine = [kv for kv in ranked if kv[0] in spell]
+        if len(mine) == 1:
+            ranked = mine
+        elif ranked[0][1][0] < 2 * ranked[1][1][0]:
+            return "unsure", None, None, top, 0
+    ak, (_n, name, t, sc) = ranked[0]
+    if ak in spell:   # use the spelling already in your library
+        name = _ac_best_spelling(spell[ak])
+    return "ok", name, t, sc, int(bool(match))
+
+
+async def _run_fingerprint():
+    global _fp_job
+    import shutil
+    from app.routers.groomer import _artist_key
+    _fp_stop["flag"] = False
+    _fp_job = {"status": "running", "done": 0, "total": 0, "found": 0, "unsure": 0, "message": "Preparing…"}
+    try:
+        key = await _get_acoustid_key()
+        if not key:
+            _fp_job.update({"status": "failed", "message": "AcoustID is not connected — add it in The Kennel."})
+            return
+        if not shutil.which("fpcalc"):
+            _fp_job.update({"status": "failed", "message": "fpcalc is missing — rebuild: docker compose up -d --build"})
+            return
+        rows = await _ac_rows()
+        async with aiosqlite.connect(settings.database_url) as db:
+            await _ac_migrate(db)
+            spell = {}
+            for (a,) in await (await db.execute(
+                    "SELECT COALESCE(t.tag_artist, a.name, '') FROM tracks t "
+                    "LEFT JOIN artists a ON t.artist_id = a.artist_id WHERE COALESCE(t.missing, 0) = 0")).fetchall():
+                if a:
+                    d = spell.setdefault(_artist_key(a), {})
+                    d[a] = d.get(a, 0) + 1
+            cache = {f: (sz, mt, st) for f, sz, mt, st in await (await db.execute(
+                "SELECT file_path, size, mtime, status FROM ac_fp")).fetchall()}
+        todo, seen = [], set()
+        for r in rows:
+            fp = r["fp"]
+            if not r.get("fpt") or not fp or fp in seen:
+                continue
+            seen.add(fp)
+            real = _real_write_path(fp)
+            try:
+                st = os.stat(real)
+            except OSError:
+                continue
+            c = cache.get(fp)
+            if c and c[2] != "lookup_failed" and c[0] == st.st_size and c[1] == int(st.st_mtime):
+                continue
+            todo.append((fp, real, st.st_size, int(st.st_mtime), r["title"]))
+        _fp_job.update({"total": len(todo), "message": f"Fingerprinting {len(todo):,} songs…"})
+        loop = asyncio.get_event_loop()
+        last = 0.0
+        async with httpx.AsyncClient(timeout=20.0) as client, \
+                aiosqlite.connect(settings.database_url, timeout=30) as db:
+            for i, (fp, real, size, mtime, title) in enumerate(todo):
+                if _fp_stop["flag"]:
+                    break
+                status, artist, heard, score, tm = "no_fp", None, None, 0.0, 0
+                calc = await loop.run_in_executor(None, _fp_calc, real)
+                if calc:
+                    status = "lookup_failed"
+                    for attempt in range(2):
+                        wait = 0.34 - (time.monotonic() - last)   # AcoustID: 3 requests/second
+                        if wait > 0:
+                            await asyncio.sleep(wait)
+                        last = time.monotonic()
+                        try:
+                            r = await client.post(_FP_URL, data={
+                                "client": key, "duration": calc[0], "fingerprint": calc[1],
+                                "meta": "recordings", "format": "json"})
+                            d = r.json() if r.content else {}
+                        except Exception as e:
+                            log.warning(f"AcoustID lookup failed for {fp}: {e}")
+                            d, r = {}, None
+                        if d.get("status") == "ok":
+                            status, artist, heard, score, tm = _fp_pick(d.get("results"), title, spell)
+                            break
+                        err = d.get("error") or {}
+                        if err.get("code") == 4 or "api key" in str(err.get("message", "")).lower():
+                            _fp_job.update({"status": "failed",
+                                            "message": "AcoustID key rejected — check the key in The Kennel."})
+                            await db.commit()
+                            return
+                        if attempt == 0:
+                            _fp_job["message"] = "AcoustID busy — retrying in 5s…"
+                            await asyncio.sleep(5)
+                await db.execute(
+                    "INSERT OR REPLACE INTO ac_fp (file_path, size, mtime, status, artist, title, score, tmatch, "
+                    "fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))",
+                    (fp, size, mtime, status, artist, heard, score, tm))
+                _fp_job["found"] += status == "ok"
+                _fp_job["unsure"] += status != "ok"
+                _fp_job["done"] = i + 1
+                _fp_job["message"] = (f"{title} → {artist}" if artist
+                                      else f"{title} — {'no fingerprint' if status == 'no_fp' else 'no sure match'}")
+                if (i + 1) % 25 == 0:
+                    await db.commit()
+            await db.commit()
+        stopped = _fp_stop["flag"]
+        _fp_job.update({"status": "stopped" if stopped else "done", "message": (
+            f"{'Stopped' if stopped else 'Done'} — {_fp_job['found']:,} songs identified, "
+            f"{_fp_job['unsure']:,} not sure. Check them, then ✓ WRITE.")})
+        log.info(f"Fingerprint: {_fp_job['message']}")
+    except Exception as e:
+        log.exception("Fingerprint failed")
+        _fp_job.update({"status": "failed", "message": f"Error: {e}"})
+
+
+@router.post("/artist-check/fp")
+async def artist_check_fp(user: dict = Depends(require_auth)):
+    for t in (_fp_task["task"], _af_task["task"]):
+        if t is not None and not t.done():
+            raise HTTPException(409, "A lookup is already running.")
+    _fp_task["task"] = asyncio.create_task(_run_fingerprint())
+    return {"ok": True}
+
+
+@router.post("/artist-check/fp-stop")
+async def artist_check_fp_stop(user: dict = Depends(require_auth)):
+    _fp_stop["flag"] = True
+    return {"ok": True}
+
+
+@router.get("/artist-check/fp-status")
+async def artist_check_fp_status(user: dict = Depends(require_auth)):
+    return _fp_job
 
 
 @router.get("/artist-check/status")

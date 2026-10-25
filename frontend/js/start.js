@@ -34,7 +34,7 @@ function stGo(tab, view) {
 }
 
 const _ST_NAMES = {plex:'Plex', emby:'Emby', jellyfin:'Jellyfin', lastfm:'Last.fm', prowlarr:'Prowlarr',
-  radarr:'Radarr', sonarr:'Sonarr', qbittorrent:'qBittorrent', sabnzbd:'SABnzbd', discogs:'Discogs',
+  radarr:'Radarr', sonarr:'Sonarr', qbittorrent:'qBittorrent', sabnzbd:'SABnzbd', discogs:'Discogs', acoustid:'AcoustID',
   deluge:'Deluge', transmission:'Transmission'};
 
 function _stCard(s, isNext) {

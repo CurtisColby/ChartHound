@@ -688,6 +688,7 @@ function acOpen() {
   document.getElementById('ac-review').style.display = '';
   acLoad(1);
   acFindPoll(false);
+  acFpPoll(false);
 }
 function acClose() {
   gePlayStop();
@@ -732,7 +733,7 @@ function acRender() {
     const v = _acVal(x), [cls, txt] = _AC_BADGE[x.reason] || ['fine', x.reason];
     html += `<tr class="ger-song" id="ac-row-${i}"><td><input type="checkbox" ${_acr.sel.has(x.track_id) ? 'checked' : ''} onchange="acToggle(${i}, this.checked)"></td>
       <td>${gePlayBtn(x)}${esc(x.title)}<div class="ac-album">💿 ${esc(x.album)}</div></td>
-      <td><input class="ac-in" value="${esc(v.artist || '').replace(/"/g, '&quot;')}" placeholder="type the artist" oninput="acEdit(${i}, 'artist', this.value)">${x.source ? `<div class="ac-album" style="color:${x.source.startsWith('🏆') ? 'var(--amber)' : 'var(--teal)'}">${esc(x.source)}</div>` : ''}${x.proposed_title ? `<div class="ac-tl">title → <input class="ac-in ac-in-t" value="${esc(v.title || '').replace(/"/g, '&quot;')}" oninput="acEdit(${i}, 'title', this.value)"></div>` : ''}</td>
+      <td><input class="ac-in" value="${esc(v.artist || '').replace(/"/g, '&quot;')}" placeholder="type the artist" oninput="acEdit(${i}, 'artist', this.value)">${x.source ? `<div class="ac-album" style="color:${x.source.startsWith('🏆') ? 'var(--amber)' : x.source.startsWith('🎧') ? 'var(--green)' : 'var(--teal)'}">${esc(x.source)}</div>` : ''}${x.proposed_title ? `<div class="ac-tl">title → <input class="ac-in ac-in-t" value="${esc(v.title || '').replace(/"/g, '&quot;')}" oninput="acEdit(${i}, 'title', this.value)"></div>` : ''}</td>
       <td><span class="ger-badge ${cls}" data-tip="${esc(x.why)}">${txt}</span></td>
       <td class="ger-conf"><button class="ger-ok" onclick="acWrite([${i}])" data-tip="Write this artist${x.proposed_title ? ' and title' : ''} into the file now.">✓</button><button class="ger-redo" onclick="acIgnore([${x.track_id}])" data-tip="Keep the tag as it is — this song is never flagged again.">✕</button></td></tr>`;
   });
@@ -814,6 +815,40 @@ async function acFindPoll(started) {
       acLoad(1);
     }
   } catch { _afTimer = setTimeout(() => acFindPoll(started), 4000); }
+}
+// ── 🎧 FINGERPRINT (AcoustID) ──
+let _fpTimer = null;
+async function acFp() {
+  if (!confirm('Fingerprint every album-as-artist song and every song with no suggestion?\n\nRuns in the background (about 1 song a second). Already-checked files are skipped. Nothing is written until you press ✓.')) return;
+  const r = await fetch(`${API}/api/retriever/artist-check/fp`, {method: 'POST', headers: authHdrs()});
+  if (!r.ok) { const d = await r.json().catch(() => ({})); toast(d.detail || `HTTP ${r.status}`, 'error'); return; }
+  toast('Fingerprinting — progress shows above the list', 'ok');
+  acFpPoll(true);
+}
+async function acFpStop() {
+  await fetch(`${API}/api/retriever/artist-check/fp-stop`, {method: 'POST', headers: authHdrs()});
+  toast('Stopping — identified songs are kept', 'ok');
+}
+async function acFpPoll(started) {
+  clearTimeout(_fpTimer);
+  try {
+    const d = await (await fetch(`${API}/api/retriever/artist-check/fp-status`, {headers: authHdrs()})).json();
+    const running = d.status === 'running', el = document.getElementById('ac-status');
+    document.getElementById('ac-fp-stop').style.display = running ? '' : 'none';
+    const fb = document.getElementById('ac-fp'); fb.disabled = running; fb.style.opacity = running ? '.4' : '1';
+    if (running) {
+      const p = _jobProgress('fp', 'fp', d.done || 0, d.total || 0);
+      el.innerHTML = `<div style="border:1px solid var(--green);border-radius:8px;padding:.5rem .7rem">
+        <div style="display:flex;justify-content:space-between;gap:1rem"><span>🎧 Fingerprinting — ${(d.done||0).toLocaleString()} / ${(d.total||0).toLocaleString()} · ${p.pct}% · ${(d.found||0).toLocaleString()} identified</span><span style="color:var(--muted)">${p.eta}</span></div>
+        <div style="background:var(--bg);border-radius:4px;height:10px;overflow:hidden;border:1px solid var(--border);margin:.3rem 0"><div style="height:100%;width:${p.pct}%;background:var(--green);transition:width .4s"></div></div>
+        <div style="color:var(--muted2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(d.message || '')}</div></div>`;
+      _fpTimer = setTimeout(() => acFpPoll(true), 2000);
+    } else if (started && d.status !== 'idle') {
+      el.textContent = d.message || '';
+      toast(d.message || 'Done', d.status === 'failed' ? 'error' : 'success');
+      acLoad(1);
+    }
+  } catch { _fpTimer = setTimeout(() => acFpPoll(started), 4000); }
 }
 function acPoll() {
   clearTimeout(_acr.poll);

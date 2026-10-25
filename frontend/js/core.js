@@ -5,7 +5,7 @@ let currentUser = localStorage.getItem('ch_user') || '';
 let authMode = 'login';
 let heartbeatTimer = null;
 
-const SERVICES = ['plex','emby','jellyfin','lastfm','prowlarr','radarr','sonarr','qbittorrent','sabnzbd','discogs'];
+const SERVICES = ['plex','emby','jellyfin','lastfm','prowlarr','radarr','sonarr','qbittorrent','sabnzbd','discogs','acoustid'];
 const connState = Object.fromEntries(SERVICES.map(s => [s, false]));
 
 const OS_COMMANDS = {

@@ -31,7 +31,7 @@ settings = get_settings()
 VALID_SERVICES = {
     "plex", "emby", "jellyfin", "lastfm", "prowlarr",
     "radarr", "sonarr", "qbittorrent", "deluge", "transmission",
-    "discogs", "sabnzbd", "nzbget"
+    "discogs", "sabnzbd", "nzbget", "acoustid"
 }
 
 # Default URLs per service
@@ -47,6 +47,7 @@ DEFAULT_URLS = {
     "transmission": "http://YOUR-SERVER-IP:9091",
     "lastfm":       None,
     "discogs":      None,
+    "acoustid":     None,
 }
 
 
@@ -370,6 +371,19 @@ async def _run_test(service: str, base_url: str, token: str, extra: dict | None 
             username = data.get("username", "unknown")
             return f"Discogs connected as '{username}'"
         raise ValueError(f"Discogs returned status {r.status_code}")
+
+    elif service == "acoustid":
+        if not token:
+            raise ValueError("No AcoustID API key configured.")
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            r = await client.post("https://api.acoustid.org/v2/lookup", data={
+                "client": token, "duration": 200, "fingerprint": "AQAAAA", "format": "json"})
+        err = (r.json() if r.content else {}).get("error") or {}
+        if err.get("code") == 4 or "api key" in str(err.get("message", "")).lower():
+            raise ValueError("AcoustID key rejected. Use the APPLICATION key from acoustid.org → Your applications.")
+        if r.status_code >= 500:
+            raise ValueError(f"AcoustID returned {r.status_code} — try again later.")
+        return "AcoustID application key valid"
 
     raise ValueError(f"No test defined for '{service}'")
 
