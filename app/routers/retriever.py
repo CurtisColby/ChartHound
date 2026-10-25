@@ -793,7 +793,11 @@ async def _run_genre_engine():
             rules = sorted(await _ge_get_rules(), key=lambda r: -len(r["prefix"]))
             out, n_check, n_conflict, n_skip, retry = [], 0, 0, 0, []
             hol, n_hol = set(), 0
-            for tid, artist, title, fp, alb in tracks:
+            _ge_job.update({"vote_done": 0, "vote_total": len(tracks)})
+            for vi, (tid, artist, title, fp, alb) in enumerate(tracks):
+                if vi % 2000 == 0:   # let the status endpoint answer during a long vote
+                    _ge_job["vote_done"] = vi
+                    await asyncio.sleep(0)
                 ak, tk = _artist_key(artist), _title_key(title)
                 d_alb = disc.get(track_album.get(tid))
                 d = d_alb or disc.get(f"artist:{ak}")
@@ -901,6 +905,7 @@ async def _run_genre_engine():
             n_hol = sum(1 for r in out if '"holiday"' in r[2])
             if alt_for:
                 log.info(f"Genre Engine: second try with a better artist name — {n_alt:,} of {len(retry):,} songs decided")
+            _ge_job.update({"phase": "saving", "vote_done": len(tracks), "message": "Saving decisions…"})
             # Manual edits are never overwritten by a re-run
             await db.execute("DELETE FROM track_genres WHERE confidence != 'manual'")
             await db.executemany(

@@ -10,17 +10,64 @@ async function geStop() {
   await fetch(`${API}/api/retriever/genre-engine/stop`, {method:'POST', headers:authHdrs()});
   toast('Stopping — finished lookups are kept', 'ok');
 }
+// ── Job progress (M10c.5): phase, %, time left — left panel + Review banner ──
+const _jobRate = {};
+let _geRunning = false, _geWasRunning = false, _ogRunning = false;
+function _jobProgress(kind, phase, done, total) {
+  const now = Date.now(), k = _jobRate[kind];
+  if (!k || k.phase !== phase || done < k.d0) _jobRate[kind] = {phase, t0: now, d0: done};
+  const s = _jobRate[kind], secs = (now - s.t0) / 1000, rate = (done - s.d0) / Math.max(secs, 1);
+  let eta = '';
+  if (total && done < total && secs > 8 && rate > 0) {
+    const left = (total - done) / rate;
+    eta = left < 60 ? '≈ under a minute left' : left < 3600 ? `≈ ${Math.round(left / 60)} min left` : `≈ ${(left / 3600).toFixed(1)} h left`;
+  }
+  return {pct: total ? Math.min(100, Math.round(100 * done / total)) : 0, eta};
+}
+function _geJobView(d) {
+  const ph = d.phase || '';
+  if (ph === 'lookups') {
+    const done = (d.albums_done || 0) + (d.artists_done || 0), total = (d.albums_total || 0) + (d.artists_total || 0);
+    return {label: `Looking up genres — Discogs ${(d.albums_done||0).toLocaleString()}/${(d.albums_total||0).toLocaleString()} · MusicBrainz ${(d.artists_done||0).toLocaleString()}/${(d.artists_total||0).toLocaleString()}`, done, total};
+  }
+  if (ph === 'voting') return {label: `Voting on genres — ${(d.vote_done||0).toLocaleString()} / ${(d.vote_total||0).toLocaleString()} songs`, done: d.vote_done || 0, total: d.vote_total || 0};
+  if (ph === 'saving') return {label: 'Saving decisions…', done: 1, total: 1};
+  return {label: 'Preparing…', done: 0, total: 0};
+}
+function _jobBanner(label, pct, eta, msg) {
+  const b = document.getElementById('ger-job'); if (!b) return;
+  if (!label) { b.style.display = 'none'; return; }
+  b.style.display = '';
+  document.getElementById('ger-job-label').textContent = `${label}  ·  ${pct}%`;
+  document.getElementById('ger-job-eta').textContent = eta;
+  document.getElementById('ger-job-bar').style.width = pct + '%';
+  document.getElementById('ger-job-msg').textContent = msg || '';
+}
+function _jobLocks() {
+  const busy = _geRunning;
+  const rv = document.getElementById('ge-btn-revote');
+  if (rv) { rv.disabled = busy; rv.style.opacity = busy ? '.35' : '1'; rv.title = busy ? 'Wait for the Genre Engine to finish' : 'Recalculate genres and CHECK flags from saved lookups — no internet lookups, takes seconds. Your manual edits are kept.'; }
+}
 async function gePoll() {
   try {
     const r = await fetch(`${API}/api/retriever/genre-engine/status`, {headers:authHdrs()});
     if (!r.ok) return;
     const d = await r.json();
     const running = d.status === 'running';
-    const tot = (d.albums_total || 0) + (d.artists_total || 0), done = (d.albums_done || 0) + (d.artists_done || 0);
-    const bar = document.getElementById('ge-bar'); if (bar) bar.style.width = (tot ? Math.round(100 * done / tot) : (d.status === 'done' ? 100 : 0)) + '%';
+    _geRunning = running;
+    const v = _geJobView(d), p = running ? _jobProgress('ge', d.phase, v.done, v.total) : {pct: d.status === 'done' ? 100 : 0, eta: ''};
+    const bar = document.getElementById('ge-bar'); if (bar) bar.style.width = p.pct + '%';
+    if (running) _jobBanner('🧠 Genre Engine — ' + v.label, p.pct, p.eta, d.message);
+    else if (!_ogRunning) _jobBanner('');
+    _jobLocks();
+    if (_geWasRunning && !running) {
+      toast(d.message || 'Genre Engine finished', d.status === 'failed' ? 'error' : 'success');
+      if (document.getElementById('ge-review')?.style.display !== 'none') geLoad(_ger.page || 1);
+    }
+    _geWasRunning = running;
     const el = document.getElementById('ge-status');
     if (el) el.innerHTML = running
-      ? `<span style="color:var(--teal)">Discogs ${d.albums_done.toLocaleString()}/${d.albums_total.toLocaleString()} · MusicBrainz ${d.artists_done.toLocaleString()}/${d.artists_total.toLocaleString()}</span><br>${esc(d.message || '')}`
+      ? `<span style="color:var(--teal)">${esc(v.label)} · ${p.pct}%${p.eta ? ' · ' + p.eta : ''}</span><br>${esc(d.message || '')}`
       : (d.status === 'idle'
           ? (d.last_run ? `Last run ${stDate(d.last_run)} · ${(d.decided || 0).toLocaleString()} songs have a genre.` : 'Not run yet.')
           : esc(d.message || ''));
@@ -57,6 +104,7 @@ function _gerFilters() {
 async function geOpenReview() {
   document.getElementById('ret-main').classList.add('ge-reviewing');
   document.getElementById('ge-review').style.display = '';
+  gePoll(); ogPoll();
   await geTaxonomy();
   geLoad(1);
 }
@@ -133,6 +181,7 @@ function geRender() {
   geCursor(Math.min(_ger.cur ?? -1, _ger.rows.length - 1), false);
 }
 async function geReset(i) {
+  if (_geRunning) { toast('Wait for the Genre Engine to finish — progress is shown at the top', 'info'); return; }
   const x = _ger.rows[i];
   if (!confirm(`Let the engine decide "${x.title}" again?\n\nYour edit / ✓ for this song is removed. Saved lookups only — no internet.`)) return;
   toast('Re-deciding…', 'info');
@@ -274,6 +323,7 @@ async function geLoadUnmatched() {
   } catch (e) { el.innerHTML = `<span style="color:var(--red)">${esc(e.message)}</span>`; }
 }
 async function geRevote(btn) {
+  if (_geRunning) { toast('Wait for the Genre Engine to finish', 'info'); return; }
   btn.disabled = true; const t = btn.textContent; btn.textContent = 'RE-VOTING…';
   try {
     const r = await fetch(`${API}/api/retriever/genre-engine/revote`, {method:'POST', headers:authHdrs()});
@@ -300,6 +350,11 @@ async function ogPoll() {
       ? `<span style="color:var(--teal)">Writing ${d.done.toLocaleString()} / ${d.total.toLocaleString()}</span> · ${d.written.toLocaleString()} ok · ${(d.not_found||0).toLocaleString()} not found · ${d.failed} failed<br>${esc(d.message || '')}`
       : (d.status === 'idle' ? '' : esc(d.message || ''));
     clearTimeout(_ogTimer);
+    _ogRunning = running;
+    if (running) {
+      const p = _jobProgress('og', 'write', d.done || 0, d.total || 0);
+      _jobBanner(`✎ Writing genres to files — ${(d.done||0).toLocaleString()} / ${(d.total||0).toLocaleString()}`, p.pct, p.eta, d.message);
+    } else if (!_geRunning) _jobBanner('');
     if (running) _ogTimer = setTimeout(ogPoll, 2000);
     else if (_ogWasRunning && document.getElementById('ge-review')?.style.display !== 'none') geLoad(_ger.page);
     _ogWasRunning = running;
