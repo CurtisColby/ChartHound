@@ -1045,10 +1045,10 @@ document.addEventListener('DOMContentLoaded', () => {
     tip.style.left = x + 'px'; tip.style.top = Math.max(8, y) + 'px';
   };
   const hide = () => { if (tip) tip.style.display = 'none'; };
-  document.addEventListener('mouseover', e => { const q = e.target.closest?.('.grm-q'); if (q) show(q); });
-  document.addEventListener('mouseout',  e => { if (e.target.closest?.('.grm-q')) hide(); });
-  document.addEventListener('focusin',   e => { if (e.target.classList?.contains('grm-q')) show(e.target); });
-  document.addEventListener('focusout',  e => { if (e.target.classList?.contains('grm-q')) hide(); });
+  document.addEventListener('mouseover', e => { const q = e.target.closest?.('[data-tip]'); if (q) show(q); });
+  document.addEventListener('mouseout',  e => { if (e.target.closest?.('[data-tip]')) hide(); });
+  document.addEventListener('focusin',   e => { if (e.target.matches?.('[data-tip]')) show(e.target); });
+  document.addEventListener('focusout',  e => { if (e.target.matches?.('[data-tip]')) hide(); });
   document.addEventListener('DOMContentLoaded', () => {
     const qs = document.getElementById('grm-qs'); if (!qs) return;
     try { if (localStorage.getItem('ch_grm_qs') === 'closed') qs.open = false; } catch {}

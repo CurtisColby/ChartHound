@@ -51,13 +51,13 @@ const _HG_CONTENT = {
     </div>
     <div class="hg-block">
       <div class="hg-block-title">STEP 6 — TAG YOUR LIBRARY</div>
-      <p>Open <strong>The Retriever</strong> and start scanning your music folders. Use Album Tagger mode. Work folder by folder — review proposed tags, keep what looks right, override what doesn't. This is the foundation everything else builds on.</p>
+      <p>Open <strong>The Retriever</strong>, click <strong>▶ RUN ENGINE</strong>, then <strong>REVIEW &amp; WRITE</strong> to put genres into your files. Top Dogs uses these genres for playlists.</p>
     </div>
     <div class="hg-block">
       <div class="hg-block-title">YOUR LIBRARY GETS FASTER THE LONGER YOU USE IT</div>
-      <p>ChartHound's database isn't just storage — it's a knowledge cache. Every scan teaches it something: track fingerprints, chart matches, MusicBrainz IDs, Discogs lookups, Last.fm popularity scores, skip cache entries, genre-resolution waterfall results. All of it accumulates and gets reused. The first scan of a large library is the slowest one you'll ever do. Every scan after that gets faster as the database fills out and fewer tracks need fresh lookups. This is why the Clear Full Database button in The Veterinarian is in the danger zone — treat it that way.</p>
+      <p>ChartHound's database isn't just storage — it's a knowledge cache. Every scan teaches it something: track fingerprints, chart matches, MusicBrainz IDs, Discogs lookups, Last.fm popularity scores, skip cache entries, genre-resolution waterfall results. All of it accumulates and gets reused. The first scan of a large library is the slowest one you'll ever do. Every scan after that gets faster as the database fills out and fewer tracks need fresh lookups. That's why The Veterinarian has 💾 BACKUPS — protect it instead of ever starting over.</p>
     </div>
-    <div class="hg-tip">💡 <strong>Recommended order:</strong> The Kennel → The Retriever → Top Dogs → The Sniffer → The Bloodhound. The Tracker is independent and can be set up any time.</div>
+    <div class="hg-tip">💡 <strong>Recommended order:</strong> The Kennel → Top Dogs ① SCAN → The Retriever → Top Dogs ② BUILD → The Sniffer / The Bloodhound. 🧭 Start Here shows where you are. The Tracker is independent and can be set up any time.</div>
   `,
   kennel: `
     <div class="hg-section-title">🔑 THE KENNEL</div>
@@ -90,41 +90,35 @@ const _HG_CONTENT = {
   `,
   retriever: `
     <div class="hg-section-title">🏷 THE RETRIEVER</div>
-    <div class="hg-section-sub">METADATA TAGGER — WRITES TAGS TO YOUR PHYSICAL FILES</div>
-    <div class="hg-tip">💡 <strong>Run this first.</strong> The Retriever is the foundation. Tag your library here before using Top Dogs or The Sniffer for best results.</div>
+    <div class="hg-section-sub">GENRE ENGINE — WRITES GENRES TO YOUR PHYSICAL FILES</div>
     <div class="hg-block">
       <div class="hg-block-title">WHAT IT DOES</div>
-      <p>The Retriever scans your music folders and writes genre, mood, and year tags directly to your physical audio files using Mutagen. It uses a multi-source waterfall to find the best metadata: MusicBrainz → Last.fm → ListenBrainz → Deezer → Discogs → iTunes. Tags are written to the actual file before refreshing your media server — your metadata survives even if you switch media servers.</p>
+      <p>The Genre Engine gives every song <strong>one family plus up to three styles</strong> (e.g. Rock; Classic Rock; Folk Rock) by a weighted vote of Discogs album styles and genres, MusicBrainz and Last.fm tags. Broad families win over obscure community tags, and subjective tags ("awesome", "favorites") are ignored. Lookups are made once per album and cached.</p>
     </div>
     <div class="hg-block">
-      <div class="hg-block-title">FILE-FIRST METADATA WRITES</div>
-      <p>Every metadata update goes to the physical file via Mutagen before ChartHound asks Plex/Emby/Jellyfin to refresh. This means your tags survive a media server migration. If you switch from Plex to Jellyfin tomorrow, your chart data, genres, and moods go with you — because they live in the files, not in some database you can't export.</p>
-    </div>
-    <div class="hg-block">
-      <div class="hg-block-title">CONNECTIONS REQUIRED</div>
+      <div class="hg-block-title">HOW TO USE IT</div>
       <ul>
-        <li><strong>Plex, Emby, or Jellyfin</strong> — to browse and scan your library folders</li>
-        <li><strong>Last.fm</strong> — strongly recommended for genre and popularity data</li>
-        <li><strong>Discogs</strong> — optional, improves genre quality for classic rock, jazz, soul</li>
+        <li><strong>▶ RUN ENGINE</strong> — looks up new albums and votes. The first run takes 1–3 hours for a large library; later runs only look up new music.</li>
+        <li><strong>📋 REVIEW &amp; WRITE</strong> — page through the changes, filter by family, folder or conflicts, edit any song or a whole artist, then write selected or all. Your edits are saved as <strong>manual</strong> and never overwritten.</li>
+        <li><strong>↻ RE-VOTE</strong> — re-decides from the cache in seconds with no lookups (use after changing folder rules).</li>
       </ul>
     </div>
     <div class="hg-block">
-      <div class="hg-block-title">THREE MODES — WHICH TO USE</div>
+      <div class="hg-block-title">CONFLICT AND LITTLE DATA</div>
+      <p><strong>⚠ CONFLICT</strong> means the sources disagree — worth a look. <strong>? LITTLE DATA</strong> means few sources know the song — usually fine.</p>
+    </div>
+    <div class="hg-block">
+      <div class="hg-block-title">FOLDER RULES</div>
+      <p>A folder can decide the family (e.g. FULL CHRISTIAN ALBUMS → Christian; the sources then only pick the style) or be skipped entirely. Click RE-VOTE after saving.</p>
+    </div>
+    <div class="hg-block">
+      <div class="hg-block-title">CONNECTIONS</div>
       <ul>
-        <li><strong>Album Tagger (recommended)</strong> — Groups results by album. You review each album as a unit, keep, override, or accept proposed tags. Best for methodical library cleanup. Use this mode.</li>
-        <li><strong>Preview</strong> — Shows all tracks in a flat table. Select tracks individually, use SELECT BY ALBUM to group, then WRITE SELECTED, OVERRIDE, or KEEP. Good for spot-checking specific albums.</li>
-        <li><strong>Auto-Pilot</strong> — Writes proposed tags automatically with no review. Use only when you trust the metadata waterfall and want to process large folders quickly.</li>
+        <li><strong>Discogs</strong> — strongly recommended; carries the most weight in the vote</li>
+        <li><strong>Last.fm</strong> — strongly recommended; track and artist tags</li>
       </ul>
     </div>
-    <div class="hg-block">
-      <div class="hg-block-title">GENRE SELECTION</div>
-      <p>When editing genres on a card, genres are organized by parent category first (Rock, Pop, Country, etc.) then all sub-genres beneath each parent. Up to 3 genres can be assigned per track. The genres used here are the same ones Top Dogs filters on — tagging your files correctly here makes Top Dogs playlists much more accurate.</p>
-    </div>
-    <div class="hg-block">
-      <div class="hg-block-title">ITUNES RATE LIMITING</div>
-      <p>When ChartHound queries iTunes for metadata, it strictly enforces Apple's 20-requests-per-minute limit. Requests are never burst-fired, even during large batch operations. It takes a little longer — but it doesn't get rate-limited or blocked mid-scan.</p>
-    </div>
-    <div class="hg-tip">💡 <strong>Best practice:</strong> Work folder by folder in Album Tagger mode. Use the KEEP button in Preview mode to quickly dismiss albums whose tags already look correct without writing anything.</div>
+    <div class="hg-tip">💡 Only the GENRE tag is written, always to the file first. Lidarr users: set "Tag Audio Files with Metadata" to Never, or Lidarr will overwrite these genres.</div>
   `,
   sniffer: `
     <div class="hg-section-title">📡 THE SNIFFER</div>
@@ -296,9 +290,9 @@ const _HG_CONTENT = {
       <div class="hg-block-title">MAINTENANCE TOOLS</div>
       <ul>
         <li><strong>VACUUM DATABASE</strong> — Reclaims unused space in the SQLite database. Safe to run any time. Does not delete any data.</li>
-        <li><strong>INTEGRITY CHECK</strong> — Verifies the database has no corruption. If this fails, use CLEAR FULL DATABASE and start fresh.</li>
+        <li><strong>INTEGRITY CHECK</strong> — Verifies the database has no corruption. If this fails, restore your newest backup (README → Troubleshooting → Restore a backup).</li>
         <li><strong>RESET SKIP CACHE</strong> — Forces Top Dogs to re-scan all tracks on next run, ignoring previously cached results. Use if you've changed your library significantly.</li>
-        <li><strong>CLEAR METADATA CACHE</strong> — Clears the metadata cache so the next Retriever scan fetches fresh data from MusicBrainz, Last.fm, etc.</li>
+        <li><strong>💾 BACK UP NOW</strong> — Saves a complete copy of the database to /data/backups (newest 5 kept). Use ⬇ to download one and keep it off the server.</li>
       </ul>
     </div>
     <div class="hg-block">
@@ -309,8 +303,8 @@ const _HG_CONTENT = {
       <div class="hg-block-title">YOUR DATABASE IS A KNOWLEDGE CACHE</div>
       <p>ChartHound's database accumulates valuable knowledge over time — chart matches, MusicBrainz IDs, Last.fm scores, skip cache entries, genre-resolution results. The first scan of a large library is the slowest you'll ever do. Every scan after gets faster as fewer tracks need fresh lookups. A database that's been growing for weeks is a feature, not clutter.</p>
     </div>
-    <div class="hg-warn">⚠ <strong>CLEAR FULL DATABASE</strong> — This wipes everything: track records, chart data, write logs, scan history. Your music files on disk are NOT affected, but all of ChartHound's accumulated scan knowledge is lost and you'll be back to first-scan speeds. Only use this if the database is genuinely corrupted. For routine cleanup, use VACUUM instead.</div>
-    <div class="hg-tip">💡 <strong>Best practice:</strong> Run VACUUM once a month. Run INTEGRITY CHECK if ChartHound ever behaves unexpectedly. Leave CLEAR FULL DATABASE alone unless something is actually broken.</div>
+    <div class="hg-warn">⚠ <strong>If the database is ever damaged</strong>, restore the newest backup rather than starting over — the steps are in the README under Troubleshooting → Restore a backup. Your music files are never affected either way.</div>
+    <div class="hg-tip">💡 <strong>Best practice:</strong> Run VACUUM once a month. Run INTEGRITY CHECK if ChartHound ever behaves unexpectedly. Back up before big changes, and download a backup now and then.</div>
   `
 };
 

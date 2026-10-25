@@ -7,7 +7,6 @@ BUG FIXES in M4:
 - SAVE never resets URL to default (BUG-002)
 - qBittorrent test checks for "Ok." strictly (BUG-006)
 - TEST auto-retries on 503 (BUG-010)
-- YouTube API connection added
 """
 
 import json
@@ -32,7 +31,7 @@ settings = get_settings()
 VALID_SERVICES = {
     "plex", "emby", "jellyfin", "lastfm", "prowlarr",
     "radarr", "sonarr", "qbittorrent", "deluge", "transmission",
-    "youtube", "discogs", "sabnzbd", "nzbget"
+    "discogs", "sabnzbd", "nzbget"
 }
 
 # Default URLs per service
@@ -47,7 +46,6 @@ DEFAULT_URLS = {
     "deluge":       "http://YOUR-SERVER-IP:8112",
     "transmission": "http://YOUR-SERVER-IP:9091",
     "lastfm":       None,
-    "youtube":      None,
     "discogs":      None,
 }
 
@@ -354,22 +352,6 @@ async def _run_test(service: str, base_url: str, token: str, extra: dict | None 
             return "Transmission reachable"
         raise ValueError(f"Transmission returned error {r.status_code}")
 
-    elif service == "youtube":
-        if not token:
-            raise ValueError("No YouTube API key configured.")
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            r = await client.get(
-                "https://www.googleapis.com/youtube/v3/channels",
-                params={"part": "id", "mine": "true", "key": token}
-            )
-        if r.status_code == 400:
-            data = r.json()
-            err = data.get("error", {}).get("message", "Invalid API key")
-            raise ValueError(f"YouTube API error: {err}")
-        if r.status_code == 403:
-            raise ValueError("YouTube API key rejected (403). Check key and enabled APIs.")
-        return "YouTube API key valid"
-
     elif service == "discogs":
         if not token:
             raise ValueError("No Discogs token configured.")
@@ -388,16 +370,6 @@ async def _run_test(service: str, base_url: str, token: str, extra: dict | None 
             username = data.get("username", "unknown")
             return f"Discogs connected as '{username}'"
         raise ValueError(f"Discogs returned status {r.status_code}")
-
-    elif service == "file_writer":
-        if not base_url:
-            raise ValueError("No File Writer URL configured. Enter http://YOUR-SERVER-IP:4321")
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            r = await client.get(f"{base_url.rstrip('/')}/ping")
-        if r.is_success:
-            data = r.json()
-            return f"File Writer connected — version {data.get('version', '?')}"
-        raise ValueError(f"File Writer returned status {r.status_code}")
 
     raise ValueError(f"No test defined for '{service}'")
 

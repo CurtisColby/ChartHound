@@ -7,7 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐕</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/css/app.css?v=m8c">
+<link rel="stylesheet" href="/static/css/app.css?v=m8c4">
 <script>try{document.documentElement.style.fontSize=(+localStorage.getItem('ch_textsize')||18)+'px'}catch(e){}</script>
 </head>
 <body>
@@ -381,7 +381,7 @@
             <div class="label-row"><label>API Key</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">Last.fm API keys are completely free — no credit card needed. Visit last.fm/api/account/create, sign up, and your key appears immediately. No URL needed for Last.fm.</div></div></div>
             <input type="password" id="cToken-lastfm" placeholder="Stored encrypted · never logged">
             <div class="field-hint">Free at <a href="https://www.last.fm/api/account/create" target="_blank">last.fm/api/account/create</a> — no credit card · no URL needed</div>
-            <p style="font-family:var(--mono);font-size:.57rem;color:var(--muted);line-height:1.7;margin-bottom:.6rem">Tertiary waterfall source — mood tags and chart keyword detection. Strongly recommended for best metadata quality.</p>
+            <p style="font-family:var(--mono);font-size:.57rem;color:var(--muted);line-height:1.7;margin-bottom:.6rem">Hit Score staying-power boost, never-charted classics, Big Hits and one of the Genre Engine sources. Strongly recommended.</p>
             <div class="conn-btn-row">
               <button class="btn btn-outline btn-sm" onclick="saveConn('lastfm')">💾 SAVE</button>
               <button class="btn btn-purple btn-sm" id="testBtn-lastfm" onclick="testConn('lastfm')">⚡ TEST</button>
@@ -549,84 +549,6 @@
       <div class="pane" id="pane-retriever">
         <div class="pane-aside" id="aside-retriever">
           <button class="pane-collapse-btn" onclick="toggleAside('retriever')" title="Collapse/expand panel">◀</button>
-          <div id="retrieverLfmBanner" class="feature-banner warn" style="display:none">
-            ⚠ Last.fm not connected — mood tags limited. Connect in The Kennel for best results.
-          </div>
-          <details class="ret-legacy" data-adv="ret-legacy" ontoggle="advOpen('ret-legacy-main',this.open)" style="border:1px solid var(--border);border-radius:8px;padding:.55rem .7rem">
-            <summary style="cursor:pointer;font-family:var(--mono);font-size:.58rem;letter-spacing:2px;color:var(--muted);list-style:none">▸ LEGACY RETRIEVER <span style="letter-spacing:0;color:var(--muted2)">— old one-song-at-a-time tagging (slow). Use the Genre Engine below instead.</span></summary>
-            <div style="display:flex;flex-direction:column;gap:1rem;margin-top:.7rem">
-          <div>
-            <div class="section-label sl-teal">SCAN SCOPE</div>
-            <div id="subfolderInput" style="display:block">
-              <div class="label-row"><label>Subfolder</label>
-                <div class="help-wrap"><button class="help-btn" tabindex="0">?</button>
-                  <div class="tooltip">Browse your /music mount to pick a subfolder. Great for testing on one artist or genre before scanning the full 33k library.</div>
-                </div>
-              </div>
-              <div style="display:flex;gap:.35rem;margin-bottom:.35rem">
-                <select id="subfolderPath" style="flex:1;margin-bottom:0;font-size:.65rem">
-                  <option value="">— select a folder —</option>
-                </select>
-                <button onclick="browseSubfolder()" style="background:var(--teal);border:none;border-radius:5px;color:#000;font-family:var(--mono);font-size:.58rem;font-weight:bold;padding:.3rem .6rem;cursor:pointer;white-space:nowrap;flex-shrink:0" title="Refresh Folder List — click to load your music library subfolders so you can select one to scan">⟳ LOAD</button>
-                <button onclick="addSubfolderToQueue()" style="background:var(--teal);border:none;border-radius:5px;color:#000;font-family:var(--mono);font-size:.58rem;padding:.3rem .6rem;cursor:pointer;white-space:nowrap;flex-shrink:0" title="Add to scan queue">＋ ADD</button>
-              </div>
-              <div id="subfolderQueue" style="display:none;margin-bottom:.35rem">
-                <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted);letter-spacing:1px;margin-bottom:.25rem">SCAN QUEUE</div>
-                <div id="subfolderQueueList" style="display:flex;flex-direction:column;gap:.2rem"></div>
-              </div>
-              <div class="field-hint" id="subfolderHint">Click ⟳ to load folders · ＋ ADD to queue multiple folders</div>
-            </div>
-          </div>
-          <div>
-            <div class="section-label sl-teal">MODE</div>
-            <div class="mode-toggle">
-              <div class="mode-btn active" onclick="setMode('preview',this)">👁 PREVIEW</div>
-              <div class="mode-btn" onclick="setMode('album_tagger',this)">📀 ALBUM TAGGER</div>
-              <div class="mode-btn" onclick="setMode('autopilot',this)">⚡ AUTO-PILOT</div>
-              <div class="mode-btn" onclick="setMode('genre_scout',this)">🔍 GENRE SCOUT</div>
-            </div>
-            <p style="font-family:var(--mono);font-size:.58rem;color:var(--muted);line-height:1.7" id="modeDesc">Preview mode shows proposed vs current metadata. You approve before anything is written to your files.</p>
-          </div>
-          <div id="batchSizeSection">
-            <div class="section-label sl-teal">BATCH SIZE</div>
-            <div class="slider-wrap">
-              <div class="slider-header">
-                <label style="margin:0">Tracks per chunk</label>
-                <div class="slider-val" id="chunkDisplay">20</div>
-              </div>
-              <input type="range" id="chunkSlider" min="5" max="50" value="20" oninput="document.getElementById('chunkDisplay').textContent=this.value">
-              <div style="display:flex;justify-content:space-between;margin-top:.25rem">
-                <span style="font-family:var(--mono);font-size:.5rem;color:var(--muted)">5 (fewer API calls)</span>
-                <span style="font-family:var(--mono);font-size:.5rem;color:var(--muted)">50 (more API calls)</span>
-              </div>
-            </div>
-          </div>
-          <div>
-            <div class="section-label sl-teal">CONTROLS</div>
-            <div style="display:flex;flex-direction:column;gap:.5rem">
-              <button class="btn btn-teal" id="btnStartScan" onclick="startScan()">▶ START SCAN</button>
-              <button class="btn btn-teal" id="btnScoutScan" onclick="scoutStart()" style="display:none">🔍 SCAN FILES FOR MISSING GENRES</button>
-              <div style="display:flex;gap:.5rem">
-                <button class="btn btn-outline btn-sm" id="btnPauseScan" onclick="pauseScan()" disabled style="flex:1">⏸ PAUSE</button>
-                <button class="btn btn-red btn-sm" id="btnStopScan" onclick="stopScan()" style="flex:1">⏹ STOP</button>
-              </div>
-            </div>
-          </div>
-          <!-- CUSTOM TAG MANAGER -->
-          <div id="custom-tag-manager-section">
-            <div class="section-label sl-teal">CUSTOM TAGS</div>
-            <div style="margin-bottom:.35rem">
-              <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted);letter-spacing:1px;margin-bottom:.3rem">GENRES</div>
-              <div id="custom-genre-manager" style="display:flex;flex-wrap:wrap;gap:0"></div>
-            </div>
-            <div>
-              <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted);letter-spacing:1px;margin-bottom:.3rem">MOODS</div>
-              <div id="custom-mood-manager" style="display:flex;flex-wrap:wrap;gap:0"></div>
-            </div>
-          </div>
-
-            </div>
-          </details>
 
           <div>
             <div class="section-label sl-teal">GENRE ENGINE</div>
@@ -654,18 +576,15 @@
             <div id="og-status" style="font-family:var(--mono);font-size:.55rem;color:var(--muted2);line-height:1.6;margin-top:.4rem;word-break:break-word"></div>
           </div>
 
-<details class="adv" data-adv="retriever"><summary>ADVANCED ▸ <span class="adv-sub">clear metadata cache</span></summary><div class="adv-body">
-          <div>
-            <div class="section-label sl-teal">MAINTENANCE</div>
-            <button class="btn btn-outline" onclick="clearCache()" style="font-size:.7rem;font-family:var(--mono);letter-spacing:.5px">🗑 CLEAR METADATA CACHE</button>
-            <p style="font-family:var(--mono);font-size:.56rem;color:var(--muted);line-height:1.7;margin-top:.4rem">Forgets the Retriever's lookups so the next Retriever scan fetches fresh data from MusicBrainz · Last.fm · Discogs · Deezer · ListenBrainz. Your tracks, Top Dogs results, Hit Scores and hand-edited tracks are kept.</p>
-            <p style="font-family:var(--mono);font-size:.54rem;color:var(--muted2);line-height:1.7;margin-top:.4rem;font-style:italic">Need a full database wipe? It lives on The Veterinarian tab under Danger Zone.</p>
-          </div>
-</div></details>
         </div>
 
         <div class="pane-resizer" id="resizer-retriever" onmousedown="startResize(event,'retriever')"></div>
         <div class="pane-main" id="ret-main">
+          <div id="ge-empty" class="card" style="text-align:center;padding:2.5rem 1.5rem">
+            <div style="font-family:var(--display);font-size:1.3rem;letter-spacing:2px;color:var(--teal)">GENRE REVIEW</div>
+            <p style="font-family:var(--body);font-size:.9rem;color:var(--muted);line-height:1.6;margin:.5rem auto 1rem;max-width:520px">Run the engine on the left, then open the review to check and write genres into your files.</p>
+            <button class="btn btn-teal" onclick="geOpenReview()" style="font-family:var(--mono);font-size:.7rem">📋 REVIEW &amp; WRITE</button>
+          </div>
           <!-- GENRE REVIEW (M5b-1.2) -->
           <div id="ge-review" style="display:none">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.6rem">
@@ -685,6 +604,8 @@
               <select id="ger-family" onchange="geLoad(1)" class="ger-in"><option value="">Any family</option></select>
               <input id="ger-folder" type="text" placeholder="Folder e.g. /music/Eagles" onkeydown="if(event.key==='Enter')geLoad(1)" class="ger-in" style="width:190px">
               <button class="btn btn-outline" onclick="geLoad(1)" style="font-size:.65rem;font-family:var(--mono)">🔍 APPLY</button>
+              <label class="ger-hide"><input type="checkbox" id="ger-hide-same" checked onchange="geLoad(1)"> Hide songs already correct<span class="grm-q" tabindex="0" data-tip="Hides songs whose file already has exactly this genre (any order). Writing them would change nothing, so there is nothing to decide. Untick to see every song.">?</span></label>
+              <span class="ger-keys" tabindex="0" data-tip="Keyboard (when not typing in a box):&#10;↓ / ↑ or J / K — move between songs&#10;Space — play / stop&#10;X — select / unselect&#10;E — edit genre&#10;W — why? (what each source said)&#10;C — copy folder path&#10;Esc — close the editor">⌨ KEYS</span>
             </div>
             <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:.5rem;margin-bottom:.5rem">
               <div id="ger-count" style="font-family:var(--mono);font-size:.8rem;color:var(--muted)"></div>
@@ -711,297 +632,6 @@
             <span>⚠️ If you use <strong>Lidarr</strong> — go to Lidarr → Settings → Metadata → set <strong>"Tag Audio Files with Metadata"</strong> to <strong>Never</strong> to prevent Lidarr from overwriting ChartHound's tags.</span>
             <button onclick="document.getElementById('bannerLidarr').style.display='none'" style="background:none;border:none;color:inherit;cursor:pointer;font-size:.85rem;padding:0 0 0 .75rem;opacity:.5;flex-shrink:0;line-height:1" title="Dismiss">✕</button>
           </div>
-<details class="adv" data-adv="ret-legacy-main"><summary>LEGACY RETRIEVER RESULTS ▸ <span class="adv-sub">scan progress · preview · override · album tagger · genre scout</span></summary><div class="adv-body">
-          <div class="section-label sl-teal">SCAN PROGRESS</div>
-          <div id="bannerTip" class="feature-banner recommend" style="justify-content:space-between;align-items:flex-start">
-            <span>⭐ Run The Retriever first to pre-populate the metadata cache. The Sniffer and Top Dogs will be significantly faster once your library is tagged. Chart data is also written permanently to your files as a backup.</span>
-            <button onclick="document.getElementById('bannerTip').style.display='none'" style="background:none;border:none;color:inherit;cursor:pointer;font-size:.85rem;padding:0 0 0 .75rem;opacity:.5;flex-shrink:0;line-height:1" title="Dismiss">✕</button>
-          </div>
-          <div class="card">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem">
-              <div style="font-family:var(--display);font-size:1.1rem;letter-spacing:1.5px;color:var(--text)" id="scanStatusTitle">READY TO SCAN</div>
-              <div style="font-family:var(--mono);font-size:.6rem;color:var(--muted)" id="scanStatusSub">Configure options and click Start Scan</div>
-            </div>
-            <div class="progress-wrap">
-              <div class="progress-bar" id="scanProgressWrap"><div class="progress-fill" id="scanProgressBar"></div></div>
-            </div>
-            <div class="progress-stats">
-              <div class="p-stat"><div class="p-stat-num" id="statTotal">0</div><div class="p-stat-label">TOTAL</div></div>
-              <div class="p-stat"><div class="p-stat-num" id="statProcessed">0</div><div class="p-stat-label">PROCESSED</div></div>
-              <div class="p-stat"><div class="p-stat-num" style="color:var(--green)" id="statMatched">0</div><div class="p-stat-label">MATCHED</div></div>
-              <div class="p-stat"><div class="p-stat-num" style="color:var(--red)" id="statFailed">0</div><div class="p-stat-label">UNMATCHED</div></div>
-              <div class="p-stat"><div class="p-stat-num" style="color:var(--amber)" id="statCached">0</div><div class="p-stat-label">CACHED</div></div>
-            </div>
-          </div>
-          <div>
-            <div class="section-label sl-teal">SCAN LOG</div>
-            <div class="log-console" id="scanLog">
-              <span class="log-info">ChartHound Retriever ready. Configure options above and start a scan.</span>
-            </div>
-          </div>
-          <div id="previewZeroMatch" style="display:none;margin-top:1rem;padding:.75rem 1rem;background:var(--surface2);border:1px solid var(--amber);border-radius:6px;font-family:var(--mono);font-size:.65rem;color:var(--amber);line-height:1.8">
-            ⚠ Scan complete but <strong>0 chart matches</strong> were found. If you've scanned this folder before and expected results, try clicking <strong>CLEAR METADATA CACHE</strong> below and scanning again.
-          </div>
-          <div id="previewSection" style="display:none">
-            <div class="section-label sl-teal">PREVIEW RESULTS</div>
-            <div style="display:flex;gap:.5rem;margin-bottom:.75rem;align-items:center">
-              <button class="btn btn-teal btn-sm" onclick="writeSelected()">✓ WRITE SELECTED</button>
-              <button class="btn btn-outline btn-sm" onclick="pvwKeepSelected()" title="Tags are fine — remove selected tracks from list without writing anything">✓ KEEP</button>
-              <button class="btn btn-pink btn-sm" onclick="openOverride()">✏️ OVERRIDE GENRES</button>
-              <button class="btn btn-outline btn-sm" onclick="selectAll(true)">SELECT ALL</button>
-              <button class="btn btn-outline btn-sm" onclick="selectAll(false)">DESELECT ALL</button>
-              <button class="btn btn-outline btn-sm" onclick="selectAllByAlbum()" title="Select all tracks in the same album as your current selection">SELECT BY ALBUM</button>
-              <input type="text" placeholder="Filter results…" oninput="retFilter(this.value)" style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:var(--mono);font-size:.58rem;padding:.3rem .5rem;margin-left:auto;width:160px">
-              <span style="font-family:var(--mono);font-size:.6rem;color:var(--muted)" id="selectedCount">0 selected</span>
-            </div>
-            <div class="preview-table-wrap">
-              <table class="preview-table">
-                <thead><tr id="ret-sort-row" style="cursor:pointer;user-select:none">
-                  <th style="width:30px"><input type="checkbox" id="ret-select-all" onchange="retSelectAll(this.checked)" style="accent-color:var(--teal)"></th>
-                  <th onclick="retSort('artist')" title="Sort by Artist">ARTIST <span id="ret-sort-artist"></span></th>
-                  <th onclick="retSort('title')" title="Sort by Title">TITLE <span id="ret-sort-title"></span></th>
-                  <th onclick="retSort('album')" title="Sort by Album">ALBUM <span id="ret-sort-album"></span></th>
-                  <th onclick="retSort('current')" title="Sort by Current Genre">CURRENT GENRES <span id="ret-sort-current"></span></th>
-                  <th onclick="retSort('proposed')" title="Sort by Proposed Genre">PROPOSED GENRES <span id="ret-sort-proposed"></span></th>
-                  <th>MOODS</th>
-                  <th onclick="retSort('year')" title="Sort by Year">YEAR <span id="ret-sort-year"></span></th>
-                  <th onclick="retSort('conf')" title="Sort by Confidence">CONF <span id="ret-sort-conf"></span></th>
-                </tr></thead>
-                <tbody id="previewTableBody"></tbody>
-              </table>
-            </div>
-          </div>
-
-          <!-- MANUAL OVERRIDE PANEL -->
-          <div id="overridePanel" style="display:none;margin-top:1rem;padding:1rem;background:var(--surface2);border:1px solid var(--border);border-radius:8px">
-            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--pink);margin-bottom:.75rem">✏️ MANUAL GENRE OVERRIDE</div>
-            <div style="font-family:var(--mono);font-size:.58rem;color:var(--muted);margin-bottom:.75rem" id="overrideCount">0 tracks selected for override</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.5rem;margin-bottom:.5rem">
-              <div>
-                <div style="font-family:var(--mono);font-size:.48rem;color:var(--muted);margin-bottom:.2rem">GENRE 1</div>
-                <select id="override-g1" style="width:100%;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:.3rem;font-family:var(--mono);font-size:.58rem">
-                  <option value="">— select —</option>
-                </select>
-              </div>
-              <div>
-                <div style="font-family:var(--mono);font-size:.48rem;color:var(--muted);margin-bottom:.2rem">GENRE 2</div>
-                <select id="override-g2" style="width:100%;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:.3rem;font-family:var(--mono);font-size:.58rem">
-                  <option value="">— optional —</option>
-                </select>
-              </div>
-              <div>
-                <div style="font-family:var(--mono);font-size:.48rem;color:var(--muted);margin-bottom:.2rem">GENRE 3</div>
-                <select id="override-g3" style="width:100%;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:.3rem;font-family:var(--mono);font-size:.58rem">
-                  <option value="">— optional —</option>
-                </select>
-              </div>
-            </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.5rem;margin-bottom:.75rem">
-              <div>
-                <div style="font-family:var(--mono);font-size:.48rem;color:var(--muted);margin-bottom:.2rem">MOOD 1</div>
-                <select id="override-m1" style="width:100%;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:.3rem;font-family:var(--mono);font-size:.58rem">
-                  <option value="">— select —</option>
-                </select>
-              </div>
-              <div>
-                <div style="font-family:var(--mono);font-size:.48rem;color:var(--muted);margin-bottom:.2rem">MOOD 2</div>
-                <select id="override-m2" style="width:100%;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:.3rem;font-family:var(--mono);font-size:.58rem">
-                  <option value="">— optional —</option>
-                </select>
-              </div>
-              <div>
-                <div style="font-family:var(--mono);font-size:.48rem;color:var(--muted);margin-bottom:.2rem">MOOD 3</div>
-                <select id="override-m3" style="width:100%;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:.3rem;font-family:var(--mono);font-size:.58rem">
-                  <option value="">— optional —</option>
-                </select>
-              </div>
-            </div>
-            <div style="display:flex;gap:.5rem">
-              <button class="btn btn-pink btn-sm" onclick="applyOverride()">✓ WRITE OVERRIDE TO SELECTED</button>
-              <button class="btn btn-outline btn-sm" onclick="closeOverride()">✕ CANCEL</button>
-            </div>
-          </div>
-
-          <!-- ALBUM TAGGER PANEL -->
-          <div id="albumTaggerSection" style="display:none">
-            <div class="section-label sl-teal">ALBUM TAGGER</div>
-
-            <!-- Mode explanation -->
-            <div style="font-family:var(--mono);font-size:.58rem;color:var(--muted);margin-bottom:.6rem;line-height:1.8;padding:.5rem;background:var(--surface);border-radius:6px;border:1px solid var(--border)">
-              <strong style="color:var(--teal)">📂 LOCAL FIRST</strong> — Reads tags straight from your files. No internet. No API calls. Instant.<br>
-              Each card = one folder on disk. Per card you choose:<br>
-              <strong style="color:var(--teal)">🔍 LOOKUP</strong> — Go online to MusicBrainz for a genre recommendation for this album.<br>
-              <strong style="color:var(--pink)">✏️ OVERRIDE</strong> — Skip the internet. You set Genre, Mood, Album name, Year manually.<br>
-              <strong style="color:var(--muted)">✓ KEEP</strong> — Tags look fine. Leave them alone.<br>
-              Nothing writes to your files until you click a write button.
-            </div>
-
-            <!-- Step 1: Read Tags -->
-            <div id="atStep1" style="margin-bottom:.75rem">
-              <button class="btn btn-teal" onclick="atReadTags()" id="atReadBtn" style="width:100%;padding:.6rem;font-size:.65rem;letter-spacing:2px">
-                📂 READ TAGS FROM FILES
-              </button>
-              <div id="atLoadingMsg" style="display:none;font-family:var(--mono);font-size:.55rem;color:var(--teal);margin-top:.4rem;text-align:center">
-                ⟳ Reading files from disk…
-              </div>
-            </div>
-
-            <!-- Results area -->
-            <div id="atStep1Results" style="display:none">
-              <!-- Summary + sort bar -->
-              <div style="display:flex;gap:.5rem;margin-bottom:.6rem;align-items:center;flex-wrap:wrap">
-                <span style="font-family:var(--mono);font-size:.55rem;color:var(--teal)" id="atStatusBadge">0 folders</span>
-                <span style="font-family:var(--mono);font-size:.5rem;color:var(--muted)" id="atPageBadge"></span>
-                <div style="margin-left:auto;display:flex;align-items:center;gap:.35rem;flex-wrap:wrap">
-                  <span style="font-family:var(--mono);font-size:.48rem;color:var(--muted2);letter-spacing:1px">SORT</span>
-                  <button class="scout-group-btn active" id="atSort-folder" onclick="atSortCards('folder',this)" title="Sort by folder name (default)">FOLDER</button>
-                  <button class="scout-group-btn" id="atSort-artist" onclick="atSortCards('artist',this)" title="Sort by primary artist">ARTIST</button>
-                  <button class="scout-group-btn" id="atSort-year" onclick="atSortCards('year',this)" title="Sort by year">YEAR</button>
-                  <input type="text" id="atFilter" placeholder="Filter cards…" oninput="atFilterCards(this.value)"
-                    style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:var(--mono);font-size:.55rem;padding:.25rem .45rem;width:130px">
-                </div>
-              </div>
-              <!-- Bulk action buttons -->
-              <div style="display:flex;gap:.35rem;margin-bottom:.75rem;flex-wrap:wrap;align-items:center">
-                <label style="display:flex;align-items:center;gap:.3rem;font-family:var(--mono);font-size:.52rem;color:var(--muted);cursor:pointer;margin-right:.5rem">
-                  <input type="checkbox" id="atSelectAllCb" onchange="atToggleSelectAll(this.checked)" style="accent-color:var(--crimson)">
-                  Select All
-                </label>
-                <button class="btn btn-outline btn-sm" onclick="atWriteAllOverrides()" title="Write all albums where you clicked Override and set tags manually">⬇ WRITE ALL OVERRIDES</button>
-                <button class="btn btn-outline btn-sm" onclick="atWriteAllAccepted()" title="Write genres found by 🔍 Lookup — only works after running Lookup on albums">🔍 WRITE ALL LOOKUPS</button>
-                <button class="btn btn-outline btn-sm" onclick="atKeepAll()">✓ KEEP ALL</button>
-              </div>
-
-              <!-- Bulk Genre/Mood Override Panel — appears when cards are selected -->
-              <div id="atBulkOverrideBar" style="display:none;background:rgba(251,113,133,.06);border:1px solid rgba(251,113,133,.3);border-radius:8px;padding:.65rem .8rem;margin-bottom:.75rem">
-                <div style="font-family:var(--mono);font-size:.56rem;color:var(--crimson);letter-spacing:1px;margin-bottom:.4rem">BULK OVERRIDE — <span id="atBulkCount">0</span> cards selected</div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin-bottom:.45rem">
-                  <div>
-                    <div style="font-family:var(--mono);font-size:.46rem;color:var(--muted2);letter-spacing:.5px;margin-bottom:.2rem">GENRES (max 3)</div>
-                    <div style="display:flex;gap:.25rem">
-                      <select id="atBulk-g1" style="flex:1;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:.25rem;font-family:var(--mono);font-size:.5rem">
-                        <option value="">— genre 1 —</option>
-                      </select>
-                      <select id="atBulk-g2" style="flex:1;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:.25rem;font-family:var(--mono);font-size:.5rem">
-                        <option value="">— genre 2 —</option>
-                      </select>
-                      <select id="atBulk-g3" style="flex:1;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:.25rem;font-family:var(--mono);font-size:.5rem">
-                        <option value="">— genre 3 —</option>
-                      </select>
-                    </div>
-                  </div>
-                  <div>
-                    <div style="font-family:var(--mono);font-size:.46rem;color:var(--muted2);letter-spacing:.5px;margin-bottom:.2rem">MOODS (max 3)</div>
-                    <div style="display:flex;gap:.25rem">
-                      <select id="atBulk-m1" style="flex:1;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:.25rem;font-family:var(--mono);font-size:.5rem">
-                        <option value="">— mood 1 —</option>
-                      </select>
-                      <select id="atBulk-m2" style="flex:1;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:.25rem;font-family:var(--mono);font-size:.5rem">
-                        <option value="">— mood 2 —</option>
-                      </select>
-                      <select id="atBulk-m3" style="flex:1;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:.25rem;font-family:var(--mono);font-size:.5rem">
-                        <option value="">— mood 3 —</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-                <div style="display:flex;gap:.4rem;align-items:center">
-                  <button class="btn btn-pink btn-sm" onclick="atBulkApplyAndWrite()" style="letter-spacing:1px">⬇ APPLY &amp; WRITE SELECTED</button>
-                  <button class="btn btn-outline btn-sm" onclick="atBulkApplyOnly()">✏️ APPLY ONLY</button>
-                  <span style="font-family:var(--mono);font-size:.46rem;color:var(--muted2);margin-left:auto">Only genre &amp; mood are changed — artist, album, year stay per-card</span>
-                </div>
-              </div>
-
-              <!-- Cards container -->
-              <div id="albumTaggerCards" style="display:flex;flex-direction:column;gap:.75rem"></div>
-
-              <!-- Load More button -->
-              <div id="atLoadMoreWrap" style="display:none;margin-top:.75rem;text-align:center">
-                <button class="btn btn-outline" id="atLoadMoreBtn" onclick="atLoadMore()" style="font-size:.62rem;letter-spacing:1.5px;width:100%;padding:.55rem">
-                  ⬇ LOAD MORE FOLDERS
-                </button>
-                <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted);margin-top:.3rem" id="atLoadMoreHint"></div>
-              </div>
-            </div>
-          </div>
-
-          <!-- GENRE SCOUT PANEL -->
-          <div id="genreScoutSection" style="display:none">
-            <div class="section-label sl-teal">🔍 GENRE SCOUT — FILES WITH NO GENRE</div>
-            <div style="font-family:var(--mono);font-size:.58rem;color:var(--muted);margin-bottom:.75rem;line-height:1.8;padding:.5rem;background:var(--surface);border-radius:6px;border:1px solid var(--border)">
-              <strong style="color:var(--teal)">📂 PHYSICAL FILES ONLY</strong> — Reads actual file tags via Mutagen. No database. No internet.<br>
-              Scans <strong>500 files per chunk</strong> then pauses. Switch to <strong>BY ARTIST</strong> or <strong>BY ALBUM</strong> for card view — set genres, click <strong style="color:var(--teal)">💡 SUGGEST</strong> for recommendations, then <strong style="color:var(--teal)">✓ WRITE &amp; DISMISS</strong>.
-            </div>
-
-            <!-- Progress bar -->
-            <div id="scoutProgressWrap" style="display:none;margin-bottom:.75rem">
-              <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:.55rem;color:var(--muted);margin-bottom:.3rem">
-                <span id="scoutProgressLabel">Scanning…</span>
-                <span id="scoutProgressPct">0%</span>
-              </div>
-              <div style="background:var(--surface2);border-radius:4px;height:6px;overflow:hidden">
-                <div id="scoutProgressBar" style="height:100%;width:0%;background:var(--teal);transition:width .4s ease;border-radius:4px"></div>
-              </div>
-              <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:.5rem;color:var(--muted2);margin-top:.25rem">
-                <span id="scoutStatFiles">0 / 0 files read</span>
-                <span id="scoutStatFound" style="color:var(--crimson)">0 missing genre</span>
-              </div>
-            </div>
-
-            <!-- Top controls row -->
-            <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin-bottom:.75rem">
-              <button class="btn btn-teal btn-sm" id="btnScoutNextChunk" onclick="scoutNextChunk()" style="display:none">▶ SCAN NEXT 500</button>
-              <button class="btn btn-outline btn-sm" id="btnScoutScanAll" onclick="scoutScanAll()" style="display:none">⚡ SCAN ALL REMAINING</button>
-              <button class="btn btn-red btn-sm" id="btnScoutStop" onclick="scoutStop()" style="display:none">⏹ STOP</button>
-              <div style="display:flex;align-items:center;gap:.35rem;margin-left:auto">
-                <span style="font-family:var(--mono);font-size:.5rem;color:var(--muted);letter-spacing:1px">VIEW</span>
-                <button class="scout-group-btn active" id="sgBtn-flat" onclick="setScoutGroup('flat',this)">FLAT LIST</button>
-                <button class="scout-group-btn" id="sgBtn-artist" onclick="setScoutGroup('artist',this)">BY ARTIST</button>
-                <button class="scout-group-btn" id="sgBtn-album" onclick="setScoutGroup('album',this)">BY ALBUM</button>
-                <button class="scout-group-btn" id="sgBtn-folder" onclick="setScoutGroup('folder',this)">BY FOLDER</button>
-              </div>
-              <span style="font-family:var(--mono);font-size:.6rem;color:var(--muted)" id="scoutCount">—</span>
-            </div>
-
-            <!-- FLAT view -->
-            <div id="scoutFlatWrap" style="display:none">
-              <div style="display:flex;gap:.5rem;margin-bottom:.5rem;flex-wrap:wrap;align-items:center">
-                <input type="text" id="scoutFilter" placeholder="Filter…" oninput="scoutFilterRows(this.value)"
-                  style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:var(--mono);font-size:.58rem;padding:.3rem .5rem;width:150px">
-                <button class="btn btn-outline btn-sm" onclick="scoutFlatSelectAll(true)">SELECT ALL</button>
-                <button class="btn btn-outline btn-sm" onclick="scoutFlatSelectAll(false)">DESELECT ALL</button>
-                <span style="font-family:var(--mono);font-size:.6rem;color:var(--muted)" id="scoutFlatSelectedCount">0 selected</span>
-              </div>
-              <div style="display:flex;gap:.5rem;align-items:center;margin-bottom:.5rem;flex-wrap:wrap">
-                <span style="font-family:var(--mono);font-size:.5rem;color:var(--muted);white-space:nowrap">APPLY TO SELECTED ▶</span>
-                <select id="scoutFlatQuickGenre" style="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:.3rem .5rem;font-family:var(--mono);font-size:.58rem;flex:1;min-width:140px">
-                  <option value="">— select genre —</option>
-                </select>
-                <button class="btn btn-teal btn-sm" onclick="scoutFlatApplyGenre()">✓ APPLY</button>
-                <button class="btn btn-pink btn-sm" onclick="scoutFlatWriteSelected()">⬇ WRITE SELECTED</button>
-              </div>
-              <div class="preview-table-wrap">
-                <table class="preview-table">
-                  <thead><tr>
-                    <th style="width:30px"><input type="checkbox" onchange="scoutFlatSelectAll(this.checked)" style="accent-color:var(--teal)"></th>
-                    <th>ARTIST</th><th>TITLE</th><th>ALBUM</th>
-                    <th style="width:200px">ASSIGN GENRE</th>
-                  </tr></thead>
-                  <tbody id="scoutFlatBody"></tbody>
-                </table>
-              </div>
-            </div>
-
-            <!-- CARD view -->
-            <div id="scoutCardWrap" style="display:none">
-              <div id="scoutCards"></div>
-            </div>
-
-            <div id="scoutEmpty" style="display:none;margin-top:1rem;padding:.75rem 1rem;background:var(--surface2);border:1px solid var(--green);border-radius:6px;font-family:var(--mono);font-size:.65rem;color:var(--green)">
-              ✅ All files scanned — no missing genres found in this location.
-            </div>
-          </div>
-</div></details>
 
         </div>
       </div>
@@ -2093,15 +1723,15 @@
           <div style="font-family:var(--display);font-size:1.8rem;letter-spacing:3px;color:var(--red);margin-bottom:.25rem">🩺 THE VETERINARIAN</div>
           <div style="font-family:var(--mono);font-size:.62rem;color:var(--muted);margin-bottom:1.25rem;line-height:1.8">Database health, maintenance tools, and administration. Keep ChartHound running clean.</div>
 
-          <!-- Clear Database — Danger Zone -->
-          <div class="card" style="border:1px solid rgba(248,113,113,.3);padding:1.25rem 1.5rem">
-            <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.75rem">
-              <div style="font-family:var(--display);font-size:1.1rem;letter-spacing:1.5px;color:var(--red)">⚠ DANGER ZONE</div>
+          <!-- Database Backups -->
+          <div class="card" style="padding:1.25rem 1.5rem">
+            <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.6rem">
+              <div style="font-family:var(--display);font-size:1.1rem;letter-spacing:1.5px;color:var(--red)">💾 BACKUPS</div>
+              <span class="grm-q" tabindex="0" data-tip="A backup is a complete copy of ChartHound's database: your login, connections, scans, Hit Scores, genre decisions and months of saved lookups. If the database is ever damaged, restore the newest good backup instead of starting over. Your music files are never part of it. The newest 5 are kept.">?</span>
             </div>
-            <p style="font-family:var(--mono);font-size:.58rem;color:var(--muted);line-height:1.8;margin-bottom:.75rem">
-              Permanently deletes all scanned track records, chart data, write logs, and scan history from the dynamic database. Your music files on disk are <strong style="color:var(--green)">never affected</strong>. The static chart database is <strong style="color:var(--green)">never touched</strong>. This cannot be undone.
-            </p>
-            <button class="btn btn-red" onclick="confirmClearDatabase()" style="font-size:.72rem;font-family:var(--mono);letter-spacing:.5px;padding:.55rem 1.25rem">⚠️ CLEAR FULL DATABASE</button>
+            <p style="font-family:var(--mono);font-size:.58rem;color:var(--muted);line-height:1.8;margin-bottom:.75rem">Saves a copy to <code>/data/backups</code> inside ChartHound's Docker volume. Download one now and then to keep a copy off the server. To restore, see <b>Troubleshooting → Restore a backup</b> in the README.</p>
+            <button class="btn btn-outline" id="vet-bk-btn" onclick="vetBackupNow()" style="font-size:.72rem;font-family:var(--mono);letter-spacing:.5px;padding:.55rem 1.25rem;color:var(--teal);border-color:var(--teal)">💾 BACK UP NOW</button>
+            <div id="vet-bk-list" style="margin-top:.85rem"></div>
           </div>
 
           <!-- Debug Console -->
@@ -2173,14 +1803,14 @@
 
 <div id="toastWrap"></div>
 
-<script src="/static/js/core.js?v=m8c"></script>
-<script src="/static/js/start.js?v=m8c"></script>
-<script src="/static/js/retriever.js?v=m8c"></script>
-<script src="/static/js/topdogs.js?v=m8c"></script>
-<script src="/static/js/sniffer.js?v=m8c"></script>
-<script src="/static/js/bloodhound.js?v=m8c"></script>
-<script src="/static/js/vet.js?v=m8c"></script>
-<script src="/static/js/tracker.js?v=m8c"></script>
-<script src="/static/js/guide.js?v=m8c"></script>
+<script src="/static/js/core.js?v=m8c4"></script>
+<script src="/static/js/start.js?v=m8c4"></script>
+<script src="/static/js/retriever.js?v=m8c4"></script>
+<script src="/static/js/topdogs.js?v=m8c4"></script>
+<script src="/static/js/sniffer.js?v=m8c4"></script>
+<script src="/static/js/bloodhound.js?v=m8c4"></script>
+<script src="/static/js/vet.js?v=m8c4"></script>
+<script src="/static/js/tracker.js?v=m8c4"></script>
+<script src="/static/js/guide.js?v=m8c4"></script>
 </body>
 </html>

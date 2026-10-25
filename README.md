@@ -345,7 +345,7 @@ Lookups are batched **one per album** and cached, so the first run takes 1–3 h
 1. **▶ RUN ENGINE** — look everything up and vote. **RE-VOTE** re-decides from the cache in seconds, no lookups.
 2. **REVIEW & WRITE** — page through every change, filter by family, folder or conflicts, edit any song or a whole artist, then write selected or all. Your edits are saved as **manual** and never overwritten.
 
-**Folder rules** let a folder decide the family (e.g. `FULL CHRISTIAN ALBUMS → Christian`) or be skipped entirely. Only the **GENRE tag** is written — and always to the file first. The original one-song-at-a-time **Legacy Retriever** is still available, collapsed at the top.
+**Folder rules** let a folder decide the family (e.g. `FULL CHRISTIAN ALBUMS → Christian`) or be skipped entirely. Only the **GENRE tag** is written — and always to the file first.
 
 > **Lidarr users:** set Lidarr → Settings → Metadata → "Tag Audio Files with Metadata" to **Never**, or Lidarr will overwrite ChartHound's genres.
 
@@ -403,7 +403,7 @@ Watches Radarr and Sonarr for missing movies and episodes and asks them to searc
 
 Also here: track/album/artist counts, skip-cache stats, library cache sync, **VACUUM** and **INTEGRITY CHECK**, and an in-tab debug console (off by default, 1,000-line cap).
 
-The **Clear Full Database** button lives in the danger zone for a reason — ChartHound's database accumulates months of lookups (see [The Little Things](#the-little-things)). For routine maintenance use VACUUM and integrity check instead. To refresh only the Retriever's lookups, use **CLEAR METADATA CACHE** on The Retriever — your tracks, Hit Scores and hand edits are kept.
+**💾 Backups** — **BACK UP NOW** saves a complete, consistent copy of the database to `/data/backups` (inside ChartHound's Docker volume, newest 5 kept) while ChartHound keeps running. Each backup has a ⬇ download link so you can keep a copy off the server. ChartHound's database holds months of lookups (see [The Little Things](#the-little-things)), so if it's ever damaged, restore a backup — see [Troubleshooting](#troubleshooting).
 
 ---
 
@@ -427,7 +427,7 @@ Re-scanning a 40,000-track library is expensive. Top Dogs remembers which tracks
 
 ChartHound's database isn't just storage — it's a knowledge cache. Every scan teaches it something. Track fingerprints, chart matches, MusicBrainz IDs, Discogs lookups, Last.fm popularity scores, album-folder hashes, the skip cache, the path index, the genre-resolution waterfall results — all of it accumulates and gets reused on subsequent runs. The first scan of a 33,000-track library is the slowest one you'll ever do. Every scan after that gets faster as the database fills out and fewer tracks need fresh lookups.
 
-This is why the Veterinarian's "Clear Full Database" button is in the danger zone — and why you should treat it that way. Clearing the database wipes all that accumulated knowledge and sends you back to first-scan speeds. Only use it if the database has actually become corrupted, or if you want to genuinely start over. Day-to-day, a database that's been growing for weeks is a feature, not clutter.
+That's why ChartHound has no "wipe the database" button — starting over throws all of that away. Instead, the Veterinarian makes **backups**, so a damaged database can be put back the way it was. Day-to-day, a database that's been growing for weeks is a feature, not clutter.
 
 ### File-first metadata writes
 
@@ -522,6 +522,26 @@ Your dynamic database (`charthound.db`) is stored in a Docker named volume and s
 ---
 
 ## Troubleshooting
+
+**Restore a backup (damaged database, or to undo a mistake):**
+Backups live in `/data/backups` inside the container. Replace `NAME` with the backup's file name (shown on The Veterinarian, e.g. `charthound-2026-10-24_221500.db`):
+```bash
+docker stop charthound
+docker run --rm --volumes-from charthound alpine sh -c '
+  cp /data/charthound.db /data/charthound.db.before-restore 2>/dev/null
+  cp /data/backups/NAME /data/charthound.db && rm -f /data/charthound.db-wal /data/charthound.db-shm'
+docker start charthound
+```
+To restore a backup you downloaded, first copy it in with `docker cp NAME charthound:/data/backups/`, then run the commands above. Your previous database is kept as `charthound.db.before-restore`.
+
+**Start completely fresh (last resort):**
+This keeps the old database as `charthound.db.old`, but you'll need to create your account again, reconnect every service, and redo every scan.
+```bash
+docker stop charthound
+docker run --rm --volumes-from charthound alpine sh -c '
+  mv /data/charthound.db /data/charthound.db.old && rm -f /data/charthound.db-wal /data/charthound.db-shm'
+docker start charthound
+```
 
 **Container won't start after an update:**
 ```bash

@@ -513,3 +513,21 @@ details.adv>summary:hover,details.adv[open]>summary{color:var(--th,var(--text))}
 details.adv[open]>summary{margin-bottom:.7rem}
 .adv-sub{letter-spacing:0;color:var(--muted2);text-transform:none}
 .adv-body{display:flex;flex-direction:column;gap:1rem}
+.ger-play{width:1.6rem;height:1.6rem;margin-right:.45rem;vertical-align:middle;border-radius:50%;border:1px solid var(--border2);background:var(--surface2);color:var(--teal);cursor:pointer;font-size:.6rem;line-height:1;padding:0}
+.ger-play:hover:not(:disabled),.ger-play.on{background:var(--teal);color:#000;border-color:var(--teal)}
+.ger-play:disabled{opacity:.3;cursor:not-allowed}
+.ger-links{margin-left:.75rem;font-weight:normal}
+.ger-links a{color:var(--teal);font-size:.62rem;margin-right:.6rem;text-decoration:none;opacity:.8}
+.ger-links a:hover{opacity:1;text-decoration:underline}
+.ger-copy{margin-left:.45rem;background:none;border:none;cursor:pointer;font-size:.7rem;opacity:.35;padding:0 .2rem;vertical-align:middle}
+#ger-body tr:hover .ger-copy,.ger-cur .ger-copy{opacity:.85}
+.ger-copy:hover{opacity:1}
+.ger-why{margin-left:.45rem;font-size:.6rem;color:var(--muted);text-decoration:underline dotted}
+.ger-why:hover{color:var(--teal)}
+.ger-whybox{font-family:var(--mono);font-size:.62rem;line-height:1.75;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:.5rem .7rem}
+.ger-src{display:inline-block;min-width:13rem;color:var(--muted)} .ger-src i{color:var(--muted2);font-style:normal}
+#ger-body tr.ger-cur>td{background:rgba(45,212,191,.08)} #ger-body tr.ger-cur>td:first-child{box-shadow:inset 3px 0 0 var(--teal)}
+.ger-hide{display:flex;align-items:center;gap:.35rem;font-family:var(--mono);font-size:.62rem;color:var(--muted);cursor:pointer;white-space:nowrap}
+.ger-keys{align-self:center;font-family:var(--mono);font-size:.58rem;letter-spacing:1px;color:var(--muted);border:1px solid var(--border2);border-radius:4px;padding:.2rem .45rem;cursor:help}
+.ger-keys:hover,.ger-keys:focus{color:var(--teal);border-color:var(--teal);outline:none}
+#grm-tip{white-space:pre-line}

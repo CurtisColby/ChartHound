@@ -1504,6 +1504,117 @@ async def vet_integrity_check(_=Depends(require_auth)):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+#  VETERINARIAN — DATABASE BACKUPS
+#  VACUUM INTO makes a clean, consistent copy while the app keeps running.
+#  Newest 5 kept in /data/backups. Downloads use a 10-minute pass (like the
+#  Retriever player) signed with a separate key, so it can never act as a login.
+# ══════════════════════════════════════════════════════════════════════════════
+_BACKUP_DIR  = os.path.join(os.path.dirname(_DYNAMIC_DB) or "/data", "backups")
+_BACKUP_KEEP = 5
+_BACKUP_RE   = re.compile(r"^charthound-\d{4}-\d{2}-\d{2}_\d{6}\.db$")
+_BACKUP_KEY  = settings.secret_key + ":backup"
+
+
+def _backup_list() -> list:
+    try:
+        names = [n for n in os.listdir(_BACKUP_DIR) if _BACKUP_RE.match(n)]
+    except FileNotFoundError:
+        return []
+    out = []
+    for n in sorted(names, reverse=True):
+        p = os.path.join(_BACKUP_DIR, n)
+        try:
+            st = os.stat(p)
+        except OSError:
+            continue
+        out.append({"name": n, "bytes": st.st_size, "size": _fmt_size(p),
+                    "created": time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(st.st_mtime))})
+    return out
+
+
+def _backup_make() -> dict:
+    import shutil
+    os.makedirs(_BACKUP_DIR, exist_ok=True)
+    need = os.path.getsize(_DYNAMIC_DB)
+    free = shutil.disk_usage(_BACKUP_DIR).free
+    if free < need * 1.2 + 50 * 1024 * 1024:
+        raise HTTPException(507, f"Not enough free disk space for a backup "
+                                 f"({free // 1048576:,} MB free, about {need // 1048576:,} MB needed).")
+    name = f"charthound-{datetime.now().strftime('%Y-%m-%d_%H%M%S')}.db"
+    dest, tmp = os.path.join(_BACKUP_DIR, name), os.path.join(_BACKUP_DIR, name + ".part")
+    if os.path.exists(tmp):
+        os.remove(tmp)
+    conn = sqlite3.connect(_DYNAMIC_DB, timeout=120)
+    try:
+        conn.execute("VACUUM INTO ?", (tmp,))
+    finally:
+        conn.close()
+    chk = sqlite3.connect(tmp)
+    try:
+        ok = (chk.execute("PRAGMA quick_check").fetchone() or [""])[0] == "ok"
+    finally:
+        chk.close()
+    if not ok:
+        os.remove(tmp)
+        raise HTTPException(500, "Backup copy failed its check and was discarded. Run INTEGRITY CHECK.")
+    os.replace(tmp, dest)
+    for old in _backup_list()[_BACKUP_KEEP:]:
+        try:
+            os.remove(os.path.join(_BACKUP_DIR, old["name"]))
+        except OSError:
+            pass
+    return {"name": name, "size": _fmt_size(dest)}
+
+
+_backup_lock = asyncio.Lock()
+
+
+@router.post("/vet/backup")
+async def vet_backup(_=Depends(require_auth)):
+    if _backup_lock.locked():
+        raise HTTPException(409, "A backup is already running.")
+    async with _backup_lock:
+        try:
+            made = await asyncio.to_thread(_backup_make)
+        except HTTPException:
+            raise
+        except Exception as e:
+            log.error(f"Backup failed: {e}")
+            raise HTTPException(500, f"Backup failed: {e}")
+    log.info(f"Database backup created: {made['name']} ({made['size']})")
+    return {"ok": True, **made, "backups": _backup_list()}
+
+
+@router.get("/vet/backups")
+async def vet_backups(_=Depends(require_auth)):
+    return {"backups": _backup_list(), "keep": _BACKUP_KEEP, "folder": _BACKUP_DIR}
+
+
+@router.post("/vet/backups/{name}/token")
+async def vet_backup_token(name: str, _=Depends(require_auth)):
+    from jose import jwt
+    if not _BACKUP_RE.match(name) or not os.path.isfile(os.path.join(_BACKUP_DIR, name)):
+        raise HTTPException(404, "Backup not found.")
+    return {"t": jwt.encode({"bk": name, "exp": int(time.time()) + 600}, _BACKUP_KEY, algorithm="HS256")}
+
+
+@router.get("/vet/backups/{name}/download")
+async def vet_backup_download(name: str, t: str):
+    from jose import JWTError, jwt
+    from fastapi.responses import FileResponse
+    try:
+        claims = jwt.decode(t, _BACKUP_KEY, algorithms=["HS256"])
+    except JWTError:
+        raise HTTPException(401, "Download link expired — click ⬇ again.")
+    if claims.get("bk") != name or not _BACKUP_RE.match(name):
+        raise HTTPException(403, "Download link is for a different backup.")
+    path = os.path.join(_BACKUP_DIR, name)
+    if not os.path.isfile(path):
+        raise HTTPException(404, "Backup not found.")
+    return FileResponse(path, media_type="application/octet-stream", filename=name)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 #  VETERINARIAN — STATIC DB SOURCES (user-imported chart data)
 #
 #  The shipped static DB (`charthound_static.db`) is mounted read-only, so user
