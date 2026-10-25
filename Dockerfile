@@ -19,5 +19,5 @@ COPY frontend/ ./frontend/
 RUN mkdir -p /data
 # Expose internal port (mapped to 8585 in docker-compose)
 EXPOSE 8000
-# Launch with Uvicorn — 2 workers for a single-user home server
+# Launch with Uvicorn — 1 worker: background jobs and in-memory state live in one process
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

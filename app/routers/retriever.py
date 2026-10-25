@@ -16,7 +16,8 @@ import httpx
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request
 from fastapi.responses import Response, StreamingResponse
-from jose import JWTError, jwt
+import jwt
+from jwt import PyJWTError as JWTError
 from pydantic import BaseModel
 
 from app.config import get_settings

@@ -10,7 +10,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from cryptography.fernet import Fernet
-from jose import JWTError, jwt
+import jwt
+from jwt import PyJWTError as JWTError
 
 from app.config import get_settings
 

@@ -1592,7 +1592,7 @@ async def vet_backups(_=Depends(require_auth)):
 
 @router.post("/vet/backups/{name}/token")
 async def vet_backup_token(name: str, _=Depends(require_auth)):
-    from jose import jwt
+    import jwt
     if not _BACKUP_RE.match(name) or not os.path.isfile(os.path.join(_BACKUP_DIR, name)):
         raise HTTPException(404, "Backup not found.")
     return {"t": jwt.encode({"bk": name, "exp": int(time.time()) + 600}, _BACKUP_KEY, algorithm="HS256")}
@@ -1600,7 +1600,8 @@ async def vet_backup_token(name: str, _=Depends(require_auth)):
 
 @router.get("/vet/backups/{name}/download")
 async def vet_backup_download(name: str, t: str):
-    from jose import JWTError, jwt
+    import jwt
+    from jwt import PyJWTError as JWTError
     from fastapi.responses import FileResponse
     try:
         claims = jwt.decode(t, _BACKUP_KEY, algorithms=["HS256"])
