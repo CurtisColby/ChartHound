@@ -125,7 +125,7 @@ _LFM_TAG_MAP = {
     "rock": "rock", "classic rock": "classicrock", "hard rock": "hardrock", "soft rock": "softrock",
     "arena rock": "arenarock", "indie rock": "indierock", "folk rock": "folkrock",
     "southern rock": "southernrock", "punk": "punkrock", "punk rock": "punkrock",
-    "new wave": "punkrock", "post-punk": "punkrock", "alternative": "alternative",
+    "new wave": "newwave", "post-punk": "punkrock", "alternative": "alternative",
     "alternative rock": "alternative", "grunge": "alternative", "britpop": "alternative",
     "blues rock": "classicrock", "heartland rock": "classicrock", "progressive rock": "classicrock",
     "psychedelic rock": "classicrock", "pop rock": "rock", "country rock": "country",
@@ -167,9 +167,13 @@ def _genres_from_tags(tags_json: Optional[str]) -> list:
         tags = json.loads(tags_json or "[]")
     except Exception:
         return []
+    from app.routers.retriever import GE_TAGS   # M10c: the Genre Engine's wider tag list as a fallback
     out = []
     for t in tags:
-        k = _LFM_TAG_MAP.get(str(t).strip().lower())
+        t = str(t).strip().lower()
+        k = _LFM_TAG_MAP.get(t) or GE_TAGS.get(t)
+        if k == "_folkcountry":
+            k = "folk"
         if k and k not in out:
             out.append(k)
         if len(out) == 3:
