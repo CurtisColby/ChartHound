@@ -10,6 +10,7 @@ function vetInit() {
   vetLoadSkipCache();
   vetLoadLibraryCache();
   vetLoadStaticSources();
+  vetLoadBackups();
 }
 
 // ── Static DB Sources (user-imported chart data) ──────────────────────────
@@ -472,3 +473,45 @@ async function dbgDownload() {
 // Stop auto-poll when leaving debug tab
 const _origSwitchTab = switchTab;
 // Patch switchTab to stop debug poll when leaving
+
+
+// ── Database backups ──
+function _vetBkRow(b, i) {
+  const d = new Date(b.created.replace(' ', 'T') + 'Z');
+  const when = isNaN(d) ? b.created : d.toLocaleString(undefined, {month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit'});
+  return `<div class="vault-row"><div class="vault-row-label">${i === 0 ? '🟢 ' : ''}${esc(when)}</div>
+    <div class="vault-row-status" style="color:var(--text);display:flex;gap:.75rem;align-items:center">${esc(b.size)}
+    <a href="#" onclick="vetBackupDownload('${esc(b.name)}');return false" style="color:var(--teal)" data-tip="Download this backup to the computer you're using, to keep a copy off the server.">⬇</a></div></div>`;
+}
+async function vetLoadBackups() {
+  const box = document.getElementById('vet-bk-list'); if (!box) return;
+  try {
+    const r = await fetch(`${API}/api/groomer/vet/backups`, {headers: authHdrs()});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    box.innerHTML = d.backups.length ? d.backups.map(_vetBkRow).join('')
+      : '<div class="field-hint" style="margin:0">No backups yet — click BACK UP NOW.</div>';
+  } catch (e) { box.innerHTML = `<div class="field-hint" style="margin:0;color:var(--red)">${esc(e.message)}</div>`; }
+}
+async function vetBackupNow() {
+  const btn = document.getElementById('vet-bk-btn'); const t = btn.textContent;
+  btn.disabled = true; btn.textContent = 'BACKING UP…';
+  try {
+    const r = await fetch(`${API}/api/groomer/vet/backup`, {method: 'POST', headers: authHdrs()});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    toast(`Backup saved — ${d.size}`, 'ok');
+    vetLoadBackups();
+  } catch (e) { toast('Backup failed: ' + e.message, 'error'); }
+  finally { btn.disabled = false; btn.textContent = t; }
+}
+async function vetBackupDownload(name) {
+  try {
+    const r = await fetch(`${API}/api/groomer/vet/backups/${encodeURIComponent(name)}/token`, {method: 'POST', headers: authHdrs()});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    const a = document.createElement('a');
+    a.href = `${API}/api/groomer/vet/backups/${encodeURIComponent(name)}/download?t=${encodeURIComponent(d.t)}`;
+    a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  } catch (e) { toast('Download failed: ' + e.message, 'error'); }
+}

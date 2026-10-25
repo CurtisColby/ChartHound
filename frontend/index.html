@@ -7,7 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐕</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/css/app.css?v=m8b">
+<link rel="stylesheet" href="/static/css/app.css?v=m8d2">
 <script>try{document.documentElement.style.fontSize=(+localStorage.getItem('ch_textsize')||18)+'px'}catch(e){}</script>
 </head>
 <body>
@@ -215,6 +215,17 @@
           <div class="st-sub">ChartHound turns your music library into great playlists. Follow the steps in order the first time —
             after that, use the <b>“After new music arrives”</b> routine below. Every step has a <b>GO</b> button that takes you to the right place.</div>
         </div>
+        <div id="st-first" class="st-first" style="display:none">
+          <div class="st-first-title">👋 FIRST TIME?</div>
+          <div class="st-first-sub">Setup is mostly waiting the first time — that's normal. Rough times for a large library (tens of thousands of songs):</div>
+          <ul>
+            <li><b>Connect your services</b> — 10–15 minutes</li>
+            <li><b>First ① SCAN</b> in Top Dogs — 10–30 minutes (later scans only add new songs)</li>
+            <li><b>Genre Engine</b> first run — 1–3 hours (later runs only look up new albums)</li>
+            <li><b>Last.fm pass</b> — about 3 hours, quietly in the background</li>
+          </ul>
+          <div class="st-first-sub">You can close the browser while these run. Smaller libraries are much faster.</div>
+        </div>
         <div id="st-steps"><div class="st-loading">Checking where you are…</div></div>
         <div class="st-routine">
           <div class="st-routine-title">🔁 AFTER NEW MUSIC ARRIVES</div>
@@ -247,6 +258,7 @@
               <div class="vault-row"><div class="vault-row-label"><div class="dot" id="vDotDiscogs"></div>Discogs</div><div class="vault-row-status warn" id="vStatusDiscogs">NOT VERIFIED</div></div>
             </div>
           </div>
+<details class="adv" data-adv="kennel"><summary>ADVANCED ▸ <span class="adv-sub">path translator · security notes</span></summary><div class="adv-body">
           <div>
             <div class="section-label sl-purple">PATH TRANSLATOR</div>
             <div class="card">
@@ -285,14 +297,15 @@
                 🚫 Tokens never returned to the browser.<br>
                 ⟳ Heartbeat re-checks connections every 60s.
               </p>
-              <button class="support-btn compact" onclick="openDonationModal()" style="margin-top:.4rem">💝 SUPPORT CHARTHOUND</button>
             </div>
           </div>
+</div></details>
           <div>
             <div class="section-label sl-purple">HELP & DOCS</div>
             <div class="card" style="padding:.75rem 1rem">
               <p style="font-family:var(--mono);font-size:.57rem;color:var(--muted);line-height:1.8;margin-bottom:.6rem">Full documentation for every tab — connections required, best practices, and how each tool works.</p>
               <button class="btn btn-outline btn-sm" onclick="openHelpGuide()" style="width:100%;font-size:.6rem;letter-spacing:1px">📖 OPEN USER GUIDE</button>
+              <button class="support-btn compact" onclick="openDonationModal()" style="margin-top:.5rem;width:100%">💝 SUPPORT CHARTHOUND</button>
             </div>
           </div>
         </div>
@@ -310,6 +323,7 @@
               <div class="conn-card-title"><div class="conn-card-dot" id="cDot-plex"></div>🟧 PLEX MEDIA SERVER</div>
               <div class="conn-verified" id="cVerified-plex">NOT VERIFIED</div>
             </div>
+              <div class="conn-usedby">Used by: Top Dogs (reads your library, receives playlists), Sniffer &amp; Bloodhound (what you own) · <b>required</b> — one of Plex, Emby or Jellyfin</div>
             <div class="label-row"><label>Server URL</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">Use your server's LAN IP — not localhost. On Linux Docker, localhost refers to the container itself. Example: http://192.168.1.100:32400</div></div></div>
             <input type="url" id="cURL-plex" placeholder="http://YOUR-SERVER-IP:32400">
             <div class="field-hint">Use your server's LAN IP — e.g. http://192.168.50.42:32400 · Default port: 32400</div>
@@ -330,6 +344,7 @@
               <div class="conn-card-title"><div class="conn-card-dot" id="cDot-emby"></div>🟩 EMBY</div>
               <div class="conn-verified" id="cVerified-emby">NOT VERIFIED</div>
             </div>
+              <div class="conn-usedby">Used by: Top Dogs, Sniffer &amp; Bloodhound — alternative to Plex</div>
             <div class="label-row"><label>Server URL</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">Use your server's LAN IP. Default Emby port is 8096. Example: http://192.168.1.100:8096</div></div></div>
             <input type="url" id="cURL-emby" placeholder="http://YOUR-SERVER-IP:8096">
             <div class="field-hint">Default port: 8096 — use your server's LAN IP</div>
@@ -353,6 +368,7 @@
               <div class="conn-card-title"><div class="conn-card-dot" id="cDot-jellyfin"></div>🟦 JELLYFIN</div>
               <div class="conn-verified" id="cVerified-jellyfin">NOT VERIFIED</div>
             </div>
+              <div class="conn-usedby">Used by: Top Dogs, Sniffer &amp; Bloodhound — alternative to Plex</div>
             <div class="label-row"><label>Server URL</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">Use your server's LAN IP and the port you access Jellyfin on in your browser. If you get a 503 error: Jellyfin Dashboard → Networking → LAN Networks → add 172.28.0.0/16 → save and restart Jellyfin.</div></div></div>
             <input type="url" id="cURL-jellyfin" placeholder="http://YOUR-SERVER-IP:8096">
             <div class="field-hint">Use the port you access Jellyfin on in your browser · If 503 error: add 172.28.0.0/16 to Jellyfin LAN Networks</div>
@@ -376,10 +392,11 @@
               <div class="conn-card-title"><div class="conn-card-dot" id="cDot-lastfm"></div>🔴 LAST.FM</div>
               <div class="conn-verified" id="cVerified-lastfm">NOT VERIFIED</div>
             </div>
+              <div class="conn-usedby">Used by: Hit Scores, Big Hits, Genre Engine, Trending · <b>recommended</b></div>
             <div class="label-row"><label>API Key</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">Last.fm API keys are completely free — no credit card needed. Visit last.fm/api/account/create, sign up, and your key appears immediately. No URL needed for Last.fm.</div></div></div>
             <input type="password" id="cToken-lastfm" placeholder="Stored encrypted · never logged">
             <div class="field-hint">Free at <a href="https://www.last.fm/api/account/create" target="_blank">last.fm/api/account/create</a> — no credit card · no URL needed</div>
-            <p style="font-family:var(--mono);font-size:.57rem;color:var(--muted);line-height:1.7;margin-bottom:.6rem">Tertiary waterfall source — mood tags and chart keyword detection. Strongly recommended for best metadata quality.</p>
+            <p style="font-family:var(--mono);font-size:.57rem;color:var(--muted);line-height:1.7;margin-bottom:.6rem">Hit Score staying-power boost, never-charted classics, Big Hits and one of the Genre Engine sources. Strongly recommended.</p>
             <div class="conn-btn-row">
               <button class="btn btn-outline btn-sm" onclick="saveConn('lastfm')">💾 SAVE</button>
               <button class="btn btn-purple btn-sm" id="testBtn-lastfm" onclick="testConn('lastfm')">⚡ TEST</button>
@@ -394,6 +411,7 @@
               <div class="conn-card-title"><div class="conn-card-dot" id="cDot-prowlarr"></div>🟣 PROWLARR</div>
               <div class="conn-verified" id="cVerified-prowlarr">NOT VERIFIED</div>
             </div>
+              <div class="conn-usedby">Used by: Sniffer &amp; Bloodhound searches</div>
             <div class="label-row"><label>Server URL</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">Use your server's LAN IP. Default Prowlarr port is 9696. Example: http://192.168.1.100:9696</div></div></div>
             <input type="url" id="cURL-prowlarr" placeholder="http://YOUR-SERVER-IP:9696">
             <div class="field-hint">Default port: 9696</div>
@@ -414,6 +432,7 @@
               <div class="conn-card-title"><div class="conn-card-dot" id="cDot-radarr"></div>🎬 RADARR</div>
               <div class="conn-verified" id="cVerified-radarr">NOT VERIFIED</div>
             </div>
+              <div class="conn-usedby">Used by: The Tracker (movies) · optional</div>
             <div class="label-row"><label>Server URL</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">Use your server's LAN IP. Default Radarr port is 7878. Used by The Tracker for missing movies.</div></div></div>
             <input type="url" id="cURL-radarr" placeholder="http://YOUR-SERVER-IP:7878">
             <div class="field-hint">Default port: 7878 — used by The Tracker</div>
@@ -434,6 +453,7 @@
               <div class="conn-card-title"><div class="conn-card-dot" id="cDot-sonarr"></div>📺 SONARR</div>
               <div class="conn-verified" id="cVerified-sonarr">NOT VERIFIED</div>
             </div>
+              <div class="conn-usedby">Used by: The Tracker (TV) · optional</div>
             <div class="label-row"><label>Server URL</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">Use your server's LAN IP. Default Sonarr port is 8989. Used by The Tracker for missing TV episodes.</div></div></div>
             <input type="url" id="cURL-sonarr" placeholder="http://YOUR-SERVER-IP:8989">
             <div class="field-hint">Default port: 8989 — used by The Tracker</div>
@@ -454,6 +474,7 @@
               <div class="conn-card-title"><div class="conn-card-dot" id="cDot-qbittorrent"></div>⬇ DOWNLOAD CLIENT</div>
               <div class="conn-verified" id="cVerified-qbittorrent">NOT VERIFIED</div>
             </div>
+              <div class="conn-usedby">Used by: Sniffer &amp; Bloodhound torrent grabs</div>
             <p style="font-family:var(--mono);font-size:.57rem;color:var(--muted);line-height:1.7;margin-bottom:.65rem">
               Used by The Sniffer, Bloodhound and Tracker. Grabs are tagged with
               <strong style="color:var(--text)">ChartHound-Music</strong> /
@@ -481,11 +502,12 @@
             <div class="conn-feedback" id="cFeedback-qbittorrent"></div>
             <!-- SNIFFER DOWNLOAD PATH -->
             <div style="margin-top:.75rem;padding-top:.75rem;border-top:1px solid var(--border)">
-              <div class="label-row"><label>ChartHound Download Path</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">Where The Sniffer puts completed downloads. Must be inside your music library root so Plex/Emby/JF pick it up. Example: /media/colby/NAS1/MUSIC TAGGED/ChartHound</div></div></div>
-              <input type="text" id="cSnifferPath" placeholder="/path/to/music/ChartHound">
-              <div class="field-hint">Completed Sniffer grabs land here. Use a subfolder inside your music library root.</div>
+              <div class="label-row"><label>ChartHound Download Path</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">Where grabs from The Sniffer and The Bloodhound are saved — typed the way your DOWNLOAD CLIENT sees it inside its own container (e.g. /newmusic/ChartHound), not the server path. Pick a folder inside a library your media server scans so new music shows up. SABnzbd uses its charthound-music category folder instead.</div></div></div>
+              <input type="text" id="cSnifferPath" placeholder="/downloads/music/ChartHound">
+              <div class="field-hint">As your download client sees it (its container path). After saving, ChartHound checks it against the folders your client already uses.</div>
               <button class="btn btn-outline btn-sm" onclick="saveSnifferPath()" style="margin-top:.3rem">💾 SAVE PATH</button>
               <div class="conn-feedback" id="cFeedback-snifferpath"></div>
+              <div id="cSnifferPathCheck" class="dl-check"></div>
             </div>
           </div>
 
@@ -495,6 +517,7 @@
               <div class="conn-card-title"><div class="conn-card-dot" id="cDot-sabnzbd"></div>📦 USENET CLIENT</div>
               <div class="conn-verified" id="cVerified-sabnzbd">NOT VERIFIED</div>
             </div>
+              <div class="conn-usedby">Used by: Sniffer &amp; Bloodhound Usenet grabs · optional</div>
             <p style="font-family:var(--mono);font-size:.57rem;color:var(--muted);line-height:1.7;margin-bottom:.65rem">
               Optional — only needed if you have Usenet indexers (e.g. NZBGeek) in Prowlarr.
               NZB grabs are tagged with <strong style="color:var(--amber)">charthound-music</strong> category.
@@ -525,6 +548,7 @@
               <div class="conn-card-title"><div class="conn-card-dot" id="cDot-discogs"></div>🔵 DISCOGS</div>
               <div class="conn-verified" id="cVerified-discogs">NOT VERIFIED</div>
             </div>
+              <div class="conn-usedby">Used by: Genre Engine (biggest vote weight) · <b>recommended</b></div>
             <p style="font-family:var(--mono);font-size:.57rem;color:var(--muted);line-height:1.7;margin-bottom:.65rem">Excellent genre and style data — significantly improves metadata quality especially for classic rock, jazz, soul and artists where MusicBrainz tags are sparse.</p>
             <div class="label-row"><label>Personal Access Token</label><div class="help-wrap"><button class="help-btn" tabindex="0">?</button><div class="tooltip">Get your free token at discogs.com/settings/developers — click "Generate new token". No credit card needed. Rate limit: 60 requests/minute.</div></div></div>
             <input type="password" id="cToken-discogs" placeholder="Stored encrypted · never logged">
@@ -547,84 +571,6 @@
       <div class="pane" id="pane-retriever">
         <div class="pane-aside" id="aside-retriever">
           <button class="pane-collapse-btn" onclick="toggleAside('retriever')" title="Collapse/expand panel">◀</button>
-          <div id="retrieverLfmBanner" class="feature-banner warn" style="display:none">
-            ⚠ Last.fm not connected — mood tags limited. Connect in The Kennel for best results.
-          </div>
-          <details class="ret-legacy" style="border:1px solid var(--border);border-radius:8px;padding:.55rem .7rem">
-            <summary style="cursor:pointer;font-family:var(--mono);font-size:.58rem;letter-spacing:2px;color:var(--muted);list-style:none">▸ LEGACY RETRIEVER <span style="letter-spacing:0;color:var(--muted2)">— old one-song-at-a-time tagging (slow). Use the Genre Engine below instead.</span></summary>
-            <div style="display:flex;flex-direction:column;gap:1rem;margin-top:.7rem">
-          <div>
-            <div class="section-label sl-teal">SCAN SCOPE</div>
-            <div id="subfolderInput" style="display:block">
-              <div class="label-row"><label>Subfolder</label>
-                <div class="help-wrap"><button class="help-btn" tabindex="0">?</button>
-                  <div class="tooltip">Browse your /music mount to pick a subfolder. Great for testing on one artist or genre before scanning the full 33k library.</div>
-                </div>
-              </div>
-              <div style="display:flex;gap:.35rem;margin-bottom:.35rem">
-                <select id="subfolderPath" style="flex:1;margin-bottom:0;font-size:.65rem">
-                  <option value="">— select a folder —</option>
-                </select>
-                <button onclick="browseSubfolder()" style="background:var(--teal);border:none;border-radius:5px;color:#000;font-family:var(--mono);font-size:.58rem;font-weight:bold;padding:.3rem .6rem;cursor:pointer;white-space:nowrap;flex-shrink:0" title="Refresh Folder List — click to load your music library subfolders so you can select one to scan">⟳ LOAD</button>
-                <button onclick="addSubfolderToQueue()" style="background:var(--teal);border:none;border-radius:5px;color:#000;font-family:var(--mono);font-size:.58rem;padding:.3rem .6rem;cursor:pointer;white-space:nowrap;flex-shrink:0" title="Add to scan queue">＋ ADD</button>
-              </div>
-              <div id="subfolderQueue" style="display:none;margin-bottom:.35rem">
-                <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted);letter-spacing:1px;margin-bottom:.25rem">SCAN QUEUE</div>
-                <div id="subfolderQueueList" style="display:flex;flex-direction:column;gap:.2rem"></div>
-              </div>
-              <div class="field-hint" id="subfolderHint">Click ⟳ to load folders · ＋ ADD to queue multiple folders</div>
-            </div>
-          </div>
-          <div>
-            <div class="section-label sl-teal">MODE</div>
-            <div class="mode-toggle">
-              <div class="mode-btn active" onclick="setMode('preview',this)">👁 PREVIEW</div>
-              <div class="mode-btn" onclick="setMode('album_tagger',this)">📀 ALBUM TAGGER</div>
-              <div class="mode-btn" onclick="setMode('autopilot',this)">⚡ AUTO-PILOT</div>
-              <div class="mode-btn" onclick="setMode('genre_scout',this)">🔍 GENRE SCOUT</div>
-            </div>
-            <p style="font-family:var(--mono);font-size:.58rem;color:var(--muted);line-height:1.7" id="modeDesc">Preview mode shows proposed vs current metadata. You approve before anything is written to your files.</p>
-          </div>
-          <div id="batchSizeSection">
-            <div class="section-label sl-teal">BATCH SIZE</div>
-            <div class="slider-wrap">
-              <div class="slider-header">
-                <label style="margin:0">Tracks per chunk</label>
-                <div class="slider-val" id="chunkDisplay">20</div>
-              </div>
-              <input type="range" id="chunkSlider" min="5" max="50" value="20" oninput="document.getElementById('chunkDisplay').textContent=this.value">
-              <div style="display:flex;justify-content:space-between;margin-top:.25rem">
-                <span style="font-family:var(--mono);font-size:.5rem;color:var(--muted)">5 (fewer API calls)</span>
-                <span style="font-family:var(--mono);font-size:.5rem;color:var(--muted)">50 (more API calls)</span>
-              </div>
-            </div>
-          </div>
-          <div>
-            <div class="section-label sl-teal">CONTROLS</div>
-            <div style="display:flex;flex-direction:column;gap:.5rem">
-              <button class="btn btn-teal" id="btnStartScan" onclick="startScan()">▶ START SCAN</button>
-              <button class="btn btn-teal" id="btnScoutScan" onclick="scoutStart()" style="display:none">🔍 SCAN FILES FOR MISSING GENRES</button>
-              <div style="display:flex;gap:.5rem">
-                <button class="btn btn-outline btn-sm" id="btnPauseScan" onclick="pauseScan()" disabled style="flex:1">⏸ PAUSE</button>
-                <button class="btn btn-red btn-sm" id="btnStopScan" onclick="stopScan()" style="flex:1">⏹ STOP</button>
-              </div>
-            </div>
-          </div>
-          <!-- CUSTOM TAG MANAGER -->
-          <div id="custom-tag-manager-section">
-            <div class="section-label sl-teal">CUSTOM TAGS</div>
-            <div style="margin-bottom:.35rem">
-              <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted);letter-spacing:1px;margin-bottom:.3rem">GENRES</div>
-              <div id="custom-genre-manager" style="display:flex;flex-wrap:wrap;gap:0"></div>
-            </div>
-            <div>
-              <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted);letter-spacing:1px;margin-bottom:.3rem">MOODS</div>
-              <div id="custom-mood-manager" style="display:flex;flex-wrap:wrap;gap:0"></div>
-            </div>
-          </div>
-
-            </div>
-          </details>
 
           <div>
             <div class="section-label sl-teal">GENRE ENGINE</div>
@@ -652,16 +598,15 @@
             <div id="og-status" style="font-family:var(--mono);font-size:.55rem;color:var(--muted2);line-height:1.6;margin-top:.4rem;word-break:break-word"></div>
           </div>
 
-          <div>
-            <div class="section-label sl-teal">MAINTENANCE</div>
-            <button class="btn btn-outline" onclick="clearCache()" style="font-size:.7rem;font-family:var(--mono);letter-spacing:.5px">🗑 CLEAR METADATA CACHE</button>
-            <p style="font-family:var(--mono);font-size:.56rem;color:var(--muted);line-height:1.7;margin-top:.4rem">Forgets the Retriever's lookups so the next Retriever scan fetches fresh data from MusicBrainz · Last.fm · Discogs · Deezer · ListenBrainz. Your tracks, Top Dogs results, Hit Scores and hand-edited tracks are kept.</p>
-            <p style="font-family:var(--mono);font-size:.54rem;color:var(--muted2);line-height:1.7;margin-top:.4rem;font-style:italic">Need a full database wipe? It lives on The Veterinarian tab under Danger Zone.</p>
-          </div>
         </div>
 
         <div class="pane-resizer" id="resizer-retriever" onmousedown="startResize(event,'retriever')"></div>
         <div class="pane-main" id="ret-main">
+          <div id="ge-empty" class="card" style="text-align:center;padding:2.5rem 1.5rem">
+            <div style="font-family:var(--display);font-size:1.3rem;letter-spacing:2px;color:var(--teal)">GENRE REVIEW</div>
+            <p style="font-family:var(--body);font-size:.9rem;color:var(--muted);line-height:1.6;margin:.5rem auto 1rem;max-width:520px">Run the engine on the left, then open the review to check and write genres into your files.</p>
+            <button class="btn btn-teal" onclick="geOpenReview()" style="font-family:var(--mono);font-size:.7rem">📋 REVIEW &amp; WRITE</button>
+          </div>
           <!-- GENRE REVIEW (M5b-1.2) -->
           <div id="ge-review" style="display:none">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.6rem">
@@ -672,22 +617,28 @@
               <input id="ger-search" type="text" placeholder="Search artist or title…" onkeydown="if(event.key==='Enter')geLoad(1)" class="ger-in" style="flex:1;min-width:180px">
               <select id="ger-scope" onchange="geLoad(1)" class="ger-in">
                 <option value="changed" selected>Genre would change</option>
-                <option value="conflict">⚠ Conflicts (worth a look)</option>
+                <option value="conflict">⚠ Conflicts to check</option>
                 <option value="thin">? Little data (usually fine)</option>
                 <option value="empty">Files with no genre</option>
+                <option value="nogenre">No genre found (no source knew)</option>
                 <option value="manual">My edits</option>
                 <option value="all">All songs</option>
               </select>
               <select id="ger-family" onchange="geLoad(1)" class="ger-in"><option value="">Any family</option></select>
               <input id="ger-folder" type="text" placeholder="Folder e.g. /music/Eagles" onkeydown="if(event.key==='Enter')geLoad(1)" class="ger-in" style="width:190px">
               <button class="btn btn-outline" onclick="geLoad(1)" style="font-size:.65rem;font-family:var(--mono)">🔍 APPLY</button>
+              <label class="ger-hide"><input type="checkbox" id="ger-hide-same" checked onchange="geLoad(1)"> Hide songs already correct<span class="grm-q" tabindex="0" data-tip="Hides songs whose file already has exactly this genre (any order). Writing them would change nothing, so there is nothing to decide. Untick to see every song.">?</span></label>
+              <span class="ger-keys" tabindex="0" data-tip="Keyboard (when not typing in a box):&#10;↓ / ↑ or J / K — move between songs&#10;Space — play / stop&#10;X — select / unselect&#10;E — edit genre&#10;Y — ✓ looks right (keep this genre)&#10;W — why? (what each source said)&#10;C — copy folder path&#10;Esc — close the editor">⌨ KEYS</span>
             </div>
             <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:.5rem;margin-bottom:.5rem">
               <div id="ger-count" style="font-family:var(--mono);font-size:.8rem;color:var(--muted)"></div>
-              <div style="display:flex;gap:.4rem;align-items:center">
+              <div style="display:flex;flex-wrap:wrap;justify-content:flex-end;gap:.4rem;align-items:center">
                 <button class="btn btn-outline" onclick="geLoad(_ger.page-1)" style="font-size:.65rem;font-family:var(--mono)">◀</button>
                 <span id="ger-page" style="font-family:var(--mono);font-size:.65rem;color:var(--muted)"></span>
                 <button class="btn btn-outline" onclick="geLoad(_ger.page+1)" style="font-size:.65rem;font-family:var(--mono)">▶</button>
+                <button class="btn btn-outline" id="ger-ok-page" onclick="geApprove('page')" style="font-size:.65rem;font-family:var(--mono);color:var(--green);border-color:var(--green)" data-tip="Keep the genre for every flagged song on this page (up to 100) as your own decision.">✓ THIS PAGE (0)</button>
+                <button class="btn btn-outline" id="ger-ok-all" onclick="geApprove('all')" style="font-size:.65rem;font-family:var(--mono);color:var(--green);border-color:var(--green)" data-tip="Keep the genre for every flagged song matching the current filters, on all pages. You'll be asked to confirm. Tip: back up first on The Veterinarian.">✓ ALL 0 MATCHING</button>
+                <button class="btn btn-outline" id="ger-ok-sel" onclick="geApprove(true)" style="font-size:.65rem;font-family:var(--mono);color:var(--green);border-color:var(--green)" data-tip="Keep the genre shown for the selected songs as your own decision. They stop counting as conflicts and the engine never changes them.">✓ LOOKS RIGHT (0)</button>
                 <button class="btn" id="ger-write-sel" onclick="geWrite(true)" style="font-size:.65rem;font-family:var(--mono);background:var(--teal);color:#000">✎ WRITE SELECTED (0)</button>
                 <button class="btn btn-outline" id="ger-write-all" onclick="geWrite(false)" style="font-size:.65rem;font-family:var(--mono);color:var(--teal);border-color:var(--teal)">✎ WRITE ALL MATCHING</button>
               </div>
@@ -703,298 +654,9 @@
             </div>
             <div style="margin-top:.5rem;font-family:var(--mono);font-size:.6rem;color:var(--amber)">⚠ Writes the GENRE tag only. Your edits are saved immediately and never overwritten by the engine. Lidarr: "Tag Audio Files with Metadata" must be Never.</div>
           </div>
-          <div class="section-label sl-teal">SCAN PROGRESS</div>
-          <div id="bannerTip" class="feature-banner recommend" style="justify-content:space-between;align-items:flex-start">
-            <span>⭐ Run The Retriever first to pre-populate the metadata cache. The Sniffer and Top Dogs will be significantly faster once your library is tagged. Chart data is also written permanently to your files as a backup.</span>
-            <button onclick="document.getElementById('bannerTip').style.display='none'" style="background:none;border:none;color:inherit;cursor:pointer;font-size:.85rem;padding:0 0 0 .75rem;opacity:.5;flex-shrink:0;line-height:1" title="Dismiss">✕</button>
-          </div>
           <div id="bannerLidarr" class="feature-banner" style="background:rgba(255,160,0,.08);border-color:rgba(255,160,0,.3);color:#ffa500;margin-bottom:.75rem;justify-content:space-between;align-items:flex-start">
             <span>⚠️ If you use <strong>Lidarr</strong> — go to Lidarr → Settings → Metadata → set <strong>"Tag Audio Files with Metadata"</strong> to <strong>Never</strong> to prevent Lidarr from overwriting ChartHound's tags.</span>
             <button onclick="document.getElementById('bannerLidarr').style.display='none'" style="background:none;border:none;color:inherit;cursor:pointer;font-size:.85rem;padding:0 0 0 .75rem;opacity:.5;flex-shrink:0;line-height:1" title="Dismiss">✕</button>
-          </div>
-          <div class="card">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem">
-              <div style="font-family:var(--display);font-size:1.1rem;letter-spacing:1.5px;color:var(--text)" id="scanStatusTitle">READY TO SCAN</div>
-              <div style="font-family:var(--mono);font-size:.6rem;color:var(--muted)" id="scanStatusSub">Configure options and click Start Scan</div>
-            </div>
-            <div class="progress-wrap">
-              <div class="progress-bar" id="scanProgressWrap"><div class="progress-fill" id="scanProgressBar"></div></div>
-            </div>
-            <div class="progress-stats">
-              <div class="p-stat"><div class="p-stat-num" id="statTotal">0</div><div class="p-stat-label">TOTAL</div></div>
-              <div class="p-stat"><div class="p-stat-num" id="statProcessed">0</div><div class="p-stat-label">PROCESSED</div></div>
-              <div class="p-stat"><div class="p-stat-num" style="color:var(--green)" id="statMatched">0</div><div class="p-stat-label">MATCHED</div></div>
-              <div class="p-stat"><div class="p-stat-num" style="color:var(--red)" id="statFailed">0</div><div class="p-stat-label">UNMATCHED</div></div>
-              <div class="p-stat"><div class="p-stat-num" style="color:var(--amber)" id="statCached">0</div><div class="p-stat-label">CACHED</div></div>
-            </div>
-          </div>
-          <div>
-            <div class="section-label sl-teal">SCAN LOG</div>
-            <div class="log-console" id="scanLog">
-              <span class="log-info">ChartHound Retriever ready. Configure options above and start a scan.</span>
-            </div>
-          </div>
-          <div id="previewZeroMatch" style="display:none;margin-top:1rem;padding:.75rem 1rem;background:var(--surface2);border:1px solid var(--amber);border-radius:6px;font-family:var(--mono);font-size:.65rem;color:var(--amber);line-height:1.8">
-            ⚠ Scan complete but <strong>0 chart matches</strong> were found. If you've scanned this folder before and expected results, try clicking <strong>CLEAR METADATA CACHE</strong> below and scanning again.
-          </div>
-          <div id="previewSection" style="display:none">
-            <div class="section-label sl-teal">PREVIEW RESULTS</div>
-            <div style="display:flex;gap:.5rem;margin-bottom:.75rem;align-items:center">
-              <button class="btn btn-teal btn-sm" onclick="writeSelected()">✓ WRITE SELECTED</button>
-              <button class="btn btn-outline btn-sm" onclick="pvwKeepSelected()" title="Tags are fine — remove selected tracks from list without writing anything">✓ KEEP</button>
-              <button class="btn btn-pink btn-sm" onclick="openOverride()">✏️ OVERRIDE GENRES</button>
-              <button class="btn btn-outline btn-sm" onclick="selectAll(true)">SELECT ALL</button>
-              <button class="btn btn-outline btn-sm" onclick="selectAll(false)">DESELECT ALL</button>
-              <button class="btn btn-outline btn-sm" onclick="selectAllByAlbum()" title="Select all tracks in the same album as your current selection">SELECT BY ALBUM</button>
-              <input type="text" placeholder="Filter results…" oninput="retFilter(this.value)" style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:var(--mono);font-size:.58rem;padding:.3rem .5rem;margin-left:auto;width:160px">
-              <span style="font-family:var(--mono);font-size:.6rem;color:var(--muted)" id="selectedCount">0 selected</span>
-            </div>
-            <div class="preview-table-wrap">
-              <table class="preview-table">
-                <thead><tr id="ret-sort-row" style="cursor:pointer;user-select:none">
-                  <th style="width:30px"><input type="checkbox" id="ret-select-all" onchange="retSelectAll(this.checked)" style="accent-color:var(--teal)"></th>
-                  <th onclick="retSort('artist')" title="Sort by Artist">ARTIST <span id="ret-sort-artist"></span></th>
-                  <th onclick="retSort('title')" title="Sort by Title">TITLE <span id="ret-sort-title"></span></th>
-                  <th onclick="retSort('album')" title="Sort by Album">ALBUM <span id="ret-sort-album"></span></th>
-                  <th onclick="retSort('current')" title="Sort by Current Genre">CURRENT GENRES <span id="ret-sort-current"></span></th>
-                  <th onclick="retSort('proposed')" title="Sort by Proposed Genre">PROPOSED GENRES <span id="ret-sort-proposed"></span></th>
-                  <th>MOODS</th>
-                  <th onclick="retSort('year')" title="Sort by Year">YEAR <span id="ret-sort-year"></span></th>
-                  <th onclick="retSort('conf')" title="Sort by Confidence">CONF <span id="ret-sort-conf"></span></th>
-                </tr></thead>
-                <tbody id="previewTableBody"></tbody>
-              </table>
-            </div>
-          </div>
-
-          <!-- MANUAL OVERRIDE PANEL -->
-          <div id="overridePanel" style="display:none;margin-top:1rem;padding:1rem;background:var(--surface2);border:1px solid var(--border);border-radius:8px">
-            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--pink);margin-bottom:.75rem">✏️ MANUAL GENRE OVERRIDE</div>
-            <div style="font-family:var(--mono);font-size:.58rem;color:var(--muted);margin-bottom:.75rem" id="overrideCount">0 tracks selected for override</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.5rem;margin-bottom:.5rem">
-              <div>
-                <div style="font-family:var(--mono);font-size:.48rem;color:var(--muted);margin-bottom:.2rem">GENRE 1</div>
-                <select id="override-g1" style="width:100%;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:.3rem;font-family:var(--mono);font-size:.58rem">
-                  <option value="">— select —</option>
-                </select>
-              </div>
-              <div>
-                <div style="font-family:var(--mono);font-size:.48rem;color:var(--muted);margin-bottom:.2rem">GENRE 2</div>
-                <select id="override-g2" style="width:100%;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:.3rem;font-family:var(--mono);font-size:.58rem">
-                  <option value="">— optional —</option>
-                </select>
-              </div>
-              <div>
-                <div style="font-family:var(--mono);font-size:.48rem;color:var(--muted);margin-bottom:.2rem">GENRE 3</div>
-                <select id="override-g3" style="width:100%;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:.3rem;font-family:var(--mono);font-size:.58rem">
-                  <option value="">— optional —</option>
-                </select>
-              </div>
-            </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.5rem;margin-bottom:.75rem">
-              <div>
-                <div style="font-family:var(--mono);font-size:.48rem;color:var(--muted);margin-bottom:.2rem">MOOD 1</div>
-                <select id="override-m1" style="width:100%;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:.3rem;font-family:var(--mono);font-size:.58rem">
-                  <option value="">— select —</option>
-                </select>
-              </div>
-              <div>
-                <div style="font-family:var(--mono);font-size:.48rem;color:var(--muted);margin-bottom:.2rem">MOOD 2</div>
-                <select id="override-m2" style="width:100%;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:.3rem;font-family:var(--mono);font-size:.58rem">
-                  <option value="">— optional —</option>
-                </select>
-              </div>
-              <div>
-                <div style="font-family:var(--mono);font-size:.48rem;color:var(--muted);margin-bottom:.2rem">MOOD 3</div>
-                <select id="override-m3" style="width:100%;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:.3rem;font-family:var(--mono);font-size:.58rem">
-                  <option value="">— optional —</option>
-                </select>
-              </div>
-            </div>
-            <div style="display:flex;gap:.5rem">
-              <button class="btn btn-pink btn-sm" onclick="applyOverride()">✓ WRITE OVERRIDE TO SELECTED</button>
-              <button class="btn btn-outline btn-sm" onclick="closeOverride()">✕ CANCEL</button>
-            </div>
-          </div>
-
-          <!-- ALBUM TAGGER PANEL -->
-          <div id="albumTaggerSection" style="display:none">
-            <div class="section-label sl-teal">ALBUM TAGGER</div>
-
-            <!-- Mode explanation -->
-            <div style="font-family:var(--mono);font-size:.58rem;color:var(--muted);margin-bottom:.6rem;line-height:1.8;padding:.5rem;background:var(--surface);border-radius:6px;border:1px solid var(--border)">
-              <strong style="color:var(--teal)">📂 LOCAL FIRST</strong> — Reads tags straight from your files. No internet. No API calls. Instant.<br>
-              Each card = one folder on disk. Per card you choose:<br>
-              <strong style="color:var(--teal)">🔍 LOOKUP</strong> — Go online to MusicBrainz for a genre recommendation for this album.<br>
-              <strong style="color:var(--pink)">✏️ OVERRIDE</strong> — Skip the internet. You set Genre, Mood, Album name, Year manually.<br>
-              <strong style="color:var(--muted)">✓ KEEP</strong> — Tags look fine. Leave them alone.<br>
-              Nothing writes to your files until you click a write button.
-            </div>
-
-            <!-- Step 1: Read Tags -->
-            <div id="atStep1" style="margin-bottom:.75rem">
-              <button class="btn btn-teal" onclick="atReadTags()" id="atReadBtn" style="width:100%;padding:.6rem;font-size:.65rem;letter-spacing:2px">
-                📂 READ TAGS FROM FILES
-              </button>
-              <div id="atLoadingMsg" style="display:none;font-family:var(--mono);font-size:.55rem;color:var(--teal);margin-top:.4rem;text-align:center">
-                ⟳ Reading files from disk…
-              </div>
-            </div>
-
-            <!-- Results area -->
-            <div id="atStep1Results" style="display:none">
-              <!-- Summary + sort bar -->
-              <div style="display:flex;gap:.5rem;margin-bottom:.6rem;align-items:center;flex-wrap:wrap">
-                <span style="font-family:var(--mono);font-size:.55rem;color:var(--teal)" id="atStatusBadge">0 folders</span>
-                <span style="font-family:var(--mono);font-size:.5rem;color:var(--muted)" id="atPageBadge"></span>
-                <div style="margin-left:auto;display:flex;align-items:center;gap:.35rem;flex-wrap:wrap">
-                  <span style="font-family:var(--mono);font-size:.48rem;color:var(--muted2);letter-spacing:1px">SORT</span>
-                  <button class="scout-group-btn active" id="atSort-folder" onclick="atSortCards('folder',this)" title="Sort by folder name (default)">FOLDER</button>
-                  <button class="scout-group-btn" id="atSort-artist" onclick="atSortCards('artist',this)" title="Sort by primary artist">ARTIST</button>
-                  <button class="scout-group-btn" id="atSort-year" onclick="atSortCards('year',this)" title="Sort by year">YEAR</button>
-                  <input type="text" id="atFilter" placeholder="Filter cards…" oninput="atFilterCards(this.value)"
-                    style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:var(--mono);font-size:.55rem;padding:.25rem .45rem;width:130px">
-                </div>
-              </div>
-              <!-- Bulk action buttons -->
-              <div style="display:flex;gap:.35rem;margin-bottom:.75rem;flex-wrap:wrap;align-items:center">
-                <label style="display:flex;align-items:center;gap:.3rem;font-family:var(--mono);font-size:.52rem;color:var(--muted);cursor:pointer;margin-right:.5rem">
-                  <input type="checkbox" id="atSelectAllCb" onchange="atToggleSelectAll(this.checked)" style="accent-color:var(--crimson)">
-                  Select All
-                </label>
-                <button class="btn btn-outline btn-sm" onclick="atWriteAllOverrides()" title="Write all albums where you clicked Override and set tags manually">⬇ WRITE ALL OVERRIDES</button>
-                <button class="btn btn-outline btn-sm" onclick="atWriteAllAccepted()" title="Write genres found by 🔍 Lookup — only works after running Lookup on albums">🔍 WRITE ALL LOOKUPS</button>
-                <button class="btn btn-outline btn-sm" onclick="atKeepAll()">✓ KEEP ALL</button>
-              </div>
-
-              <!-- Bulk Genre/Mood Override Panel — appears when cards are selected -->
-              <div id="atBulkOverrideBar" style="display:none;background:rgba(251,113,133,.06);border:1px solid rgba(251,113,133,.3);border-radius:8px;padding:.65rem .8rem;margin-bottom:.75rem">
-                <div style="font-family:var(--mono);font-size:.56rem;color:var(--crimson);letter-spacing:1px;margin-bottom:.4rem">BULK OVERRIDE — <span id="atBulkCount">0</span> cards selected</div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin-bottom:.45rem">
-                  <div>
-                    <div style="font-family:var(--mono);font-size:.46rem;color:var(--muted2);letter-spacing:.5px;margin-bottom:.2rem">GENRES (max 3)</div>
-                    <div style="display:flex;gap:.25rem">
-                      <select id="atBulk-g1" style="flex:1;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:.25rem;font-family:var(--mono);font-size:.5rem">
-                        <option value="">— genre 1 —</option>
-                      </select>
-                      <select id="atBulk-g2" style="flex:1;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:.25rem;font-family:var(--mono);font-size:.5rem">
-                        <option value="">— genre 2 —</option>
-                      </select>
-                      <select id="atBulk-g3" style="flex:1;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:.25rem;font-family:var(--mono);font-size:.5rem">
-                        <option value="">— genre 3 —</option>
-                      </select>
-                    </div>
-                  </div>
-                  <div>
-                    <div style="font-family:var(--mono);font-size:.46rem;color:var(--muted2);letter-spacing:.5px;margin-bottom:.2rem">MOODS (max 3)</div>
-                    <div style="display:flex;gap:.25rem">
-                      <select id="atBulk-m1" style="flex:1;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:.25rem;font-family:var(--mono);font-size:.5rem">
-                        <option value="">— mood 1 —</option>
-                      </select>
-                      <select id="atBulk-m2" style="flex:1;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:.25rem;font-family:var(--mono);font-size:.5rem">
-                        <option value="">— mood 2 —</option>
-                      </select>
-                      <select id="atBulk-m3" style="flex:1;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:.25rem;font-family:var(--mono);font-size:.5rem">
-                        <option value="">— mood 3 —</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-                <div style="display:flex;gap:.4rem;align-items:center">
-                  <button class="btn btn-pink btn-sm" onclick="atBulkApplyAndWrite()" style="letter-spacing:1px">⬇ APPLY &amp; WRITE SELECTED</button>
-                  <button class="btn btn-outline btn-sm" onclick="atBulkApplyOnly()">✏️ APPLY ONLY</button>
-                  <span style="font-family:var(--mono);font-size:.46rem;color:var(--muted2);margin-left:auto">Only genre &amp; mood are changed — artist, album, year stay per-card</span>
-                </div>
-              </div>
-
-              <!-- Cards container -->
-              <div id="albumTaggerCards" style="display:flex;flex-direction:column;gap:.75rem"></div>
-
-              <!-- Load More button -->
-              <div id="atLoadMoreWrap" style="display:none;margin-top:.75rem;text-align:center">
-                <button class="btn btn-outline" id="atLoadMoreBtn" onclick="atLoadMore()" style="font-size:.62rem;letter-spacing:1.5px;width:100%;padding:.55rem">
-                  ⬇ LOAD MORE FOLDERS
-                </button>
-                <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted);margin-top:.3rem" id="atLoadMoreHint"></div>
-              </div>
-            </div>
-          </div>
-
-          <!-- GENRE SCOUT PANEL -->
-          <div id="genreScoutSection" style="display:none">
-            <div class="section-label sl-teal">🔍 GENRE SCOUT — FILES WITH NO GENRE</div>
-            <div style="font-family:var(--mono);font-size:.58rem;color:var(--muted);margin-bottom:.75rem;line-height:1.8;padding:.5rem;background:var(--surface);border-radius:6px;border:1px solid var(--border)">
-              <strong style="color:var(--teal)">📂 PHYSICAL FILES ONLY</strong> — Reads actual file tags via Mutagen. No database. No internet.<br>
-              Scans <strong>500 files per chunk</strong> then pauses. Switch to <strong>BY ARTIST</strong> or <strong>BY ALBUM</strong> for card view — set genres, click <strong style="color:var(--teal)">💡 SUGGEST</strong> for recommendations, then <strong style="color:var(--teal)">✓ WRITE &amp; DISMISS</strong>.
-            </div>
-
-            <!-- Progress bar -->
-            <div id="scoutProgressWrap" style="display:none;margin-bottom:.75rem">
-              <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:.55rem;color:var(--muted);margin-bottom:.3rem">
-                <span id="scoutProgressLabel">Scanning…</span>
-                <span id="scoutProgressPct">0%</span>
-              </div>
-              <div style="background:var(--surface2);border-radius:4px;height:6px;overflow:hidden">
-                <div id="scoutProgressBar" style="height:100%;width:0%;background:var(--teal);transition:width .4s ease;border-radius:4px"></div>
-              </div>
-              <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:.5rem;color:var(--muted2);margin-top:.25rem">
-                <span id="scoutStatFiles">0 / 0 files read</span>
-                <span id="scoutStatFound" style="color:var(--crimson)">0 missing genre</span>
-              </div>
-            </div>
-
-            <!-- Top controls row -->
-            <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin-bottom:.75rem">
-              <button class="btn btn-teal btn-sm" id="btnScoutNextChunk" onclick="scoutNextChunk()" style="display:none">▶ SCAN NEXT 500</button>
-              <button class="btn btn-outline btn-sm" id="btnScoutScanAll" onclick="scoutScanAll()" style="display:none">⚡ SCAN ALL REMAINING</button>
-              <button class="btn btn-red btn-sm" id="btnScoutStop" onclick="scoutStop()" style="display:none">⏹ STOP</button>
-              <div style="display:flex;align-items:center;gap:.35rem;margin-left:auto">
-                <span style="font-family:var(--mono);font-size:.5rem;color:var(--muted);letter-spacing:1px">VIEW</span>
-                <button class="scout-group-btn active" id="sgBtn-flat" onclick="setScoutGroup('flat',this)">FLAT LIST</button>
-                <button class="scout-group-btn" id="sgBtn-artist" onclick="setScoutGroup('artist',this)">BY ARTIST</button>
-                <button class="scout-group-btn" id="sgBtn-album" onclick="setScoutGroup('album',this)">BY ALBUM</button>
-                <button class="scout-group-btn" id="sgBtn-folder" onclick="setScoutGroup('folder',this)">BY FOLDER</button>
-              </div>
-              <span style="font-family:var(--mono);font-size:.6rem;color:var(--muted)" id="scoutCount">—</span>
-            </div>
-
-            <!-- FLAT view -->
-            <div id="scoutFlatWrap" style="display:none">
-              <div style="display:flex;gap:.5rem;margin-bottom:.5rem;flex-wrap:wrap;align-items:center">
-                <input type="text" id="scoutFilter" placeholder="Filter…" oninput="scoutFilterRows(this.value)"
-                  style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:var(--mono);font-size:.58rem;padding:.3rem .5rem;width:150px">
-                <button class="btn btn-outline btn-sm" onclick="scoutFlatSelectAll(true)">SELECT ALL</button>
-                <button class="btn btn-outline btn-sm" onclick="scoutFlatSelectAll(false)">DESELECT ALL</button>
-                <span style="font-family:var(--mono);font-size:.6rem;color:var(--muted)" id="scoutFlatSelectedCount">0 selected</span>
-              </div>
-              <div style="display:flex;gap:.5rem;align-items:center;margin-bottom:.5rem;flex-wrap:wrap">
-                <span style="font-family:var(--mono);font-size:.5rem;color:var(--muted);white-space:nowrap">APPLY TO SELECTED ▶</span>
-                <select id="scoutFlatQuickGenre" style="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:.3rem .5rem;font-family:var(--mono);font-size:.58rem;flex:1;min-width:140px">
-                  <option value="">— select genre —</option>
-                </select>
-                <button class="btn btn-teal btn-sm" onclick="scoutFlatApplyGenre()">✓ APPLY</button>
-                <button class="btn btn-pink btn-sm" onclick="scoutFlatWriteSelected()">⬇ WRITE SELECTED</button>
-              </div>
-              <div class="preview-table-wrap">
-                <table class="preview-table">
-                  <thead><tr>
-                    <th style="width:30px"><input type="checkbox" onchange="scoutFlatSelectAll(this.checked)" style="accent-color:var(--teal)"></th>
-                    <th>ARTIST</th><th>TITLE</th><th>ALBUM</th>
-                    <th style="width:200px">ASSIGN GENRE</th>
-                  </tr></thead>
-                  <tbody id="scoutFlatBody"></tbody>
-                </table>
-              </div>
-            </div>
-
-            <!-- CARD view -->
-            <div id="scoutCardWrap" style="display:none">
-              <div id="scoutCards"></div>
-            </div>
-
-            <div id="scoutEmpty" style="display:none;margin-top:1rem;padding:.75rem 1rem;background:var(--surface2);border:1px solid var(--green);border-radius:6px;font-family:var(--mono);font-size:.65rem;color:var(--green)">
-              ✅ All files scanned — no missing genres found in this location.
-            </div>
           </div>
 
         </div>
@@ -1084,7 +746,12 @@
               </div>
             </div>
 
-            <!-- NOTABILITY TIER -->
+            <!-- ADVANCED (collapsible, hidden by default) -->
+            <div>
+              <button type="button" onclick="snfToggleAdvanced()" id="snf-adv-toggle" style="width:100%;background:none;border:none;color:var(--muted2);font-family:var(--mono);font-size:.56rem;letter-spacing:3px;padding:.4rem 0;cursor:pointer;text-align:left;display:flex;align-items:center;gap:.5rem">
+                <span id="snf-adv-arrow">▸</span><span>ADVANCED</span><span style="flex:1;height:1px;background:var(--border);display:block"></span>
+              </button>
+              <div id="snf-adv-section" style="display:none;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem;margin-top:.35rem">
             <div>
               <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--gold);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">NOTABILITY<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
               <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem;display:flex;flex-direction:column;gap:.45rem">
@@ -1093,13 +760,6 @@
                 <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.75rem"><input type="radio" name="snf-tier" value="deep" style="accent-color:var(--gold)"><span>Deep cuts <span style="color:var(--muted2);font-size:.62rem">(top 5,000)</span></span></label>
               </div>
             </div>
-
-            <!-- ADVANCED (collapsible, hidden by default) -->
-            <div>
-              <button type="button" onclick="snfToggleAdvanced()" id="snf-adv-toggle" style="width:100%;background:none;border:none;color:var(--muted2);font-family:var(--mono);font-size:.56rem;letter-spacing:3px;padding:.4rem 0;cursor:pointer;text-align:left;display:flex;align-items:center;gap:.5rem">
-                <span id="snf-adv-arrow">▸</span><span>ADVANCED</span><span style="flex:1;height:1px;background:var(--border);display:block"></span>
-              </button>
-              <div id="snf-adv-section" style="display:none;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem;margin-top:.35rem">
                 <div style="display:flex;justify-content:space-between;margin-bottom:.3rem">
                   <label style="font-size:.7rem;color:var(--muted)">Max peak position</label>
                   <span style="font-family:var(--display);font-size:1.05rem;color:var(--amber)" id="snf-peak-display">All peaks</span>
@@ -1130,13 +790,14 @@
             </select>
           </div>
 
-          <!-- OPTIONS -->
+<details class="adv" data-adv="sniffer-info"><summary>ⓘ RESULT BUTTONS ▸</summary><div class="adv-body">
           <div>
             <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--gold);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">INFO<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
             <div style="background:rgba(245,166,35,.06);border:1px solid rgba(245,166,35,.25);border-radius:6px;padding:.6rem">
               <p style="font-family:var(--mono);font-size:.55rem;color:var(--amber);line-height:1.7;margin:0">📡 Results show albums for better seeds &amp; metadata. Use GET to send to qBit, OPEN for source page, or MAGNET to copy the link.</p>
             </div>
           </div>
+</div></details>
 
         </div>
 
@@ -1153,7 +814,7 @@
           <div id="snf-cache-status" style="font-family:var(--mono);font-size:.55rem;color:var(--muted);display:flex;align-items:center;gap:.5rem;padding:.4rem .75rem;background:var(--surface);border:1px solid var(--border);border-radius:6px">
             <span style="color:var(--muted2)">📦 Library cache:</span>
             <span id="snf-cache-info" style="color:var(--teal)">Loading…</span>
-            <span style="margin-left:auto;color:var(--gold);cursor:pointer;text-decoration:underline" onclick="switchTab('vet')">Go to Veterinarian to sync →</span>
+            <span style="margin-left:auto;color:var(--gold);cursor:pointer;text-decoration:underline" onclick="advOpen('vet');switchTab('vet')">Go to Veterinarian to sync →</span>
           </div>
 
           <!-- STATS BAR -->
@@ -1324,6 +985,26 @@
             <input type="text" id="grm-local-path" placeholder="/music" value="/music" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:.72rem;padding:.5rem .65rem;outline:none;box-sizing:border-box">
           </div>
 
+          <!-- ONLINE DATA (Last.fm) -->
+          <div class="v-scan">
+            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--pink);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">ONLINE DATA<span class="grm-q" tabindex="0" data-tip="Looks up every song on Last.fm once: listener counts (how much it is still played today) and genres. Boosts timeless classics, lets never-charted favourites like Stairway to Heaven into playlists, and powers the Main-genre filter. First run takes about 3 hours in the background; afterwards only new songs are looked up. Nothing is written to your files.">?</span><span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
+            <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem;display:flex;flex-direction:column;gap:.45rem">
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <span style="font-family:var(--mono);font-size:.6rem;color:var(--muted)">🌐 Last.fm</span>
+                <span id="grm-lfm-state" style="font-family:var(--mono);font-size:.55rem;color:var(--muted2)">—</span>
+              </div>
+              <div style="background:var(--bg);border-radius:3px;height:5px;overflow:hidden;border:1px solid var(--border)"><div id="grm-lfm-bar" style="height:100%;width:0%;background:var(--teal);transition:width .4s"></div></div>
+              <div id="grm-lfm-msg" style="font-family:var(--mono);font-size:.52rem;color:var(--muted2);line-height:1.6;min-height:1.6em;word-break:break-word">Loading…</div>
+              <div style="display:flex;gap:.35rem">
+                <button id="grm-lfm-start" onclick="grmLfmStart()" style="flex:1;padding:.3rem .5rem;border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer;border:1px solid var(--border2);background:var(--surface3);color:var(--teal)">▶ START</button>
+                <button id="grm-lfm-stop"  onclick="grmLfmStop()"  style="flex:1;padding:.3rem .5rem;border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer;border:1px solid var(--border2);background:var(--surface3);color:var(--red)">■ STOP</button>
+              </div>
+            </div>
+          </div>
+
+          <details class="v-scan grm-adv" data-adv="grm-scan">
+            <summary>▸ ADVANCED</summary>
+            <div style="display:flex;flex-direction:column;gap:.75rem">
           <!-- CHART DATA STATUS -->
           <div class="v-scan">
             <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--pink);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">CHART DATABASE<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
@@ -1343,24 +1024,6 @@
               <div id="grm-ref-footnote" style="font-family:var(--mono);font-size:.52rem;color:var(--muted2);line-height:1.6">Historical Billboard chart data ships pre-loaded. No downloads needed.</div>
             </div>
           </div>
-
-          <!-- ONLINE DATA (Last.fm) -->
-          <div class="v-scan">
-            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--pink);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">ONLINE DATA<span class="grm-q" tabindex="0" data-tip="Looks up every song on Last.fm once: listener counts (how much it is still played today) and genres. Boosts timeless classics, lets never-charted favourites like Stairway to Heaven into playlists, and powers the Main-genre filter. First run takes about 3 hours in the background; afterwards only new songs are looked up. Nothing is written to your files.">?</span><span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
-            <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem;display:flex;flex-direction:column;gap:.45rem">
-              <div style="display:flex;justify-content:space-between;align-items:center">
-                <span style="font-family:var(--mono);font-size:.6rem;color:var(--muted)">🌐 Last.fm</span>
-                <span id="grm-lfm-state" style="font-family:var(--mono);font-size:.55rem;color:var(--muted2)">—</span>
-              </div>
-              <div style="background:var(--bg);border-radius:3px;height:5px;overflow:hidden;border:1px solid var(--border)"><div id="grm-lfm-bar" style="height:100%;width:0%;background:var(--teal);transition:width .4s"></div></div>
-              <div id="grm-lfm-msg" style="font-family:var(--mono);font-size:.52rem;color:var(--muted2);line-height:1.6;min-height:1.6em;word-break:break-word">Loading…</div>
-              <div style="display:flex;gap:.35rem">
-                <button id="grm-lfm-start" onclick="grmLfmStart()" style="flex:1;padding:.3rem .5rem;border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer;border:1px solid var(--border2);background:var(--surface3);color:var(--teal)">▶ START</button>
-                <button id="grm-lfm-stop"  onclick="grmLfmStop()"  style="flex:1;padding:.3rem .5rem;border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer;border:1px solid var(--border2);background:var(--surface3);color:var(--red)">■ STOP</button>
-              </div>
-            </div>
-          </div>
-
           <!-- SCAN OPTIONS -->
           <div class="v-scan">
             <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--pink);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">SCAN OPTIONS<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
@@ -1371,6 +1034,8 @@
               </label>
             </div>
           </div>
+            </div>
+          </details>
 
 
             <!-- M2: HITS filters -->
@@ -1445,7 +1110,7 @@
           </div>
 
           <!-- ADVANCED (collapsed) -->
-          <details class="v-build grm-adv">
+          <details class="v-build grm-adv" data-adv="grm-build">
             <summary>▸ ADVANCED</summary>
             <div style="display:flex;flex-direction:column;gap:.75rem">
             <!-- CHART CRITERIA sliders -->
@@ -1666,6 +1331,7 @@
             <div id="bh-artist-results" style="margin-top:.65rem;display:flex;flex-direction:column;gap:.35rem"></div>
             <!-- RELEASE TYPE FILTER (shown after artist selected) -->
             <div id="bh-release-filter" style="display:none;margin-top:.65rem">
+<details class="adv" data-adv="bh-rt"><summary>ADVANCED ▸ <span class="adv-sub">release type (albums by default)</span></summary><div class="adv-body">
               <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--orange);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">RELEASE TYPE<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
               <div style="display:flex;gap:.35rem;flex-wrap:wrap">
                 <button id="bh-rt-album" onclick="bhSetReleaseType('album')" style="padding:.35rem .6rem;background:var(--orange);color:#000;border:none;border-radius:4px;font-family:var(--mono);font-size:.58rem;cursor:pointer">Albums</button>
@@ -1673,6 +1339,7 @@
                 <button id="bh-rt-single" onclick="bhSetReleaseType('single')" style="padding:.35rem .6rem;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:4px;font-family:var(--mono);font-size:.58rem;cursor:pointer">Singles</button>
                 <button id="bh-rt-all" onclick="bhSetReleaseType('all')" style="padding:.35rem .6rem;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:4px;font-family:var(--mono);font-size:.58rem;cursor:pointer">All</button>
               </div>
+</div></details>
             </div>
           </div>
 
@@ -1731,6 +1398,7 @@
               </optgroup>
             </select>
             <button onclick="bhCompSearch()" style="margin-top:.5rem;width:100%;padding:.5rem;background:var(--orange);color:#000;border:none;border-radius:5px;font-family:var(--mono);font-size:.65rem;cursor:pointer;letter-spacing:1px">🔍 SEARCH COMPILATIONS</button>
+<details class="adv" data-adv="bh-comp"><summary>MORE ▸ <span class="adv-sub">custom search</span></summary><div class="adv-body">
             <div style="margin-top:.5rem">
               <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--orange);margin-bottom:.45rem;display:flex;align-items:center;gap:.5rem">OR CUSTOM SEARCH<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
               <div style="display:flex;gap:.4rem">
@@ -1738,6 +1406,7 @@
                 <button onclick="bhCompCustomSearch()" style="padding:.5rem .75rem;background:var(--orange);color:#000;border:none;border-radius:5px;font-family:var(--mono);font-size:.62rem;cursor:pointer">🔍</button>
               </div>
             </div>
+</div></details>
           </div>
 
           <!-- GENRE BROWSE -->
@@ -1784,7 +1453,7 @@
           <div id="bh-cache-status" style="font-family:var(--mono);font-size:.55rem;color:var(--muted);display:flex;align-items:center;gap:.5rem;padding:.4rem .75rem;background:var(--surface);border:1px solid var(--border);border-radius:6px">
             <span style="color:var(--muted2)">📦 Library cache:</span>
             <span id="bh-cache-info" style="color:var(--teal)">Loading…</span>
-            <span style="margin-left:auto;color:var(--gold);cursor:pointer;text-decoration:underline" onclick="switchTab('vet')">Go to Veterinarian to sync →</span>
+            <span style="margin-left:auto;color:var(--gold);cursor:pointer;text-decoration:underline" onclick="advOpen('vet');switchTab('vet')">Go to Veterinarian to sync →</span>
           </div>
 
           <!-- STATUS BAR -->
@@ -1871,6 +1540,15 @@
             <div id="trk-countdown" style="font-family:var(--display);font-size:1rem;color:var(--crimson);text-align:center;margin-top:.3rem;letter-spacing:1px;display:none">Next search: --:--</div>
           </div>
 
+          <!-- SYNC -->
+          <div>
+            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--crimson);margin-bottom:.5rem;display:flex;align-items:center;gap:.5rem">SYNC<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
+            <button onclick="trkSync()" style="width:100%;padding:.55rem;background:var(--crimson);color:#000;border:none;border-radius:6px;font-family:var(--mono);font-size:.65rem;letter-spacing:1px;cursor:pointer;transition:all .2s" id="trk-sync-btn">⟳ SYNC MISSING LISTS</button>
+            <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted2);margin-top:.3rem;text-align:center">Pull current missing items from Radarr &amp; Sonarr</div>
+            <div id="trk-auto-sync-hint" style="font-family:var(--mono);font-size:.46rem;color:var(--teal);margin-top:.15rem;text-align:center;display:none">Auto-sync: every 6 hours</div>
+          </div>
+
+<details class="adv" data-adv="tracker"><summary>ADVANCED ▸ <span class="adv-sub">connections · cooldown · logging</span></summary><div class="adv-body">
           <!-- CONNECTIONS -->
           <div>
             <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--crimson);margin-bottom:.5rem;display:flex;align-items:center;gap:.5rem">CONNECTIONS<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
@@ -1887,15 +1565,6 @@
               </div>
             </div>
           </div>
-
-          <!-- SYNC -->
-          <div>
-            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--crimson);margin-bottom:.5rem;display:flex;align-items:center;gap:.5rem">SYNC<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
-            <button onclick="trkSync()" style="width:100%;padding:.55rem;background:var(--crimson);color:#000;border:none;border-radius:6px;font-family:var(--mono);font-size:.65rem;letter-spacing:1px;cursor:pointer;transition:all .2s" id="trk-sync-btn">⟳ SYNC MISSING LISTS</button>
-            <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted2);margin-top:.3rem;text-align:center">Pull current missing items from Radarr &amp; Sonarr</div>
-            <div id="trk-auto-sync-hint" style="font-family:var(--mono);font-size:.46rem;color:var(--teal);margin-top:.15rem;text-align:center;display:none">Auto-sync: every 6 hours</div>
-          </div>
-
           <!-- SETTINGS -->
           <div>
             <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--crimson);margin-bottom:.5rem;display:flex;align-items:center;gap:.5rem">SETTINGS<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
@@ -1918,6 +1587,7 @@
               <label for="trk-logging" style="font-family:var(--mono);font-size:.55rem;color:var(--muted);cursor:pointer">Enable activity logging</label>
             </div>
           </div>
+</div></details>
 
           <!-- ACTIVITY LOG -->
           <div style="flex:1;display:flex;flex-direction:column;min-height:0">
@@ -2030,6 +1700,7 @@
               <div class="vault-row"><div class="vault-row-label">Billboard Pop</div><div class="vault-row-status" id="vet-billpop-count" style="color:var(--text)">—</div></div>
             </div>
 
+<details class="adv" data-adv="vet"><summary>ADVANCED ▸ <span class="adv-sub">library cache · skip cache · vacuum</span></summary><div class="adv-body">
             <!-- Library Cache -->
             <div class="section-label" style="color:var(--red)">LIBRARY CACHE</div>
             <div class="card" style="padding:.65rem 1rem;display:flex;flex-direction:column;gap:.4rem">
@@ -2068,6 +1739,7 @@
               <button class="btn btn-outline btn-sm" onclick="vetIntegrityCheck()" style="width:100%;font-size:.6rem">🔍 INTEGRITY CHECK</button>
               <div class="field-hint" style="margin-top:0;margin-bottom:.15rem">Runs SQLite integrity check. Reports any corruption.</div>
             </div>
+</div></details>
 
           </div>
         </div>
@@ -2077,15 +1749,15 @@
           <div style="font-family:var(--display);font-size:1.8rem;letter-spacing:3px;color:var(--red);margin-bottom:.25rem">🩺 THE VETERINARIAN</div>
           <div style="font-family:var(--mono);font-size:.62rem;color:var(--muted);margin-bottom:1.25rem;line-height:1.8">Database health, maintenance tools, and administration. Keep ChartHound running clean.</div>
 
-          <!-- Clear Database — Danger Zone -->
-          <div class="card" style="border:1px solid rgba(248,113,113,.3);padding:1.25rem 1.5rem">
-            <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.75rem">
-              <div style="font-family:var(--display);font-size:1.1rem;letter-spacing:1.5px;color:var(--red)">⚠ DANGER ZONE</div>
+          <!-- Database Backups -->
+          <div class="card" style="padding:1.25rem 1.5rem">
+            <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.6rem">
+              <div style="font-family:var(--display);font-size:1.1rem;letter-spacing:1.5px;color:var(--red)">💾 BACKUPS</div>
+              <span class="grm-q" tabindex="0" data-tip="A backup is a complete copy of ChartHound's database: your login, connections, scans, Hit Scores, genre decisions and months of saved lookups. If the database is ever damaged, restore the newest good backup instead of starting over. Your music files are never part of it. The newest 5 are kept.">?</span>
             </div>
-            <p style="font-family:var(--mono);font-size:.58rem;color:var(--muted);line-height:1.8;margin-bottom:.75rem">
-              Permanently deletes all scanned track records, chart data, write logs, and scan history from the dynamic database. Your music files on disk are <strong style="color:var(--green)">never affected</strong>. The static chart database is <strong style="color:var(--green)">never touched</strong>. This cannot be undone.
-            </p>
-            <button class="btn btn-red" onclick="confirmClearDatabase()" style="font-size:.72rem;font-family:var(--mono);letter-spacing:.5px;padding:.55rem 1.25rem">⚠️ CLEAR FULL DATABASE</button>
+            <p style="font-family:var(--mono);font-size:.58rem;color:var(--muted);line-height:1.8;margin-bottom:.75rem">Saves a copy to <code>/data/backups</code> inside ChartHound's Docker volume. Download one now and then to keep a copy off the server. To restore, see <b>Troubleshooting → Restore a backup</b> in the README.</p>
+            <button class="btn btn-outline" id="vet-bk-btn" onclick="vetBackupNow()" style="font-size:.72rem;font-family:var(--mono);letter-spacing:.5px;padding:.55rem 1.25rem;color:var(--teal);border-color:var(--teal)">💾 BACK UP NOW</button>
+            <div id="vet-bk-list" style="margin-top:.85rem"></div>
           </div>
 
           <!-- Debug Console -->
@@ -2157,14 +1829,14 @@
 
 <div id="toastWrap"></div>
 
-<script src="/static/js/core.js?v=m8b"></script>
-<script src="/static/js/start.js?v=m8c"></script>
-<script src="/static/js/retriever.js?v=m8b"></script>
-<script src="/static/js/topdogs.js?v=m8b"></script>
-<script src="/static/js/sniffer.js?v=m8b"></script>
-<script src="/static/js/bloodhound.js?v=m8b"></script>
-<script src="/static/js/vet.js?v=m8b"></script>
-<script src="/static/js/tracker.js?v=m8b"></script>
-<script src="/static/js/guide.js?v=m8b"></script>
+<script src="/static/js/core.js?v=m8d2"></script>
+<script src="/static/js/start.js?v=m8d2"></script>
+<script src="/static/js/retriever.js?v=m8d2"></script>
+<script src="/static/js/topdogs.js?v=m8d2"></script>
+<script src="/static/js/sniffer.js?v=m8d2"></script>
+<script src="/static/js/bloodhound.js?v=m8d2"></script>
+<script src="/static/js/vet.js?v=m8d2"></script>
+<script src="/static/js/tracker.js?v=m8d2"></script>
+<script src="/static/js/guide.js?v=m8d2"></script>
 </body>
 </html>

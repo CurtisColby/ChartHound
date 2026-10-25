@@ -572,7 +572,8 @@ async function saveSnifferPath() {
     const d = await r.json();
     if (!r.ok) throw new Error(d.detail || 'Save failed');
     setFeedback('snifferpath', '\u2713 Download path saved.', 'ok');
-    toast('Sniffer download path saved.', 'ok');
+    toast('Download path saved.', 'ok');
+    checkDownloadPath();
   } catch(e) { setFeedback('snifferpath', '\u2717 ' + e.message, 'error'); }
 }
 
@@ -584,7 +585,32 @@ async function loadSnifferPath() {
     if (d.download_path) {
       const el = document.getElementById('cSnifferPath');
       if (el) el.value = d.download_path;
+      if (!window._dlChecked) { window._dlChecked = true; checkDownloadPath(); }
     }
   } catch(e) {}
 }
 
+
+
+// ── Kennel: does the download client use a folder containing this path? (M8d) ──
+async function checkDownloadPath() {
+  const box = document.getElementById('cSnifferPathCheck'); if (!box) return;
+  box.innerHTML = '<span style="color:var(--muted2)">Checking your download client…</span>';
+  try {
+    const r = await fetch(API + '/api/kennel/download-path-check', {headers: authHdrs()});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    if (!d.download_path || !d.clients.length) { box.innerHTML = ''; return; }
+    const show = f => { const a = [...f].sort((x, y) => x.length - y.length).slice(0, 4); return a.map(esc).join(', ') + (f.length > 4 ? ` +${f.length - 4} more` : ''); };
+    box.innerHTML = d.clients.map(c => {
+      if (c.error) return `<div class="dl-warn">⚠ ${esc(c.error)} Check that it's connected and TESTed.</div>`;
+      if (c.service === 'sabnzbd') {
+        if (!c.category_dir) return `<div class="dl-warn">⚠ SABnzbd has no <b>charthound-music</b> category folder — Usenet grabs will go to its default folder. Add the category in SABnzbd → Config → Categories with folder <b>${esc(d.download_path)}</b>.</div>`;
+        return c.ok ? `<div class="dl-ok">✓ SABnzbd's charthound-music category saves to this folder.</div>`
+                    : `<div class="dl-warn">⚠ SABnzbd's charthound-music category saves to <b>${esc(c.category_dir)}</b>, not this path. Usenet grabs will land there.</div>`;
+      }
+      return c.ok ? `<div class="dl-ok">✓ ${esc(c.name)} already uses a folder that contains this path.</div>`
+                  : `<div class="dl-warn">⚠ ${esc(c.name)} doesn't use any folder that contains this path (it saves to ${show(c.folders) || 'unknown folders'}). If ${esc(c.name)} can't see this folder, grabs will fail — type the path as ${esc(c.name)} sees it inside its container. If it's a separate mount you've already set up, you can ignore this.</div>`;
+    }).join('');
+  } catch (e) { box.innerHTML = ''; }
+}

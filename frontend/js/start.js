@@ -64,6 +64,7 @@ async function stLoad() {
   }
   const c = d.connect, sc = d.scan, g = d.genres, p = d.playlists, gp = d.gaps, t = d.tracker;
   const names = (c.verified || []).filter(s => _ST_NAMES[s]).map(s => _ST_NAMES[s]);
+  const first = document.getElementById('st-first'); if (first) first.style.display = c.media.length ? 'none' : '';
   const steps = [
     { n: 1, title: 'CONNECT YOUR SERVICES', go: [['GO → THE KENNEL', 'kennel']],
       what: 'Tell ChartHound where your media server (Plex, Emby or Jellyfin), chart sources and downloaders are. Save, then TEST each one.',
@@ -74,12 +75,16 @@ async function stLoad() {
       state: sc.tracks ? 'done' : 'todo',
       status: sc.tracks ? `${stN(sc.tracks)} songs · ${stN(sc.charted)} charted${sc.newest ? ' · newest added ' + stDate(sc.newest) : ''}`
                         : 'Not scanned yet — open Top Dogs and click ① SCAN.' },
-    { n: 3, title: 'TAG GENRES', go: [['GO → THE RETRIEVER', 'retriever']],
+    { n: 3, title: 'TAG GENRES', go: [['GO → THE RETRIEVER', 'retriever']]
+        .concat(g.conflicts ? [['CHECK CONFLICTS', 'retriever', 'conflict']] : [])
+        .concat(g.no_source ? [['NO GENRE FOUND', 'retriever', 'nogenre']] : []),
       what: 'Looks up each album’s genre online and writes it into your music files: click ▶ RUN ENGINE, then REVIEW &amp; WRITE. Hand-edited songs are never overwritten.',
-      state: !g.decided || g.pending ? 'todo' : 'done',
+      state: !g.decided || g.pending_new ? 'todo' : 'done',
       status: !g.decided ? 'Not run yet.'
-        : (g.pending ? `${stN(g.pending)} songs have no genre yet — run the engine. ` : 'All songs have a genre. ')
-          + `${stN(g.decided)} done${g.last_run ? ', last run ' + stDate(g.last_run) : ''}${g.conflicts ? ` · ${stN(g.conflicts)} to review (CONFLICT)` : ''}` },
+        : (g.pending_new ? `${stN(g.pending_new)} new songs need genres — ▶ RUN ENGINE. ` : 'Every song has been looked up. ')
+          + `${stN(g.decided)} decided${g.last_run ? ', last run ' + stDate(g.last_run) : ''}`
+          + (g.conflicts ? ` · ${stN(g.conflicts)} conflicts to check` : '')
+          + (g.no_source ? ` · ${stN(g.no_source)} songs no source knows — set them by hand or with a folder rule` : '') },
     { n: 4, title: 'BUILD ROAD-TRIP PLAYLISTS', go: [['GO → ② BUILD', 'groomer', 'build']],
       what: 'Pick decades, genres and how many hours. Send the playlist to Plex, Emby or Jellyfin, or download an M3U for Navidrome.',
       state: p.last ? 'done' : 'todo',

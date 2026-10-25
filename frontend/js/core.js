@@ -4,13 +4,6 @@ let authToken = localStorage.getItem('ch_token') || '';
 let currentUser = localStorage.getItem('ch_user') || '';
 let authMode = 'login';
 let heartbeatTimer = null;
-let scanJobId = null;
-let scanPollTimer = null;
-let currentMode = 'preview';
-let currentScope = 'subfolder';
-let selectedTrackIds = new Set();
-let scanPaused = false;
-let browseCurrentPath = '';
 
 const SERVICES = ['plex','emby','jellyfin','lastfm','prowlarr','radarr','sonarr','qbittorrent','sabnzbd','discogs'];
 const connState = Object.fromEntries(SERVICES.map(s => [s, false]));
@@ -79,7 +72,6 @@ function handleSessionExpired() {
   if (_sessionExpiredFired) return;
   _sessionExpiredFired = true;
   if (heartbeatTimer) clearInterval(heartbeatTimer);
-  if (scanPollTimer) clearInterval(scanPollTimer);
   clearAuth();
   // Hide app, show login
   const hdr = document.getElementById('appHeader'); if (hdr) hdr.style.display = 'none';
@@ -128,7 +120,7 @@ async function doLogin() {
     localStorage.setItem('ch_token', authToken); localStorage.setItem('ch_user', currentUser);
     const hr = await fetch(`${API}/api/health`, {headers: authHdrs()});
     const hd = hr.ok ? await hr.json() : {};
-    showApp(hd.secret_key_placeholder);
+    showApp(hd.secret_key_placeholder, authMode === 'register');
   } catch { errEl.textContent = 'Cannot reach server. Is Docker running?'; }
 }
 document.addEventListener('keydown', e => {
@@ -137,14 +129,13 @@ document.addEventListener('keydown', e => {
 function doLogout() {
   clearAuth();
   if (heartbeatTimer) clearInterval(heartbeatTimer);
-  if (scanPollTimer) clearInterval(scanPollTimer);
   document.getElementById('appHeader').style.display = 'none';
   document.getElementById('appShell').style.display = 'none';
   document.getElementById('secretKeyBanner').classList.remove('show');
   document.getElementById('loginScreen').classList.remove('hidden');
   document.getElementById('loginPass').value = '';
 }
-async function showApp(isPlaceholderKey = false) {
+async function showApp(isPlaceholderKey = false, newAccount = false) {
   document.getElementById('loginScreen').classList.add('hidden');
   document.getElementById('appHeader').style.display = 'flex';
   document.getElementById('appShell').style.display = 'flex';
@@ -154,7 +145,8 @@ async function showApp(isPlaceholderKey = false) {
   await loadPathSettings();
   startHeartbeat();
   stLoad();
-  toast(`Welcome back, ${currentUser}.`, 'ok');
+  if (newAccount) { switchTab('start'); toast('Account created — follow Start Here, step 1.', 'ok'); }
+  else toast(`Welcome back, ${currentUser}.`, 'ok');
   checkForUpdate();
 }
 
@@ -182,17 +174,22 @@ function switchTab(name) {
   document.getElementById(`nav-${name}`).classList.add('active');
   document.getElementById(`panel-${name}`).classList.add('active');
   document.getElementById('vinylIcon').classList.toggle('spinning', ['retriever','sniffer','bloodhound','tracker'].includes(name));
+  if (name !== 'retriever' && typeof gePlayStop === 'function') gePlayStop();
+  if (name === 'kennel' && typeof checkDownloadPath === 'function') checkDownloadPath();
   if (name === 'start') stLoad();
-  if (name === 'retriever') { checkRetrieverBanners(); loadCustomTags(); retInjectScrollNav(); }
+  else tabHeader(name);
+  if (name === 'retriever') {
+    retInjectScrollNav();
+    if (['conflict', 'nogenre'].includes(window._stWantView)) {
+      const sc = document.getElementById('ger-scope'); if (sc) sc.value = window._stWantView;
+      window._stWantView = null; geOpenReview();
+    }
+  }
   if (name === 'groomer') grmInit();
   if (name === 'sniffer') snfInit();
   if (name === 'bloodhound') bhInit();
   if (name === 'tracker') trkInit();
   if (name === 'vet') vetInit();
-}
-function checkRetrieverBanners() {
-  const b = document.getElementById('retrieverLfmBanner');
-  if (b) b.style.display = connState.lastfm ? 'none' : 'flex';
 }
 
 // CONNECTIONS — all bugs fixed (BUG-001, BUG-002, BUG-006, BUG-007, BUG-010)
@@ -492,6 +489,7 @@ async function loadPathSettings() {
     if (serverEl    && d.server_prefix)    { serverEl.value = d.server_prefix; serverEl.dispatchEvent(new Event('input')); }
     if (dockerEl    && d.docker_prefix)    dockerEl.value    = d.docker_prefix;
     if (navidromeEl && d.navidrome_prefix) navidromeEl.value = d.navidrome_prefix;
+    if (!d.server_prefix) advOpen('kennel');
     // Sync Navidrome M3U button state in Top Dogs if results are loaded
     grmSyncBar();
   } catch {}
@@ -517,314 +515,100 @@ function previewPath() {
   el.innerHTML = `<span class="path-arrow">SERVER ▶</span> ${esc(input)}<br><span class="path-arrow">DOCKER ▶</span> <span style="color:var(--teal)">${esc(translated)}</span>`;
 }
 
-// RETRIEVER
-function setScope(scope, el) {
-  currentScope = 'subfolder';
-}
+// ══════════════════════════════════════════════════════════════════════════════
+//  M8c — per-tab "What this does / Do this next" header + Advanced folds
+// ══════════════════════════════════════════════════════════════════════════════
+const _thReady = g => g.prowlarr && g.downloader
+  ? `✅ Ready${g.path ? ' · downloads go to ' + esc(g.path) : ''}`
+  : '⚠️ Needs Prowlarr and a download client connected in The Kennel.';
+const TAB_HELP = {
+  kennel: {
+    what: 'Stores the addresses and keys for your media server, chart sources and downloaders — encrypted.',
+    next: 'Fill in a card, <b>SAVE</b>, then <b>TEST</b>. A green dot means it works.',
+    live: s => s.connect.media.length
+      ? `✅ ${s.connect.verified.length} services working, including ${s.connect.media.map(m => _ST_NAMES[m]).join(', ')}`
+      : '⚠️ No media server working yet — start with Plex, Emby or Jellyfin.' },
+  retriever: {
+    what: 'Gives every song one genre family plus up to 3 styles and writes it into the music file.',
+    next: '<b>▶ RUN ENGINE</b>, then <b>REVIEW &amp; WRITE</b>. Look over the ⚠ CONFLICT songs first.',
+    live: s => { const g = s.genres; if (!g.decided) return '⚠️ Engine not run yet.';
+      return (g.pending_new ? `⚠️ ${stN(g.pending_new)} new songs need genres — ▶ RUN ENGINE.` : '✅ Every song has been looked up.')
+        + (g.conflicts ? ` · <a href="#" onclick="stGo('retriever','conflict');return false">${stN(g.conflicts)} conflicts to check</a>` : '')
+        + (g.no_source ? ` · <a href="#" onclick="stGo('retriever','nogenre');return false">${stN(g.no_source)} songs no source knows</a> — set by hand or with a folder rule` : ''); } },
+  groomer: {
+    what: 'Scores every song 0–100 from its chart history and builds road-trip playlists from the biggest hits.',
+    next: '<b>① SCAN</b> after new music arrives, then <b>② BUILD</b> and push to your media server.',
+    live: s => s.scan.tracks
+      ? `✅ ${stN(s.scan.tracks)} songs · ${stN(s.scan.charted)} charted${s.playlists.last ? ` · last playlist “${esc(s.playlists.last.name || 'playlist')}” ${stDate(s.playlists.last.at)}` : ''}`
+      : '⚠️ Not scanned yet — click ① SCAN.' },
+  sniffer: {
+    what: 'Finds the big chart hits you don’t own and sends them to your downloader.',
+    next: 'Pick <b>🏆 BIG HITS</b>, click <b>FIND BIG HITS I DON’T OWN</b>, then <b>SEARCH</b> a song and grab one result.',
+    live: s => _thReady(s.gaps) },
+  bloodhound: {
+    what: 'Finds albums you’re missing — essential Billboard 200 albums or any artist’s full discography.',
+    next: 'Pick <b>⭐ ESSENTIAL</b> (or type an artist), tick “Only albums I’m missing”, then <b>SEARCH</b> and grab.',
+    live: s => _thReady(s.gaps) },
+  tracker: {
+    what: 'Slowly asks Radarr and Sonarr to search for missing movies and episodes in the background.',
+    next: 'Turn it on once. After that just check the log now and then — it runs with the browser closed.',
+    live: s => { const t = s.tracker;
+      if (t.enabled) return `✅ On · ${stN(t.missing)} missing${t.last_grab ? ' · last grab ' + stDate(t.last_grab) : ''}`;
+      return t.radarr || t.sonarr ? 'Off — click the TRACKER OFF button to start it.' : '⚠️ Needs Radarr or Sonarr connected in The Kennel.'; } },
+  vet: {
+    what: 'Database health, chart data sources and maintenance tools.',
+    next: 'Click <b>💾 BACK UP NOW</b> before big changes. If a chart source shows <b>REFRESH FAILING</b>, try ↻ later.' },
+};
 
-function setMode(mode, el) {
-  currentMode = mode;
-  document.querySelectorAll('.mode-btn').forEach(t => t.classList.remove('active'));
-  el.classList.add('active');
-  const desc = {
-    preview:
-      '🌐 GOES ONLINE — fetches proposed tags from MusicBrainz, Last.fm, Deezer & more in chunks. ' +
-      'Results appear live as they come in. You review and approve before anything writes to your files. ' +
-      'You can Override any individual track before writing.\n\n' +
-      '⚠️ WARNING: If you select a root folder with many subfolders, Preview will process ALL of them at once. ' +
-      'This can take hours on large libraries. Select one or two specific folders at a time for best results.',
-    album_tagger:
-      '⭐ RECOMMENDED — This is the preferred method for tagging your library. ' +
-      'Select a subfolder, then click READ FROM FILE to load album cards. ' +
-      'One card per folder. Choose 🔍 LOOKUP (fetches genre from internet for that album), ' +
-      '✏️ OVERRIDE (set all tags yourself), or ✓ KEEP (tags are fine — card disappears). ' +
-      'After Lookup, click 🔍 WRITE ALL LOOKUPS to write all found genres at once. ' +
-      'Use the checkboxes for bulk override — select multiple cards and set genres/moods for all at once.',
-    autopilot:
-      '⚡ AUTO-PILOT — goes online and writes metadata automatically in the background. ' +
-      'Skips tracks you have already manually verified. Low-confidence results go to a Review Queue instead of writing. ' +
-      'Test on a small subfolder first.\n\n' +
-      '⚠️ WARNING: Auto-Pilot can take hours on large libraries and you accept whatever Last.fm tags it assigns. ' +
-      'Review results carefully. Album Tagger gives you more control.',
-    genre_scout:
-      '📂 PHYSICAL FILES — Reads actual Mutagen tags from your files. No database, no internet. ' +
-      'Scans 500 files at a time and pauses so you can tag and write before continuing. ' +
-      'Use BY ARTIST or BY ALBUM view for card-based editing with 💡 SUGGEST to get genre recommendations.',
-  };
-  var descText = desc[mode] || desc.preview;
-  var descEl = document.getElementById('modeDesc');
-  descText = descText.replace(/⚠️ WARNING:/g, '<br><br><span style="color:var(--crimson);font-weight:bold">⚠️ WARNING:</span>');
-  descText = descText.replace(/⭐ RECOMMENDED/g, '<span style="color:var(--green);font-weight:bold">⭐ RECOMMENDED</span>');
-  descEl.innerHTML = descText;
-  document.getElementById('albumTaggerSection').style.display = mode === 'album_tagger' ? 'block' : 'none';
-  document.getElementById('previewSection').style.display = mode === 'preview' ? 'block' : 'none';
-  document.getElementById('genreScoutSection').style.display = mode === 'genre_scout' ? 'block' : 'none';
-  const startBtn  = document.getElementById('btnStartScan');
-  const scoutBtn  = document.getElementById('btnScoutScan');
-  const batchSect = document.getElementById('batchSizeSection');
-  if (startBtn)  startBtn.style.display  = (mode === 'album_tagger' || mode === 'genre_scout') ? 'none' : '';
-  if (scoutBtn)  scoutBtn.style.display  = mode === 'genre_scout' ? '' : 'none';
-  if (batchSect) batchSect.style.display = mode === 'genre_scout' ? 'none' : '';
-  if (mode === 'genre_scout') _scoutPopulateGenreOpts();
-}
-async function startScan() {
-  const body = {scope:currentScope, mode:currentMode, chunk_size:parseInt(document.getElementById('chunkSlider').value)};
-  if (currentScope === 'subfolder') {
-    if (_subfolderQueue.length > 0) {
-      body.subfolders = _subfolderQueue;
-      body.scope = 'subfolder';
-    } else {
-      const sel = document.getElementById('subfolderPath');
-      const subfolder = sel ? sel.value.trim() : '';
-      if (!subfolder || subfolder === '__up__' || subfolder === '') {
-        toast('Select a subfolder first using the ⟳ button.', 'warn');
-        return;
-      }
-      body.subfolder = subfolder;
-    }
-  }
-  addLog('Starting scan…', 'info');
-  addLog('⟳ Fetching metadata from MusicBrainz · Last.fm · Discogs · Deezer · ListenBrainz — please wait…', 'info');
-  // Clear previous scan results
-  document.getElementById('previewTableBody').innerHTML = '';
-  document.getElementById('previewSection').style.display = 'none';
-  const _pzm = document.getElementById('previewZeroMatch'); if (_pzm) _pzm.style.display = 'none';
-  selectedTrackIds.clear();
-  _retAllTracks = [];
-  document.getElementById('selectedCount').textContent = '0 selected';
-  document.getElementById('btnStartScan').disabled = true;
-  document.getElementById('btnPauseScan').disabled = false;
-  document.getElementById('btnStopScan').disabled = false;
-  document.getElementById('scanStatusTitle').textContent = 'SCANNING…';
-  document.getElementById('scanStatusSub').textContent = 'Fetching metadata — please wait…';
-  document.getElementById('vinylIcon').classList.add('spinning');
-  document.getElementById('scanProgressWrap').classList.add('bar-pulsing');
+let _thStatus = null, _thAt = 0;
+async function _thFetch() {
+  if (_thStatus && Date.now() - _thAt < 60000) return _thStatus;
   try {
-    const r = await fetch(`${API}/api/retriever/scan/start`, {method:'POST', headers:authHdrs(), body:JSON.stringify(body)});
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.detail || 'Failed to start scan');
-    scanJobId = d.job_id;
-    scanPaused = false;
-    document.getElementById('btnPauseScan').textContent = '⏸ PAUSE';
-    addLog(`Job ${scanJobId} started — scanning ${d.scan_path} in ${currentMode} mode`, 'ok');
-    if (d.verified_skipped > 0) {
-      addLog(`⚠ ${d.verified_skipped} track(s) skipped — manually verified. To re-tag these, click Clear Metadata Cache and rescan.`, 'warn');
-    }
-    startScanPolling();
-  } catch(e) {
-    addLog(`✗ ${e.message}`, 'err');
-    document.getElementById('btnStartScan').disabled = false;
-    document.getElementById('btnPauseScan').disabled = true;
-    document.getElementById('btnStopScan').disabled = true;
-    document.getElementById('vinylIcon').classList.remove('spinning');
+    const r = await fetch(`${API}/api/start/status`, {headers: authHdrs()});
+    if (r.ok) { _thStatus = await r.json(); _thAt = Date.now(); }
+  } catch {}
+  return _thStatus;
+}
+const _thHidden = t => { try { return localStorage.getItem('ch_hdr_hide_' + t) === '1'; } catch { return false; } };
+function thToggle(t, hide) {
+  try { localStorage.setItem('ch_hdr_hide_' + t, hide ? '1' : '0'); } catch {}
+  tabHeader(t);
+}
+async function tabHeader(t) {
+  const h = TAB_HELP[t], panel = document.getElementById('panel-' + t);
+  if (!h || !panel) return;
+  let el = document.getElementById('thdr-' + t);
+  if (!el) { el = document.createElement('div'); el.id = 'thdr-' + t; panel.insertBefore(el, panel.firstChild); }
+  if (_thHidden(t)) {
+    el.className = 'tab-hdr th-min';
+    el.innerHTML = `<button class="th-show" onclick="thToggle('${t}',false)">ⓘ WHAT THIS TAB DOES ▸</button>`;
+    return;
   }
-}
-async function pauseScan() {
-  if (scanPaused) {
-    // RESUME
-    const r = await fetch(`${API}/api/retriever/scan/resume`, {method:'POST', headers:authHdrs()});
-    if (r.ok) {
-      scanPaused = false;
-      document.getElementById('btnPauseScan').textContent = '⏸ PAUSE';
-      addLog('Scan resumed.', 'ok');
-      document.getElementById('scanStatusTitle').textContent = 'SCANNING…';
-      startScanPolling();
-    }
-  } else {
-    // PAUSE
-    await fetch(`${API}/api/retriever/scan/pause`, {method:'POST', headers:authHdrs()});
-    scanPaused = true;
-    document.getElementById('btnPauseScan').textContent = '▶ RESUME';
-    addLog('Scan paused. No files were corrupted.', 'warn');
-    document.getElementById('scanStatusTitle').textContent = 'PAUSED';
-  }
-}
-async function stopScan() {
-  if (scanPollTimer) { clearInterval(scanPollTimer); scanPollTimer = null; }
-  // Always call stop endpoint — works even if scanJobId is null (kills any running job)
-  try {
-    await fetch(`${API}/api/retriever/scan/stop`, {method:'POST', headers:authHdrs()});
-  } catch(e) { addLog('Stop request failed: ' + e.message, 'err'); }
-  scanPaused = false;
-  scanJobId = null;
-  document.getElementById('btnPauseScan').textContent = '⏸ PAUSE';
-  addLog('Scan stopped.', 'warn');
-  document.getElementById('btnStartScan').disabled = false;
-  document.getElementById('btnPauseScan').disabled = true;
-  document.getElementById('btnStopScan').disabled = true;
-  document.getElementById('scanStatusTitle').textContent = 'STOPPED';
-  document.getElementById('vinylIcon').classList.remove('spinning');
-}
-function startScanPolling() {
-  if (scanPollTimer) clearInterval(scanPollTimer);
-  scanPollTimer = setInterval(async () => {
-    if (!scanJobId) return;
-    try {
-      const r = await fetch(`${API}/api/retriever/scan/job/${scanJobId}`, {headers:authHdrs()});
-      if (!r.ok) return;
-      const job = await r.json();
-      updateScanProgress(job);
-      // Incremental preview refresh during scan
-      if (currentMode === 'preview' && job.processed > 0) loadPreviewResults();
-      if (job.status === 'done') {
-        clearInterval(scanPollTimer); scanPollTimer = null;
-        addLog(`✓ Scan complete — ${job.processed} processed, ${job.failed} unmatched`, 'ok');
-        document.getElementById('btnStartScan').disabled = false;
-        document.getElementById('btnPauseScan').disabled = true;
-        document.getElementById('btnStopScan').disabled = true;
-        document.getElementById('scanStatusTitle').textContent = 'COMPLETE';
-        document.getElementById('vinylIcon').classList.remove('spinning');
-        if (currentMode === 'preview') loadPreviewResults();
-      }
-    } catch {}
-  }, 3000);
-}
-function updateScanProgress(job) {
-  const total = job.total_tracks || 1;
-  const pct = Math.round((job.processed / total) * 100);
-  document.getElementById('scanProgressBar').style.width = pct + '%';
-  if (pct > 0) document.getElementById('scanProgressWrap').classList.remove('bar-pulsing');
-  document.getElementById('statTotal').textContent = job.total_tracks || 0;
-  document.getElementById('statProcessed').textContent = job.processed || 0;
-  document.getElementById('statFailed').textContent = job.failed || 0;
-  document.getElementById('scanStatusSub').textContent = `${pct}% complete`;
-}
-async function loadPreviewResults() {
-  try {
-    const r = await fetch(`${API}/api/retriever/scan/preview/${scanJobId}?limit=100`, {headers:authHdrs()});
-    if (!r.ok) return;
-    const tracks = await r.json();
-    const zeroEl = document.getElementById('previewZeroMatch');
-    if (!tracks.length) {
-      if (zeroEl) zeroEl.style.display = 'block';
-      return;
-    }
-    if (zeroEl) zeroEl.style.display = 'none';
-    document.getElementById('previewSection').style.display = 'block';
-    _retAllTracks = tracks;
-    retRenderTable(tracks);
-    document.getElementById('statMatched').textContent = tracks.length;
-    if (currentMode === 'album_tagger') loadAlbumTagger();
-  } catch(e) { addLog(`Preview load error: ${e.message}`, 'err'); }
-}
-function toggleTrack(id, checked) {
-  if (checked) selectedTrackIds.add(id); else selectedTrackIds.delete(id);
-  document.getElementById('selectedCount').textContent = `${selectedTrackIds.size} selected`;
-}
-function selectAll(checked) {
-  document.querySelectorAll('#previewTableBody input[type="checkbox"]').forEach(cb => {
-    cb.checked = checked;
-    const match = cb.getAttribute('onchange').match(/\d+/);
-    if (match) { const id = parseInt(match[0]); if (checked) selectedTrackIds.add(id); else selectedTrackIds.delete(id); }
-  });
-  document.getElementById('selectedCount').textContent = `${selectedTrackIds.size} selected`;
+  el.className = 'tab-hdr';
+  el.innerHTML = `<div class="th-row"><span class="th-k">WHAT THIS DOES</span><span class="th-v">${h.what}</span></div>
+    <div class="th-row"><span class="th-k">DO THIS NEXT</span><span class="th-v">${h.next}</span></div>
+    <div class="th-live" id="thl-${t}" style="display:none"></div>
+    <button class="th-x" title="Hide tips (bring back with ⓘ)" onclick="thToggle('${t}',true)">✕</button>`;
+  if (!h.live) return;
+  const s = await _thFetch(), live = document.getElementById('thl-' + t);
+  if (!s || !live) return;
+  let txt = ''; try { txt = h.live(s) || ''; } catch {}
+  live.innerHTML = txt; live.style.display = txt ? '' : 'none';
 }
 
-function retSelectAll(checked) { selectAll(checked); }
-
-// ── Retriever sortable columns ────────────────────────────────────────────────
-let _retSortKey = 'artist';
-let _retSortAsc = true;
-let _retAllTracks = [];
-
-function retFilter(q) {
-  const lq = q.toLowerCase();
-  document.querySelectorAll('#previewTableBody tr[data-id]').forEach(tr => {
-    tr.style.display = (tr.dataset.text || '').includes(lq) ? '' : 'none';
-  });
+function advOpen(key, open = true) {
+  const d = document.querySelector(`details[data-adv="${key}"]`);
+  if (d && d.open !== !!open) d.open = !!open;
 }
-
-function retRenderTable(tracks) {
-  const _sortFns = {
-    artist:   t => (t.tag_artist || '').toLowerCase(),
-    title:    t => (t.title || '').toLowerCase(),
-    album:    t => (t.tag_album || '').toLowerCase(),
-    current:  t => (t.current_genre || '').toLowerCase(),
-    proposed: t => ([t.genre_1,t.genre_2,t.genre_3].filter(Boolean).join(',') || '').toLowerCase(),
-    year:     t => parseInt(t.year) || 9999,
-    conf:     t => t.confidence || '',
-  };
-  const fn = _sortFns[_retSortKey] || _sortFns.artist;
-  tracks = [...tracks].sort((a,b) => {
-    const av = fn(a), bv = fn(b);
-    if (av < bv) return _retSortAsc ? -1 : 1;
-    if (av > bv) return _retSortAsc ? 1 : -1;
-    return 0;
+document.addEventListener('toggle', e => {
+  const d = e.target;
+  if (d && d.matches && d.matches('details[data-adv]'))
+    try { localStorage.setItem('ch_adv_' + d.dataset.adv, d.open ? '1' : '0'); } catch {}
+}, true);
+(function _advRestore() {
+  const run = () => document.querySelectorAll('details[data-adv]').forEach(d => {
+    let v = null; try { v = localStorage.getItem('ch_adv_' + d.dataset.adv); } catch {}
+    if (v !== null) d.open = v === '1';
   });
-  const tbody = document.getElementById('previewTableBody');
-  tbody.innerHTML = '';
-  tracks.forEach(t => {
-    const proposed = [t.genre_1,t.genre_2,t.genre_3].filter(Boolean).join(', ') || '—';
-    const current  = t.current_genre || '—';
-    const conf     = t.confidence || 'low';
-    const confColor = conf === 'high' ? 'var(--green)' : conf === 'medium' ? 'var(--amber)' : 'var(--muted2)';
-    const confDot   = `<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${confColor};margin-right:.35rem;vertical-align:middle"></span>`;
-    const changed = proposed !== '—' && current !== '—' && current !== proposed;
-    const moodList = [t.mood_1,t.mood_2,t.mood_3].filter(Boolean);
-    const moodHTML = moodList.length
-      ? moodList.map(m=>`<span style="display:inline-block;font-size:.5rem;padding:.1rem .35rem;border-radius:10px;background:rgba(192,132,252,.12);border:1px solid rgba(192,132,252,.3);color:var(--purple);margin:.1rem .1rem 0 0;white-space:nowrap">${esc(m)}</span>`).join('')
-      : '<span style="color:var(--muted2)">—</span>';
-    const row = document.createElement('tr');
-    row.dataset.id    = t.track_id;
-    row.dataset.album = (t.tag_album || '').toLowerCase();
-    row.dataset.text  = `${(t.tag_artist||'').toLowerCase()} ${(t.title||'').toLowerCase()} ${(t.tag_album||'').toLowerCase()} ${proposed.toLowerCase()} ${current.toLowerCase()}`;
-    row.innerHTML = `
-      <td><input type="checkbox" onchange="toggleTrack(${t.track_id},this.checked)" style="accent-color:var(--teal)"></td>
-      <td style="color:var(--muted)">${esc(t.tag_artist||'')}</td>
-      <td style="color:var(--muted)">${esc(t.title||'')}</td>
-      <td style="color:var(--muted2);font-size:.58rem">${esc(t.tag_album||'—')}</td>
-      <td style="color:var(--muted);font-size:.7rem">${esc(current)}</td>
-      <td class="tag-proposed" style="${changed?'color:var(--teal)':''}">${esc(proposed)}</td>
-      <td>${moodHTML}</td>
-      <td class="tag-proposed">${t.year||'—'}</td>
-      <td>${confDot}<span style="color:${confColor};font-size:.58rem">${conf}</span></td>`;
-    tbody.appendChild(row);
-  });
-}
-
-function retSort(key) {
-  if (_retSortKey === key) { _retSortAsc = !_retSortAsc; }
-  else { _retSortKey = key; _retSortAsc = (key === 'artist' || key === 'title' || key === 'album'); }
-  ['artist','title','album','current','proposed','year','conf'].forEach(k => {
-    const el = document.getElementById('ret-sort-' + k);
-    if (el) el.textContent = k === _retSortKey ? (_retSortAsc ? ' ▲' : ' ▼') : '';
-  });
-  retRenderTable(_retAllTracks);
-}
-
-function selectAllByAlbum() {
-  const albums = new Set();
-  document.querySelectorAll('#previewTableBody tr[data-id]').forEach(tr => {
-    const cb = tr.querySelector('input[type="checkbox"]');
-    if (cb && cb.checked) albums.add(tr.dataset.album);
-  });
-  if (!albums.size) { toast('Select at least one track first, then use this to select the whole album.', 'warn'); return; }
-  document.querySelectorAll('#previewTableBody tr[data-id]').forEach(tr => {
-    if (albums.has(tr.dataset.album)) {
-      const cb = tr.querySelector('input[type="checkbox"]');
-      if (cb && !cb.checked) {
-        cb.checked = true;
-        const id = parseInt(tr.dataset.id);
-        if (id) selectedTrackIds.add(id);
-      }
-    }
-  });
-  document.getElementById('selectedCount').textContent = `${selectedTrackIds.size} selected`;
-  toast(`Selected all tracks in ${albums.size} album(s).`, 'ok');
-}
-
-function pvwKeepSelected() {
-  if (!selectedTrackIds.size) { toast('Select at least one track first.', 'warn'); return; }
-  let removed = 0;
-  document.querySelectorAll('#previewTableBody tr[data-id]').forEach(tr => {
-    const id = parseInt(tr.dataset.id);
-    if (selectedTrackIds.has(id)) {
-      selectedTrackIds.delete(id);
-      tr.remove();
-      removed++;
-    }
-  });
-  document.getElementById('selectedCount').textContent = `${selectedTrackIds.size} selected`;
-  toast(`Kept ${removed} track(s) as-is — removed from list.`, 'ok');
-}
-
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run); else run();
+})();
