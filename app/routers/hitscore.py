@@ -174,6 +174,8 @@ def _genres_from_tags(tags_json: Optional[str]) -> list:
         k = _LFM_TAG_MAP.get(t) or GE_TAGS.get(t)
         if k == "_folkcountry":
             k = "folk"
+        from app.routers.retriever import GE_FOLD
+        k = GE_FOLD.get(k, k) if k else k
         if k and k not in out:
             out.append(k)
         if len(out) == 3:

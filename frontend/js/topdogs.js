@@ -715,7 +715,7 @@ const _GRM_TREE = [
     ['softrock','Soft Rock',[]],['arenarock','Arena Rock',[]],
     ['indierock','Indie Rock',[]],['folkrock','Folk Rock',[]],
     ['southernrock','Southern Rock',[]],['punkrock','Punk',[]],
-    ['newwave','New Wave ↔',[]],['artrock','Art Rock',[]],['yachtrock','Yacht Rock ↔',[]],
+    ['newwave','New Wave ↔',[]],['artrock','Art Rock',[]],
     ['britinv','British Invasion ↔',[]],
     ['alternative','Alternative Rock',[]],['poprock','Pop Rock ↔',[]],
     ['countryrock','Country Rock ↔',[]],['bluesrock','Blues Rock ↔',[]],
@@ -731,23 +731,19 @@ const _GRM_TREE = [
   ]],
   ['country','Country',[
     ['tradcountry','Traditional Country',[]],['countrypop','Country Pop',[]],
-    ['outlawcountry','Outlaw Country',[]],['americana','Americana / Bluegrass',[]],
-    ['brocountry','Bro-Country',[]],['texascountry','Texas / Red Dirt',[]],
+    ['outlawcountry','Outlaw / Texas Country',[]],['americana','Americana / Bluegrass',[]],
   ]],
   ['rnb','R&B / Soul',[
     ['soul','Soul',[]],['neosoul','Neo-Soul',[]],['funk','Funk',[]],
-    ['motown','Motown / Classic Soul',[]],['quietstorm','Quiet Storm',[]],
     ['newjack','New Jack Swing',[]],['doowop','Doo-Wop',[]],
     ['contrnb','Contemporary R&B',[]],
   ]],
   ['hiphop','Hip-Hop / Rap',[
     ['trap','Trap',[]],['boombap','Boom Bap',[]],
     ['gangstarap','Gangsta Rap',[]],['conscrap','Conscious Rap',[]],
-    ['altrap','Alt Hip-Hop',[]],
   ]],
   ['metal','Metal',[
     ['heavymetal','Heavy Metal',[]],['thrashmetal','Thrash Metal',[]],
-    ['deathmetal','Death Metal',[]],['doommetal','Doom / Stoner Metal',[]],
     ['glaemmetal','Glam Metal',[]],['altmetal','Alt Metal ↔',[]],
   ]],
   ['dance','Dance / Electronic',[
@@ -755,7 +751,6 @@ const _GRM_TREE = [
     ['trance','Trance',[]],['disco','Disco',[]],['eurodance','Eurodance',[]],
   ]],
   ['folk','Folk',[
-    ['tradfolk','Traditional Folk',[]],['indifolk','Indie Folk',[]],
     ['singersong','Singer-Songwriter',[]],
   ]],
   ['jazz','Jazz',[
@@ -763,15 +758,10 @@ const _GRM_TREE = [
     ['bebop','Bebop',[]],['jazzfusion','Jazz Fusion',[]],
     ['swing','Swing / Big Band',[]],
   ]],
-  ['blues','Blues',[
-    ['chicagoblues','Chicago Blues',[]],['deltablues','Delta Blues',[]],
-    ['texasblues','Texas Blues',[]],
-  ]],
-  ['classical','Classical',[
-    ['orchestral','Orchestral',[]],['opera','Opera',[]],['baroque','Baroque',[]],
-  ]],
+  ['blues','Blues',[]],
+  ['classical','Classical',[]],
   ['world','World',[
-    ['reggae','Reggae & Ska',[]],['latin','Latin',[]],['celtic','Celtic',[]],
+    ['reggae','Reggae & Ska',[]],['latin','Latin',[]],
   ]],
   ['mellow','🌙 Mellow / Easy Listening',[]],
   // CCM family — separator handled in render
@@ -792,9 +782,21 @@ let _grmTreeSelected = new Set();
 // Track which parents are expanded
 let _grmTreeExpanded = new Set(['rock']); // rock open by default
 
+let _grmCounts = null;
+async function grmLoadCounts() {
+  try {
+    const r = await fetch(`${API}/api/retriever/genre-engine/style-counts`, {headers: authHdrs()});
+    if (r.ok) { const d = await r.json(); _grmCounts = {...d.families, ...d.styles}; grmBuildTree(); }
+  } catch {}
+}
+function _grmCnt(k) {
+  const n = _grmCounts && _grmCounts[k];
+  return n ? ` <span style="color:var(--muted2);font-size:.5rem">${n.toLocaleString()}</span>` : '';
+}
 function grmBuildTree() {
   const container = document.getElementById('grm-tree-nodes');
   if (!container) return;
+  if (_grmCounts === null) { _grmCounts = {}; grmLoadCounts(); }
   let html = '';
   let ccmDividerDone = false;
   _GRM_TREE.forEach(([key, label, children, isCCM]) => {
@@ -813,7 +815,7 @@ function grmBuildTree() {
     html += `<div class="gt-row" id="gt-row-${key}" onclick="grmTreeParentClick('${key}')">
       <span class="gt-chev${hasChildren?'':' leaf'}${expanded?' open':''}" id="gt-chev-${key}">${hasChildren?'▶':''}</span>
       <div class="${cbClass}" id="gt-cb-${key}">${cbText}</div>
-      <span class="gt-label${ccmClass}">${label}</span>
+      <span class="gt-label${ccmClass}">${label}${_grmCnt(key)}</span>
     </div>`;
     if (hasChildren) {
       html += `<div id="gt-children-${key}" style="${expanded?'':'display:none'}">`;
@@ -826,7 +828,7 @@ function grmBuildTree() {
         html += `<div class="gt-row depth-1" id="gt-row-${ckey}" onclick="grmTreeLeaf('${ckey}','${key}')">
           <span class="gt-chev leaf"></span>
           <div class="${ccbClass}" id="gt-cb-${ckey}">${ccbText}</div>
-          <span class="gt-label${isCCM?' ccm':''}" style="font-size:.58rem">${clabel}</span>
+          <span class="gt-label${isCCM?' ccm':''}" style="font-size:.58rem">${clabel}${_grmCnt(ckey)}</span>
         </div>`;
       });
       html += '</div>';

@@ -307,6 +307,26 @@ async function geSaveRules() {
   toast(`${d.rules.length} folder rule${d.rules.length === 1 ? '' : 's'} saved — click RE-VOTE to apply`, 'success');
 }
 
+async function geLoadCounts() {
+  const el = document.getElementById('ge-counts');
+  el.innerHTML = '<span style="color:var(--muted2)">Counting…</span>';
+  try {
+    const r = await fetch(`${API}/api/retriever/genre-engine/style-counts`, {headers: authHdrs()});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    const row = (label, n, indent) => `<tr><td style="padding:.1rem 0 .1rem ${indent ? '.8rem' : '0'};color:${indent ? (n < 75 ? 'var(--amber)' : 'var(--text)') : 'var(--teal)'}">${esc(label)}</td><td style="text-align:right;color:${!indent ? 'var(--teal)' : n < 75 ? 'var(--amber)' : 'var(--muted)'}">${(n || 0).toLocaleString()}</td></tr>`;
+    let html = `<div style="font-family:var(--mono);font-size:.55rem;color:var(--muted);margin-bottom:.3rem">${d.songs.toLocaleString()} songs</div><table style="width:100%;font-family:var(--mono);font-size:.55rem;border-collapse:collapse">`;
+    const fams = Object.keys(d.family_labels).sort((a, b) => (d.families[b] || 0) - (d.families[a] || 0));
+    for (const f of fams) {
+      html += row(d.family_labels[f], d.families[f] || 0, false);
+      Object.entries(d.style_families).filter(([, fs]) => fs[0] === f)
+        .map(([k]) => [k, d.styles[k] || 0]).sort((a, b) => b[1] - a[1])
+        .forEach(([k, n]) => { html += row(d.labels[k] + (d.style_families[k].length > 1 ? ' ↔' : ''), n, true); });
+    }
+    if (d.styles.holiday) html += row('🎄 Holiday (any family)', d.styles.holiday, true);
+    el.innerHTML = html + '</table>';
+  } catch (e) { el.innerHTML = `<span style="color:var(--red)">${esc(e.message)}</span>`; }
+}
 async function geLoadUnmatched() {
   const el = document.getElementById('ge-unmatched');
   el.innerHTML = '<span style="color:var(--muted2)">Counting…</span>';
@@ -667,6 +687,7 @@ function acOpen() {
   document.getElementById('ret-main').classList.add('ac-reviewing');
   document.getElementById('ac-review').style.display = '';
   acLoad(1);
+  acFindPoll(false);
 }
 function acClose() {
   gePlayStop();
@@ -711,7 +732,7 @@ function acRender() {
     const v = _acVal(x), [cls, txt] = _AC_BADGE[x.reason] || ['fine', x.reason];
     html += `<tr class="ger-song" id="ac-row-${i}"><td><input type="checkbox" ${_acr.sel.has(x.track_id) ? 'checked' : ''} onchange="acToggle(${i}, this.checked)"></td>
       <td>${gePlayBtn(x)}${esc(x.title)}<div class="ac-album">💿 ${esc(x.album)}</div></td>
-      <td><input class="ac-in" value="${esc(v.artist || '').replace(/"/g, '&quot;')}" placeholder="type the artist" oninput="acEdit(${i}, 'artist', this.value)">${x.proposed_title ? `<div class="ac-tl">title → <input class="ac-in ac-in-t" value="${esc(v.title || '').replace(/"/g, '&quot;')}" oninput="acEdit(${i}, 'title', this.value)"></div>` : ''}</td>
+      <td><input class="ac-in" value="${esc(v.artist || '').replace(/"/g, '&quot;')}" placeholder="type the artist" oninput="acEdit(${i}, 'artist', this.value)">${x.source ? `<div class="ac-album" style="color:${x.source.startsWith('🏆') ? 'var(--amber)' : 'var(--teal)'}">${esc(x.source)}</div>` : ''}${x.proposed_title ? `<div class="ac-tl">title → <input class="ac-in ac-in-t" value="${esc(v.title || '').replace(/"/g, '&quot;')}" oninput="acEdit(${i}, 'title', this.value)"></div>` : ''}</td>
       <td><span class="ger-badge ${cls}" data-tip="${esc(x.why)}">${txt}</span></td>
       <td class="ger-conf"><button class="ger-ok" onclick="acWrite([${i}])" data-tip="Write this artist${x.proposed_title ? ' and title' : ''} into the file now.">✓</button><button class="ger-redo" onclick="acIgnore([${x.track_id}])" data-tip="Keep the tag as it is — this song is never flagged again.">✕</button></td></tr>`;
   });
@@ -759,6 +780,40 @@ async function acWrite(which) {
     toast(`Writing ${d.count.toLocaleString()} file${d.count > 1 ? 's' : ''}…`, 'info');
     acPoll();
   } catch (e) { toast(e.message, 'error'); }
+}
+// ── 🔎 FIND ARTISTS ──
+let _afTimer = null;
+async function acFind() {
+  if (!confirm('Look up every song with no suggestion by its title on Last.fm?\n\nRuns in the background (about 4 lookups a second). Results only fill the boxes — nothing is written until you press ✓.')) return;
+  const r = await fetch(`${API}/api/retriever/artist-check/find`, {method: 'POST', headers: authHdrs()});
+  if (!r.ok) { const d = await r.json().catch(() => ({})); toast(d.detail || `HTTP ${r.status}`, 'error'); return; }
+  toast('Finding artists — progress shows above the list', 'ok');
+  acFindPoll(true);
+}
+async function acFindStop() {
+  await fetch(`${API}/api/retriever/artist-check/find-stop`, {method: 'POST', headers: authHdrs()});
+  toast('Stopping — found artists are kept', 'ok');
+}
+async function acFindPoll(started) {
+  clearTimeout(_afTimer);
+  try {
+    const d = await (await fetch(`${API}/api/retriever/artist-check/find-status`, {headers: authHdrs()})).json();
+    const running = d.status === 'running', el = document.getElementById('ac-status');
+    document.getElementById('ac-find-stop').style.display = running ? '' : 'none';
+    const fb = document.getElementById('ac-find'); fb.disabled = running; fb.style.opacity = running ? '.4' : '1';
+    if (running) {
+      const p = _jobProgress('af', 'find', d.done || 0, d.total || 0);
+      el.innerHTML = `<div style="border:1px solid var(--teal);border-radius:8px;padding:.5rem .7rem">
+        <div style="display:flex;justify-content:space-between;gap:1rem"><span>🔎 Finding artists — ${(d.done||0).toLocaleString()} / ${(d.total||0).toLocaleString()} · ${p.pct}% · ${(d.found||0).toLocaleString()} found</span><span style="color:var(--muted)">${p.eta}</span></div>
+        <div style="background:var(--bg);border-radius:4px;height:10px;overflow:hidden;border:1px solid var(--border);margin:.3rem 0"><div style="height:100%;width:${p.pct}%;background:var(--teal);transition:width .4s"></div></div>
+        <div style="color:var(--muted2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(d.message || '')}</div></div>`;
+      _afTimer = setTimeout(() => acFindPoll(true), 2000);
+    } else if (started && d.status !== 'idle') {
+      el.textContent = d.message || '';
+      toast(d.message || 'Done', d.status === 'failed' ? 'error' : 'success');
+      acLoad(1);
+    }
+  } catch { _afTimer = setTimeout(() => acFindPoll(started), 4000); }
 }
 function acPoll() {
   clearTimeout(_acr.poll);
