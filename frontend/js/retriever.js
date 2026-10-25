@@ -681,7 +681,7 @@ async function geApprove(idsOrSel, artist, keepCursor) {
 
 // ══ ARTIST CHECK (M10d) — fix album names, run-together and multi-artist tags ══
 const _acr = {page: 1, pages: 1, total: 0, rows: [], sel: new Set(), edits: {}, poll: null};
-const _AC_BADGE = {joined: ['warn', 'RUN TOGETHER'], album: ['bad', 'ALBUM AS ARTIST'], multi: ['edit', 'SEVERAL'], twin: ['fine', 'SPELLING']};
+const _AC_BADGE = {joined: ['warn', 'RUN TOGETHER'], album: ['bad', 'ALBUM AS ARTIST'], multi: ['edit', 'SEVERAL'], twin: ['fine', 'SPELLING'], intitle: ['warn', 'ARTIST IN TITLE']};
 function acOpen() {
   if (document.getElementById('ret-main').classList.contains('ge-reviewing')) geCloseReview();
   document.getElementById('ret-main').classList.add('ac-reviewing');
@@ -709,7 +709,7 @@ async function acLoad(page) {
     _acr.sel.clear();
     const c = d.counts;
     document.getElementById('ac-count').innerHTML = `${d.total.toLocaleString()} songs`
-      + ` <span style="color:var(--muted2)">· run together ${c.joined} · album as artist ${c.album} · several ${c.multi} · spelling ${c.twin}`
+      + ` <span style="color:var(--muted2)">· run together ${c.joined} · album as artist ${c.album} · several ${c.multi} · spelling ${c.twin} · artist in title ${c.intitle || 0}`
       + (c.nofix ? ` · <span style="color:var(--amber)">${c.nofix} need you</span>` : '') + '</span>';
     document.getElementById('ac-page').textContent = `page ${_acr.page} / ${_acr.pages}`;
     acRender();

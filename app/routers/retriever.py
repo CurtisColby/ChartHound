@@ -1850,7 +1850,15 @@ async def genre_engine_why(track_id: int, user: dict = Depends(require_auth)):
 _AC_SERIES = re.compile(r"\b(greatest|essentials?|hits|songs|collection|compilation|best of|top \d+|vol(ume)?\.?\s*\d+|"
                         r"various artists|now that'?s|anthology|\d{2,4}s)\b|\s-\s\d+\s-\s", re.I)
 _AC_REASONS = {"joined": "Artist and title run together", "album": "Album or series name as artist",
-               "multi": "Several artists in one tag", "twin": "Spelled differently elsewhere"}
+               "multi": "Several artists in one tag", "twin": "Spelled differently elsewhere",
+               "intitle": "Artist name repeated in the title"}
+
+
+def _ac_best_spelling(variants: dict) -> str:
+    """Most common spelling, but never one with a lowercased real word ('Alexandra stan') when a capitalised one exists."""
+    def low_words(v):
+        return sum(1 for w in v.split() if len(w) >= 4 and w[:1].islower())
+    return max(variants.items(), key=lambda kv: (low_words(kv[0]) == 0, kv[1], kv[0] != kv[0].lower(), kv[0]))[0]
 _ac_job = {"status": "idle", "done": 0, "total": 0, "written": 0, "failed": 0, "message": ""}
 
 
@@ -1908,6 +1916,13 @@ async def _ac_rows() -> list:
                 reason, prop = "joined", left
                 if _title_key(a) == tk or _title_key(title).startswith(_title_key(left) + " "):
                     ptitle = right.strip()
+        # 1b. the artist is repeated at the start of the title ("Alexandra Stan - Mr. Saxobeat")
+        if not reason and " - " in (title or ""):
+            tl, tr = title.split(" - ", 1)
+            if tr.strip() and _artist_key(_ac_clean_lead(tl)) == _artist_key(a):
+                reason, ptitle = "intitle", tr.strip()
+                sp = spell.get(_ac_twin_key(a), {})
+                prop = _ac_best_spelling(sp) if len(sp) > 1 else a
         # 2. album / series name used as the artist
         if not reason:
             album = _ge_album_display(_ge_album_name(alb, fp or ""), "")
@@ -1934,7 +1949,7 @@ async def _ac_rows() -> list:
         if not reason:
             sp = spell.get(_ac_twin_key(a), {})
             if len(sp) > 1:
-                best = max(sp.items(), key=lambda kv: (kv[1], kv[0] != kv[0].lower(), kv[0]))[0]
+                best = _ac_best_spelling(sp)
                 if best != a:
                     reason, prop = "twin", best
         if reason:
