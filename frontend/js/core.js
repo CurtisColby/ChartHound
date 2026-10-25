@@ -183,6 +183,7 @@ function switchTab(name) {
   document.getElementById(`panel-${name}`).classList.add('active');
   document.getElementById('vinylIcon').classList.toggle('spinning', ['retriever','sniffer','bloodhound','tracker'].includes(name));
   if (name === 'start') stLoad();
+  else tabHeader(name);
   if (name === 'retriever') { checkRetrieverBanners(); loadCustomTags(); retInjectScrollNav(); }
   if (name === 'groomer') grmInit();
   if (name === 'sniffer') snfInit();
@@ -492,6 +493,7 @@ async function loadPathSettings() {
     if (serverEl    && d.server_prefix)    { serverEl.value = d.server_prefix; serverEl.dispatchEvent(new Event('input')); }
     if (dockerEl    && d.docker_prefix)    dockerEl.value    = d.docker_prefix;
     if (navidromeEl && d.navidrome_prefix) navidromeEl.value = d.navidrome_prefix;
+    if (!d.server_prefix) advOpen('kennel');
     // Sync Navidrome M3U button state in Top Dogs if results are loaded
     grmSyncBar();
   } catch {}
@@ -828,3 +830,101 @@ function pvwKeepSelected() {
   toast(`Kept ${removed} track(s) as-is — removed from list.`, 'ok');
 }
 
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  M8c — per-tab "What this does / Do this next" header + Advanced folds
+// ══════════════════════════════════════════════════════════════════════════════
+const _thReady = g => g.prowlarr && g.downloader
+  ? `✅ Ready${g.path ? ' · downloads go to ' + esc(g.path) : ''}`
+  : '⚠️ Needs Prowlarr and a download client connected in The Kennel.';
+const TAB_HELP = {
+  kennel: {
+    what: 'Stores the addresses and keys for your media server, chart sources and downloaders — encrypted.',
+    next: 'Fill in a card, <b>SAVE</b>, then <b>TEST</b>. A green dot means it works.',
+    live: s => s.connect.media.length
+      ? `✅ ${s.connect.verified.length} services working, including ${s.connect.media.map(m => _ST_NAMES[m]).join(', ')}`
+      : '⚠️ No media server working yet — start with Plex, Emby or Jellyfin.' },
+  retriever: {
+    what: 'Gives every song one genre family plus up to 3 styles and writes it into the music file.',
+    next: '<b>▶ RUN ENGINE</b>, then <b>REVIEW &amp; WRITE</b>. Look over the ⚠ CONFLICT songs first.',
+    live: s => { const g = s.genres; if (!g.decided) return '⚠️ Engine not run yet.';
+      return (g.pending ? `⚠️ ${stN(g.pending)} songs have no genre yet — run the engine.` : '✅ Every song has a genre.')
+        + (g.conflicts ? ` · ${stN(g.conflicts)} conflicts to review` : ''); } },
+  groomer: {
+    what: 'Scores every song 0–100 from its chart history and builds road-trip playlists from the biggest hits.',
+    next: '<b>① SCAN</b> after new music arrives, then <b>② BUILD</b> and push to your media server.',
+    live: s => s.scan.tracks
+      ? `✅ ${stN(s.scan.tracks)} songs · ${stN(s.scan.charted)} charted${s.playlists.last ? ` · last playlist “${esc(s.playlists.last.name || 'playlist')}” ${stDate(s.playlists.last.at)}` : ''}`
+      : '⚠️ Not scanned yet — click ① SCAN.' },
+  sniffer: {
+    what: 'Finds the big chart hits you don’t own and sends them to your downloader.',
+    next: 'Pick <b>🏆 BIG HITS</b>, click <b>FIND BIG HITS I DON’T OWN</b>, then <b>SEARCH</b> a song and grab one result.',
+    live: s => _thReady(s.gaps) },
+  bloodhound: {
+    what: 'Finds albums you’re missing — essential Billboard 200 albums or any artist’s full discography.',
+    next: 'Pick <b>⭐ ESSENTIAL</b> (or type an artist), tick “Only albums I’m missing”, then <b>SEARCH</b> and grab.',
+    live: s => _thReady(s.gaps) },
+  tracker: {
+    what: 'Slowly asks Radarr and Sonarr to search for missing movies and episodes in the background.',
+    next: 'Turn it on once. After that just check the log now and then — it runs with the browser closed.',
+    live: s => { const t = s.tracker;
+      if (t.enabled) return `✅ On · ${stN(t.missing)} missing${t.last_grab ? ' · last grab ' + stDate(t.last_grab) : ''}`;
+      return t.radarr || t.sonarr ? 'Off — click the TRACKER OFF button to start it.' : '⚠️ Needs Radarr or Sonarr connected in The Kennel.'; } },
+  vet: {
+    what: 'Database health, chart data sources and maintenance tools.',
+    next: 'Nothing routine. If a chart source shows <b>REFRESH FAILING</b>, try ↻ later. Use VACUUM after big clean-ups.' },
+};
+
+let _thStatus = null, _thAt = 0;
+async function _thFetch() {
+  if (_thStatus && Date.now() - _thAt < 60000) return _thStatus;
+  try {
+    const r = await fetch(`${API}/api/start/status`, {headers: authHdrs()});
+    if (r.ok) { _thStatus = await r.json(); _thAt = Date.now(); }
+  } catch {}
+  return _thStatus;
+}
+const _thHidden = t => { try { return localStorage.getItem('ch_hdr_hide_' + t) === '1'; } catch { return false; } };
+function thToggle(t, hide) {
+  try { localStorage.setItem('ch_hdr_hide_' + t, hide ? '1' : '0'); } catch {}
+  tabHeader(t);
+}
+async function tabHeader(t) {
+  const h = TAB_HELP[t], panel = document.getElementById('panel-' + t);
+  if (!h || !panel) return;
+  let el = document.getElementById('thdr-' + t);
+  if (!el) { el = document.createElement('div'); el.id = 'thdr-' + t; panel.insertBefore(el, panel.firstChild); }
+  if (_thHidden(t)) {
+    el.className = 'tab-hdr th-min';
+    el.innerHTML = `<button class="th-show" onclick="thToggle('${t}',false)">ⓘ WHAT THIS TAB DOES ▸</button>`;
+    return;
+  }
+  el.className = 'tab-hdr';
+  el.innerHTML = `<div class="th-row"><span class="th-k">WHAT THIS DOES</span><span class="th-v">${h.what}</span></div>
+    <div class="th-row"><span class="th-k">DO THIS NEXT</span><span class="th-v">${h.next}</span></div>
+    <div class="th-live" id="thl-${t}" style="display:none"></div>
+    <button class="th-x" title="Hide tips (bring back with ⓘ)" onclick="thToggle('${t}',true)">✕</button>`;
+  if (!h.live) return;
+  const s = await _thFetch(), live = document.getElementById('thl-' + t);
+  if (!s || !live) return;
+  let txt = ''; try { txt = h.live(s) || ''; } catch {}
+  live.innerHTML = txt; live.style.display = txt ? '' : 'none';
+}
+
+function advOpen(key, open = true) {
+  const d = document.querySelector(`details[data-adv="${key}"]`);
+  if (d && d.open !== !!open) d.open = !!open;
+}
+document.addEventListener('toggle', e => {
+  const d = e.target;
+  if (d && d.matches && d.matches('details[data-adv]'))
+    try { localStorage.setItem('ch_adv_' + d.dataset.adv, d.open ? '1' : '0'); } catch {}
+}, true);
+(function _advRestore() {
+  const run = () => document.querySelectorAll('details[data-adv]').forEach(d => {
+    let v = null; try { v = localStorage.getItem('ch_adv_' + d.dataset.adv); } catch {}
+    if (v !== null) d.open = v === '1';
+  });
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run); else run();
+})();

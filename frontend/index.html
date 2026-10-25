@@ -7,7 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐕</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/css/app.css?v=m8b">
+<link rel="stylesheet" href="/static/css/app.css?v=m8c">
 <script>try{document.documentElement.style.fontSize=(+localStorage.getItem('ch_textsize')||18)+'px'}catch(e){}</script>
 </head>
 <body>
@@ -247,6 +247,7 @@
               <div class="vault-row"><div class="vault-row-label"><div class="dot" id="vDotDiscogs"></div>Discogs</div><div class="vault-row-status warn" id="vStatusDiscogs">NOT VERIFIED</div></div>
             </div>
           </div>
+<details class="adv" data-adv="kennel"><summary>ADVANCED ▸ <span class="adv-sub">path translator · security notes</span></summary><div class="adv-body">
           <div>
             <div class="section-label sl-purple">PATH TRANSLATOR</div>
             <div class="card">
@@ -285,14 +286,15 @@
                 🚫 Tokens never returned to the browser.<br>
                 ⟳ Heartbeat re-checks connections every 60s.
               </p>
-              <button class="support-btn compact" onclick="openDonationModal()" style="margin-top:.4rem">💝 SUPPORT CHARTHOUND</button>
             </div>
           </div>
+</div></details>
           <div>
             <div class="section-label sl-purple">HELP & DOCS</div>
             <div class="card" style="padding:.75rem 1rem">
               <p style="font-family:var(--mono);font-size:.57rem;color:var(--muted);line-height:1.8;margin-bottom:.6rem">Full documentation for every tab — connections required, best practices, and how each tool works.</p>
               <button class="btn btn-outline btn-sm" onclick="openHelpGuide()" style="width:100%;font-size:.6rem;letter-spacing:1px">📖 OPEN USER GUIDE</button>
+              <button class="support-btn compact" onclick="openDonationModal()" style="margin-top:.5rem;width:100%">💝 SUPPORT CHARTHOUND</button>
             </div>
           </div>
         </div>
@@ -550,7 +552,7 @@
           <div id="retrieverLfmBanner" class="feature-banner warn" style="display:none">
             ⚠ Last.fm not connected — mood tags limited. Connect in The Kennel for best results.
           </div>
-          <details class="ret-legacy" style="border:1px solid var(--border);border-radius:8px;padding:.55rem .7rem">
+          <details class="ret-legacy" data-adv="ret-legacy" ontoggle="advOpen('ret-legacy-main',this.open)" style="border:1px solid var(--border);border-radius:8px;padding:.55rem .7rem">
             <summary style="cursor:pointer;font-family:var(--mono);font-size:.58rem;letter-spacing:2px;color:var(--muted);list-style:none">▸ LEGACY RETRIEVER <span style="letter-spacing:0;color:var(--muted2)">— old one-song-at-a-time tagging (slow). Use the Genre Engine below instead.</span></summary>
             <div style="display:flex;flex-direction:column;gap:1rem;margin-top:.7rem">
           <div>
@@ -652,12 +654,14 @@
             <div id="og-status" style="font-family:var(--mono);font-size:.55rem;color:var(--muted2);line-height:1.6;margin-top:.4rem;word-break:break-word"></div>
           </div>
 
+<details class="adv" data-adv="retriever"><summary>ADVANCED ▸ <span class="adv-sub">clear metadata cache</span></summary><div class="adv-body">
           <div>
             <div class="section-label sl-teal">MAINTENANCE</div>
             <button class="btn btn-outline" onclick="clearCache()" style="font-size:.7rem;font-family:var(--mono);letter-spacing:.5px">🗑 CLEAR METADATA CACHE</button>
             <p style="font-family:var(--mono);font-size:.56rem;color:var(--muted);line-height:1.7;margin-top:.4rem">Forgets the Retriever's lookups so the next Retriever scan fetches fresh data from MusicBrainz · Last.fm · Discogs · Deezer · ListenBrainz. Your tracks, Top Dogs results, Hit Scores and hand-edited tracks are kept.</p>
             <p style="font-family:var(--mono);font-size:.54rem;color:var(--muted2);line-height:1.7;margin-top:.4rem;font-style:italic">Need a full database wipe? It lives on The Veterinarian tab under Danger Zone.</p>
           </div>
+</div></details>
         </div>
 
         <div class="pane-resizer" id="resizer-retriever" onmousedown="startResize(event,'retriever')"></div>
@@ -703,14 +707,15 @@
             </div>
             <div style="margin-top:.5rem;font-family:var(--mono);font-size:.6rem;color:var(--amber)">⚠ Writes the GENRE tag only. Your edits are saved immediately and never overwritten by the engine. Lidarr: "Tag Audio Files with Metadata" must be Never.</div>
           </div>
+          <div id="bannerLidarr" class="feature-banner" style="background:rgba(255,160,0,.08);border-color:rgba(255,160,0,.3);color:#ffa500;margin-bottom:.75rem;justify-content:space-between;align-items:flex-start">
+            <span>⚠️ If you use <strong>Lidarr</strong> — go to Lidarr → Settings → Metadata → set <strong>"Tag Audio Files with Metadata"</strong> to <strong>Never</strong> to prevent Lidarr from overwriting ChartHound's tags.</span>
+            <button onclick="document.getElementById('bannerLidarr').style.display='none'" style="background:none;border:none;color:inherit;cursor:pointer;font-size:.85rem;padding:0 0 0 .75rem;opacity:.5;flex-shrink:0;line-height:1" title="Dismiss">✕</button>
+          </div>
+<details class="adv" data-adv="ret-legacy-main"><summary>LEGACY RETRIEVER RESULTS ▸ <span class="adv-sub">scan progress · preview · override · album tagger · genre scout</span></summary><div class="adv-body">
           <div class="section-label sl-teal">SCAN PROGRESS</div>
           <div id="bannerTip" class="feature-banner recommend" style="justify-content:space-between;align-items:flex-start">
             <span>⭐ Run The Retriever first to pre-populate the metadata cache. The Sniffer and Top Dogs will be significantly faster once your library is tagged. Chart data is also written permanently to your files as a backup.</span>
             <button onclick="document.getElementById('bannerTip').style.display='none'" style="background:none;border:none;color:inherit;cursor:pointer;font-size:.85rem;padding:0 0 0 .75rem;opacity:.5;flex-shrink:0;line-height:1" title="Dismiss">✕</button>
-          </div>
-          <div id="bannerLidarr" class="feature-banner" style="background:rgba(255,160,0,.08);border-color:rgba(255,160,0,.3);color:#ffa500;margin-bottom:.75rem;justify-content:space-between;align-items:flex-start">
-            <span>⚠️ If you use <strong>Lidarr</strong> — go to Lidarr → Settings → Metadata → set <strong>"Tag Audio Files with Metadata"</strong> to <strong>Never</strong> to prevent Lidarr from overwriting ChartHound's tags.</span>
-            <button onclick="document.getElementById('bannerLidarr').style.display='none'" style="background:none;border:none;color:inherit;cursor:pointer;font-size:.85rem;padding:0 0 0 .75rem;opacity:.5;flex-shrink:0;line-height:1" title="Dismiss">✕</button>
           </div>
           <div class="card">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem">
@@ -996,6 +1001,7 @@
               ✅ All files scanned — no missing genres found in this location.
             </div>
           </div>
+</div></details>
 
         </div>
       </div>
@@ -1084,7 +1090,12 @@
               </div>
             </div>
 
-            <!-- NOTABILITY TIER -->
+            <!-- ADVANCED (collapsible, hidden by default) -->
+            <div>
+              <button type="button" onclick="snfToggleAdvanced()" id="snf-adv-toggle" style="width:100%;background:none;border:none;color:var(--muted2);font-family:var(--mono);font-size:.56rem;letter-spacing:3px;padding:.4rem 0;cursor:pointer;text-align:left;display:flex;align-items:center;gap:.5rem">
+                <span id="snf-adv-arrow">▸</span><span>ADVANCED</span><span style="flex:1;height:1px;background:var(--border);display:block"></span>
+              </button>
+              <div id="snf-adv-section" style="display:none;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem;margin-top:.35rem">
             <div>
               <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--gold);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">NOTABILITY<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
               <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem;display:flex;flex-direction:column;gap:.45rem">
@@ -1093,13 +1104,6 @@
                 <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.75rem"><input type="radio" name="snf-tier" value="deep" style="accent-color:var(--gold)"><span>Deep cuts <span style="color:var(--muted2);font-size:.62rem">(top 5,000)</span></span></label>
               </div>
             </div>
-
-            <!-- ADVANCED (collapsible, hidden by default) -->
-            <div>
-              <button type="button" onclick="snfToggleAdvanced()" id="snf-adv-toggle" style="width:100%;background:none;border:none;color:var(--muted2);font-family:var(--mono);font-size:.56rem;letter-spacing:3px;padding:.4rem 0;cursor:pointer;text-align:left;display:flex;align-items:center;gap:.5rem">
-                <span id="snf-adv-arrow">▸</span><span>ADVANCED</span><span style="flex:1;height:1px;background:var(--border);display:block"></span>
-              </button>
-              <div id="snf-adv-section" style="display:none;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem;margin-top:.35rem">
                 <div style="display:flex;justify-content:space-between;margin-bottom:.3rem">
                   <label style="font-size:.7rem;color:var(--muted)">Max peak position</label>
                   <span style="font-family:var(--display);font-size:1.05rem;color:var(--amber)" id="snf-peak-display">All peaks</span>
@@ -1130,13 +1134,14 @@
             </select>
           </div>
 
-          <!-- OPTIONS -->
+<details class="adv" data-adv="sniffer-info"><summary>ⓘ RESULT BUTTONS ▸</summary><div class="adv-body">
           <div>
             <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--gold);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">INFO<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
             <div style="background:rgba(245,166,35,.06);border:1px solid rgba(245,166,35,.25);border-radius:6px;padding:.6rem">
               <p style="font-family:var(--mono);font-size:.55rem;color:var(--amber);line-height:1.7;margin:0">📡 Results show albums for better seeds &amp; metadata. Use GET to send to qBit, OPEN for source page, or MAGNET to copy the link.</p>
             </div>
           </div>
+</div></details>
 
         </div>
 
@@ -1153,7 +1158,7 @@
           <div id="snf-cache-status" style="font-family:var(--mono);font-size:.55rem;color:var(--muted);display:flex;align-items:center;gap:.5rem;padding:.4rem .75rem;background:var(--surface);border:1px solid var(--border);border-radius:6px">
             <span style="color:var(--muted2)">📦 Library cache:</span>
             <span id="snf-cache-info" style="color:var(--teal)">Loading…</span>
-            <span style="margin-left:auto;color:var(--gold);cursor:pointer;text-decoration:underline" onclick="switchTab('vet')">Go to Veterinarian to sync →</span>
+            <span style="margin-left:auto;color:var(--gold);cursor:pointer;text-decoration:underline" onclick="advOpen('vet');switchTab('vet')">Go to Veterinarian to sync →</span>
           </div>
 
           <!-- STATS BAR -->
@@ -1324,6 +1329,26 @@
             <input type="text" id="grm-local-path" placeholder="/music" value="/music" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:.72rem;padding:.5rem .65rem;outline:none;box-sizing:border-box">
           </div>
 
+          <!-- ONLINE DATA (Last.fm) -->
+          <div class="v-scan">
+            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--pink);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">ONLINE DATA<span class="grm-q" tabindex="0" data-tip="Looks up every song on Last.fm once: listener counts (how much it is still played today) and genres. Boosts timeless classics, lets never-charted favourites like Stairway to Heaven into playlists, and powers the Main-genre filter. First run takes about 3 hours in the background; afterwards only new songs are looked up. Nothing is written to your files.">?</span><span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
+            <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem;display:flex;flex-direction:column;gap:.45rem">
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <span style="font-family:var(--mono);font-size:.6rem;color:var(--muted)">🌐 Last.fm</span>
+                <span id="grm-lfm-state" style="font-family:var(--mono);font-size:.55rem;color:var(--muted2)">—</span>
+              </div>
+              <div style="background:var(--bg);border-radius:3px;height:5px;overflow:hidden;border:1px solid var(--border)"><div id="grm-lfm-bar" style="height:100%;width:0%;background:var(--teal);transition:width .4s"></div></div>
+              <div id="grm-lfm-msg" style="font-family:var(--mono);font-size:.52rem;color:var(--muted2);line-height:1.6;min-height:1.6em;word-break:break-word">Loading…</div>
+              <div style="display:flex;gap:.35rem">
+                <button id="grm-lfm-start" onclick="grmLfmStart()" style="flex:1;padding:.3rem .5rem;border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer;border:1px solid var(--border2);background:var(--surface3);color:var(--teal)">▶ START</button>
+                <button id="grm-lfm-stop"  onclick="grmLfmStop()"  style="flex:1;padding:.3rem .5rem;border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer;border:1px solid var(--border2);background:var(--surface3);color:var(--red)">■ STOP</button>
+              </div>
+            </div>
+          </div>
+
+          <details class="v-scan grm-adv" data-adv="grm-scan">
+            <summary>▸ ADVANCED</summary>
+            <div style="display:flex;flex-direction:column;gap:.75rem">
           <!-- CHART DATA STATUS -->
           <div class="v-scan">
             <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--pink);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">CHART DATABASE<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
@@ -1343,24 +1368,6 @@
               <div id="grm-ref-footnote" style="font-family:var(--mono);font-size:.52rem;color:var(--muted2);line-height:1.6">Historical Billboard chart data ships pre-loaded. No downloads needed.</div>
             </div>
           </div>
-
-          <!-- ONLINE DATA (Last.fm) -->
-          <div class="v-scan">
-            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--pink);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">ONLINE DATA<span class="grm-q" tabindex="0" data-tip="Looks up every song on Last.fm once: listener counts (how much it is still played today) and genres. Boosts timeless classics, lets never-charted favourites like Stairway to Heaven into playlists, and powers the Main-genre filter. First run takes about 3 hours in the background; afterwards only new songs are looked up. Nothing is written to your files.">?</span><span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
-            <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem;display:flex;flex-direction:column;gap:.45rem">
-              <div style="display:flex;justify-content:space-between;align-items:center">
-                <span style="font-family:var(--mono);font-size:.6rem;color:var(--muted)">🌐 Last.fm</span>
-                <span id="grm-lfm-state" style="font-family:var(--mono);font-size:.55rem;color:var(--muted2)">—</span>
-              </div>
-              <div style="background:var(--bg);border-radius:3px;height:5px;overflow:hidden;border:1px solid var(--border)"><div id="grm-lfm-bar" style="height:100%;width:0%;background:var(--teal);transition:width .4s"></div></div>
-              <div id="grm-lfm-msg" style="font-family:var(--mono);font-size:.52rem;color:var(--muted2);line-height:1.6;min-height:1.6em;word-break:break-word">Loading…</div>
-              <div style="display:flex;gap:.35rem">
-                <button id="grm-lfm-start" onclick="grmLfmStart()" style="flex:1;padding:.3rem .5rem;border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer;border:1px solid var(--border2);background:var(--surface3);color:var(--teal)">▶ START</button>
-                <button id="grm-lfm-stop"  onclick="grmLfmStop()"  style="flex:1;padding:.3rem .5rem;border-radius:4px;font-family:var(--mono);font-size:.55rem;cursor:pointer;border:1px solid var(--border2);background:var(--surface3);color:var(--red)">■ STOP</button>
-              </div>
-            </div>
-          </div>
-
           <!-- SCAN OPTIONS -->
           <div class="v-scan">
             <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--pink);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">SCAN OPTIONS<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
@@ -1371,6 +1378,8 @@
               </label>
             </div>
           </div>
+            </div>
+          </details>
 
 
             <!-- M2: HITS filters -->
@@ -1445,7 +1454,7 @@
           </div>
 
           <!-- ADVANCED (collapsed) -->
-          <details class="v-build grm-adv">
+          <details class="v-build grm-adv" data-adv="grm-build">
             <summary>▸ ADVANCED</summary>
             <div style="display:flex;flex-direction:column;gap:.75rem">
             <!-- CHART CRITERIA sliders -->
@@ -1666,6 +1675,7 @@
             <div id="bh-artist-results" style="margin-top:.65rem;display:flex;flex-direction:column;gap:.35rem"></div>
             <!-- RELEASE TYPE FILTER (shown after artist selected) -->
             <div id="bh-release-filter" style="display:none;margin-top:.65rem">
+<details class="adv" data-adv="bh-rt"><summary>ADVANCED ▸ <span class="adv-sub">release type (albums by default)</span></summary><div class="adv-body">
               <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--orange);margin-bottom:.65rem;display:flex;align-items:center;gap:.5rem">RELEASE TYPE<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
               <div style="display:flex;gap:.35rem;flex-wrap:wrap">
                 <button id="bh-rt-album" onclick="bhSetReleaseType('album')" style="padding:.35rem .6rem;background:var(--orange);color:#000;border:none;border-radius:4px;font-family:var(--mono);font-size:.58rem;cursor:pointer">Albums</button>
@@ -1673,6 +1683,7 @@
                 <button id="bh-rt-single" onclick="bhSetReleaseType('single')" style="padding:.35rem .6rem;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:4px;font-family:var(--mono);font-size:.58rem;cursor:pointer">Singles</button>
                 <button id="bh-rt-all" onclick="bhSetReleaseType('all')" style="padding:.35rem .6rem;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:4px;font-family:var(--mono);font-size:.58rem;cursor:pointer">All</button>
               </div>
+</div></details>
             </div>
           </div>
 
@@ -1731,6 +1742,7 @@
               </optgroup>
             </select>
             <button onclick="bhCompSearch()" style="margin-top:.5rem;width:100%;padding:.5rem;background:var(--orange);color:#000;border:none;border-radius:5px;font-family:var(--mono);font-size:.65rem;cursor:pointer;letter-spacing:1px">🔍 SEARCH COMPILATIONS</button>
+<details class="adv" data-adv="bh-comp"><summary>MORE ▸ <span class="adv-sub">custom search</span></summary><div class="adv-body">
             <div style="margin-top:.5rem">
               <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--orange);margin-bottom:.45rem;display:flex;align-items:center;gap:.5rem">OR CUSTOM SEARCH<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
               <div style="display:flex;gap:.4rem">
@@ -1738,6 +1750,7 @@
                 <button onclick="bhCompCustomSearch()" style="padding:.5rem .75rem;background:var(--orange);color:#000;border:none;border-radius:5px;font-family:var(--mono);font-size:.62rem;cursor:pointer">🔍</button>
               </div>
             </div>
+</div></details>
           </div>
 
           <!-- GENRE BROWSE -->
@@ -1784,7 +1797,7 @@
           <div id="bh-cache-status" style="font-family:var(--mono);font-size:.55rem;color:var(--muted);display:flex;align-items:center;gap:.5rem;padding:.4rem .75rem;background:var(--surface);border:1px solid var(--border);border-radius:6px">
             <span style="color:var(--muted2)">📦 Library cache:</span>
             <span id="bh-cache-info" style="color:var(--teal)">Loading…</span>
-            <span style="margin-left:auto;color:var(--gold);cursor:pointer;text-decoration:underline" onclick="switchTab('vet')">Go to Veterinarian to sync →</span>
+            <span style="margin-left:auto;color:var(--gold);cursor:pointer;text-decoration:underline" onclick="advOpen('vet');switchTab('vet')">Go to Veterinarian to sync →</span>
           </div>
 
           <!-- STATUS BAR -->
@@ -1871,6 +1884,15 @@
             <div id="trk-countdown" style="font-family:var(--display);font-size:1rem;color:var(--crimson);text-align:center;margin-top:.3rem;letter-spacing:1px;display:none">Next search: --:--</div>
           </div>
 
+          <!-- SYNC -->
+          <div>
+            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--crimson);margin-bottom:.5rem;display:flex;align-items:center;gap:.5rem">SYNC<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
+            <button onclick="trkSync()" style="width:100%;padding:.55rem;background:var(--crimson);color:#000;border:none;border-radius:6px;font-family:var(--mono);font-size:.65rem;letter-spacing:1px;cursor:pointer;transition:all .2s" id="trk-sync-btn">⟳ SYNC MISSING LISTS</button>
+            <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted2);margin-top:.3rem;text-align:center">Pull current missing items from Radarr &amp; Sonarr</div>
+            <div id="trk-auto-sync-hint" style="font-family:var(--mono);font-size:.46rem;color:var(--teal);margin-top:.15rem;text-align:center;display:none">Auto-sync: every 6 hours</div>
+          </div>
+
+<details class="adv" data-adv="tracker"><summary>ADVANCED ▸ <span class="adv-sub">connections · cooldown · logging</span></summary><div class="adv-body">
           <!-- CONNECTIONS -->
           <div>
             <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--crimson);margin-bottom:.5rem;display:flex;align-items:center;gap:.5rem">CONNECTIONS<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
@@ -1887,15 +1909,6 @@
               </div>
             </div>
           </div>
-
-          <!-- SYNC -->
-          <div>
-            <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--crimson);margin-bottom:.5rem;display:flex;align-items:center;gap:.5rem">SYNC<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
-            <button onclick="trkSync()" style="width:100%;padding:.55rem;background:var(--crimson);color:#000;border:none;border-radius:6px;font-family:var(--mono);font-size:.65rem;letter-spacing:1px;cursor:pointer;transition:all .2s" id="trk-sync-btn">⟳ SYNC MISSING LISTS</button>
-            <div style="font-family:var(--mono);font-size:.5rem;color:var(--muted2);margin-top:.3rem;text-align:center">Pull current missing items from Radarr &amp; Sonarr</div>
-            <div id="trk-auto-sync-hint" style="font-family:var(--mono);font-size:.46rem;color:var(--teal);margin-top:.15rem;text-align:center;display:none">Auto-sync: every 6 hours</div>
-          </div>
-
           <!-- SETTINGS -->
           <div>
             <div style="font-family:var(--mono);font-size:.56rem;letter-spacing:3px;color:var(--crimson);margin-bottom:.5rem;display:flex;align-items:center;gap:.5rem">SETTINGS<span style="flex:1;height:1px;background:var(--border);display:block"></span></div>
@@ -1918,6 +1931,7 @@
               <label for="trk-logging" style="font-family:var(--mono);font-size:.55rem;color:var(--muted);cursor:pointer">Enable activity logging</label>
             </div>
           </div>
+</div></details>
 
           <!-- ACTIVITY LOG -->
           <div style="flex:1;display:flex;flex-direction:column;min-height:0">
@@ -2030,6 +2044,7 @@
               <div class="vault-row"><div class="vault-row-label">Billboard Pop</div><div class="vault-row-status" id="vet-billpop-count" style="color:var(--text)">—</div></div>
             </div>
 
+<details class="adv" data-adv="vet"><summary>ADVANCED ▸ <span class="adv-sub">library cache · skip cache · vacuum</span></summary><div class="adv-body">
             <!-- Library Cache -->
             <div class="section-label" style="color:var(--red)">LIBRARY CACHE</div>
             <div class="card" style="padding:.65rem 1rem;display:flex;flex-direction:column;gap:.4rem">
@@ -2068,6 +2083,7 @@
               <button class="btn btn-outline btn-sm" onclick="vetIntegrityCheck()" style="width:100%;font-size:.6rem">🔍 INTEGRITY CHECK</button>
               <div class="field-hint" style="margin-top:0;margin-bottom:.15rem">Runs SQLite integrity check. Reports any corruption.</div>
             </div>
+</div></details>
 
           </div>
         </div>
@@ -2157,14 +2173,14 @@
 
 <div id="toastWrap"></div>
 
-<script src="/static/js/core.js?v=m8b"></script>
+<script src="/static/js/core.js?v=m8c"></script>
 <script src="/static/js/start.js?v=m8c"></script>
-<script src="/static/js/retriever.js?v=m8b"></script>
-<script src="/static/js/topdogs.js?v=m8b"></script>
-<script src="/static/js/sniffer.js?v=m8b"></script>
-<script src="/static/js/bloodhound.js?v=m8b"></script>
-<script src="/static/js/vet.js?v=m8b"></script>
-<script src="/static/js/tracker.js?v=m8b"></script>
-<script src="/static/js/guide.js?v=m8b"></script>
+<script src="/static/js/retriever.js?v=m8c"></script>
+<script src="/static/js/topdogs.js?v=m8c"></script>
+<script src="/static/js/sniffer.js?v=m8c"></script>
+<script src="/static/js/bloodhound.js?v=m8c"></script>
+<script src="/static/js/vet.js?v=m8c"></script>
+<script src="/static/js/tracker.js?v=m8c"></script>
+<script src="/static/js/guide.js?v=m8c"></script>
 </body>
 </html>

@@ -491,3 +491,25 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;hei
 .st-ts button{background:var(--surface2);border:1px solid var(--border);color:var(--muted);border-radius:4px;padding:.1rem .4rem;cursor:pointer;font-family:var(--body);font-size:.65rem;line-height:1.2;}
 .st-ts button.on{border-color:var(--gold);color:var(--gold);}
 @media (max-width:700px){.st-card{flex-wrap:wrap}.st-btns{flex-direction:row;width:100%}}
+
+/* ── M8c: tab header + Advanced folds ───────────────────────────────────── */
+#panel-kennel{--th:var(--purple)} #panel-retriever{--th:var(--teal)} #panel-sniffer{--th:var(--gold)}
+#panel-groomer{--th:var(--pink)} #panel-bloodhound{--th:var(--orange)} #panel-tracker{--th:var(--crimson)} #panel-vet{--th:var(--red)}
+.tab-hdr{position:relative;flex-shrink:0;display:flex;flex-direction:column;gap:.25rem;padding:.6rem 2.6rem .6rem 1.25rem;background:var(--surface);border-bottom:1px solid var(--border);border-left:4px solid var(--th,var(--gold))}
+.tab-hdr.th-min{padding:.2rem 1.25rem;border-left-width:1px;align-items:flex-end}
+.th-row{display:flex;gap:.75rem;align-items:baseline;font-family:var(--body);font-size:.88rem;line-height:1.45}
+.th-k{flex-shrink:0;width:9.5rem;font-family:var(--mono);font-size:.6rem;letter-spacing:1.5px;color:var(--th,var(--gold))}
+.th-v{color:var(--text)} .th-v b{color:var(--th,var(--gold));font-weight:600}
+.th-live{font-family:var(--body);font-size:.82rem;color:var(--muted);padding-left:10.25rem}
+.th-x{position:absolute;top:.45rem;right:.6rem;background:none;border:none;color:var(--muted2);cursor:pointer;font-size:.85rem;line-height:1;padding:.2rem}
+.th-x:hover{color:var(--text)}
+.th-show{background:none;border:none;color:var(--muted2);font-family:var(--mono);font-size:.58rem;letter-spacing:1px;cursor:pointer;padding:.15rem 0}
+.th-show:hover{color:var(--th,var(--gold))}
+@media (max-width:900px){.th-row{flex-direction:column;gap:.1rem}.th-live{padding-left:0}}
+details.adv{border:1px dashed var(--border2);border-radius:8px;padding:.5rem .7rem}
+details.adv>summary{cursor:pointer;list-style:none;font-family:var(--mono);font-size:.58rem;letter-spacing:2px;color:var(--muted)}
+details.adv>summary::-webkit-details-marker{display:none}
+details.adv>summary:hover,details.adv[open]>summary{color:var(--th,var(--text))}
+details.adv[open]>summary{margin-bottom:.7rem}
+.adv-sub{letter-spacing:0;color:var(--muted2);text-transform:none}
+.adv-body{display:flex;flex-direction:column;gap:1rem}
