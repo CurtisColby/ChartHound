@@ -1303,6 +1303,7 @@ class GenreApprove(BaseModel):
     track_ids: Optional[List[int]] = None
     artist:    Optional[str] = None      # every song by this artist
     filters:   Optional[OnlineGenreRequest] = None   # every flagged song matching the Review filters
+    write:     bool = False                          # also write the genre to the files now (not for filters)
 
 
 @router.post("/genre-engine/approve")
@@ -1333,7 +1334,43 @@ async def genre_engine_approve(req: GenreApprove, user: dict = Depends(require_a
                 f"WHERE confidence != 'manual' AND track_id IN ({','.join('?' * len(part))})", part)
             n += cur.rowcount
         await db.commit()
-    return {"ok": True, "checked": n}
+    written = failed = 0
+    if req.write and not req.filters:
+        written, failed = await _ge_write_ids(ids)
+    return {"ok": True, "checked": n, "written": written, "failed": failed}
+
+
+async def _ge_write_ids(ids: List[int]) -> tuple:
+    """Write the decided genre to these songs' files (File-First), log it, then refresh media servers."""
+    rows = []
+    for i in range(0, len(ids), 900):
+        rows += await _online_genre_rows("all", None, track_ids=ids[i:i + 900])
+    loop = asyncio.get_event_loop()
+    written = failed = 0
+    async with aiosqlite.connect(settings.database_url, timeout=60) as db:
+        for tid, fp, _a, _t, current, proposed, *_ in rows:
+            if not proposed or [c.lower() for c in current] == [p.lower() for p in proposed[:3]]:
+                continue
+            if not fp or not os.path.exists(_real_write_path(fp)):
+                await db.execute("UPDATE tracks SET missing=1 WHERE track_id=?", (tid,))
+                continue
+            ok = await loop.run_in_executor(None, write_genre_only, fp, proposed)
+            if ok:
+                g = (proposed + [None, None, None])[:3]
+                await db.execute("UPDATE tracks SET genre_1=?, genre_2=?, genre_3=? WHERE track_id=?",
+                                 (g[0], g[1], g[2], tid))
+                written += 1
+            else:
+                failed += 1
+            await db.execute(
+                "INSERT INTO write_log (track_id, file_path, field_changed, old_value, new_value, "
+                "write_status, error_msg) VALUES (?, ?, 'genre', ?, ?, ?, ?)",
+                (tid, fp, "; ".join(current), "; ".join(proposed),
+                 "success" if ok else "failed", None if ok else "see container log"))
+        await db.commit()
+    if written:
+        asyncio.create_task(_refresh_media_servers())
+    return written, failed
 
 
 @router.post("/genre-engine/revote")

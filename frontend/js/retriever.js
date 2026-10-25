@@ -96,7 +96,7 @@ function geRender() {
       last = ak; lastAl = null;
       const grp = _ger.rows.filter(r => keyOf(r) === ak);
       multi = new Set(grp.map(r => r.alkey)).size > 1;
-      const okAll = grp.some(_geCanOk) ? `<a href="#" class="ger-chip ok" onclick="geApprove(false, ${q(x.artist)});return false" data-tip="Keep the current genre for every song by this artist (all pages) as your own decision.">✓ artist</a>` : '';
+      const okAll = grp.some(_geCanOk) ? `<a href="#" class="ger-chip ok" onclick="geApprove(false, ${q(x.artist)});return false" data-tip="Keep the current genre for every song by this artist (all pages) as your own decision and write it to the files.">✓ artist</a>` : '';
       const alChip = multi ? '' : `<a href="#" class="ger-chip" onclick="geEditAlbum(${i});return false" data-tip="Set one genre for every song in this album's folder (all pages, CD1/Disc 2 included). Other albums are not touched.">✎ album</a>`;
       html += `<tr class="ger-artist"><td><input type="checkbox" ${grp.every(r => _ger.sel.has(r.track_id)) ? 'checked' : ''} onchange="geSelectArtist(${q(ak)}, this.checked)"></td>
         <td colspan="4"><span class="ger-aname">${esc(x.artist || '(unknown artist)')}</span>${multi ? '' : `<span class="ger-alname">💿 ${esc(x.album || '(no album)')}</span>`}<span class="ger-cnt">${grp.length}</span>
@@ -113,7 +113,7 @@ function geRender() {
         <tr class="ger-edit" id="ger-bedit-${i}" style="display:none"><td></td><td colspan="4" id="ger-bedit-cell-${i}"></td></tr>`;
     }
     const why = `<a href="#" class="ger-why" onclick="geWhy(${i});return false" data-tip="Show what each source (Discogs, MusicBrainz, Last.fm) said about this song. (Key: W)">why?</a>`;
-    const ok = _geCanOk(x) ? `<button class="ger-ok" onclick="geApprove([${x.track_id}])" data-tip="Looks right — keep this genre as your decision. It stops counting as a conflict and the engine never changes it. (Key: Y)">✓</button>` : '';
+    const ok = _geCanOk(x) ? `<button class="ger-ok" onclick="geApprove([${x.track_id}])" data-tip="Looks right — keep this genre as your decision and write it to the file. It stops counting as a conflict and the engine never changes it. (Key: Y)">✓</button>` : '';
     const redo = `<button class="ger-redo" onclick="geReset(${i})" data-tip="Let the engine decide again — removes your edit or ✓ for this song and re-votes it from saved lookups (no internet, a few seconds).">↻</button>`;
     const badge = (cls, txt, tip) => `<span class="ger-badge ${cls}" data-tip="${tip}">${txt}</span>`;
     const conf = x.confidence === 'conflict' ? ok + badge('bad', '⚠ CONFLICT', 'Sources disagree — worth a look') + why
@@ -565,14 +565,18 @@ async function geApprove(idsOrSel, artist, keepCursor) {
   else if (idsOrSel === 'page') body = {track_ids: _ger.rows.filter(_geCanOk).map(r => r.track_id)};
   else if (idsOrSel === 'all') body = {filters: _gerFilters()};
   else body = {track_ids: idsOrSel === true ? [..._ger.sel] : idsOrSel};
+  if (idsOrSel !== 'page' && idsOrSel !== 'all') body.write = true;
   if (body.track_ids && !body.track_ids.length) return;
-  if (artist && !confirm(`Keep the current genre for every song by ${artist} (all pages)?`)) return;
+  if (artist && !confirm(`Keep the current genre for every song by ${artist} (all pages) and write it to the files now?`)) return;
   if (idsOrSel === 'all' && !confirm(`Keep the current genre for ALL ${(_ger.flagged || 0).toLocaleString()} flagged songs matching these filters (every page)?\n\nThey become your decisions: they stop counting as conflicts and the engine never changes them. Back up first (Veterinarian) if you want an undo.`)) return;
   try {
     const r = await fetch(`${API}/api/retriever/genre-engine/approve`, {method: 'POST', headers: authHdrs(), body: JSON.stringify(body)});
     const d = await r.json();
     if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
-    toast(`✓ ${d.checked.toLocaleString()} song${d.checked === 1 ? '' : 's'} marked as checked`, 'ok');
+    toast(`✓ ${d.checked.toLocaleString()} song${d.checked === 1 ? '' : 's'} marked as checked`
+      + (d.written ? ` · ${d.written.toLocaleString()} written to file` : '')
+      + (d.failed ? ` · ${d.failed} failed` : ''), d.failed ? 'error' : 'ok');
+    if (d.written) body.track_ids?.forEach(id => _ger.sel.delete(id));
     if (typeof _thAt !== 'undefined') _thAt = 0;
     const cur = keepCursor;
     await geLoad(_ger.page);
