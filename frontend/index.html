@@ -7,7 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐕</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/css/app.css?v=m10c2">
+<link rel="stylesheet" href="/static/css/app.css?v=m10f2">
 <script>try{document.documentElement.style.fontSize=(+localStorage.getItem('ch_textsize')||18)+'px'}catch(e){}</script>
 </head>
 <body>
@@ -577,13 +577,13 @@
             <p style="font-family:var(--mono);font-size:.56rem;color:var(--muted);line-height:1.7;margin:0 0 .5rem">Gives every song <b>one family + up to 3 styles</b> (e.g. Rock; Classic Rock; Folk Rock) by weighing Discogs (per album), MusicBrainz and Last.fm. Songs where sources disagree are marked <span style="color:var(--red)">⚠ CONFLICT</span>; songs few sources know are <span style="color:var(--amber)">? LITTLE DATA</span>. Step 1: RUN (1–3 hours the first time, cached after; re-runs only look up new music). Step 2: REVIEW &amp; WRITE. Writes the <b>GENRE tag only</b>; hand-edited tracks are skipped.</p>
             <div style="display:flex;gap:.35rem;margin-bottom:.4rem">
               <button class="btn btn-outline" id="ge-btn-run" onclick="geRun()" style="flex:1;font-size:.65rem;font-family:var(--mono);color:var(--teal);border-color:var(--teal)">▶ RUN ENGINE</button>
-              <button class="btn btn-outline" id="ge-btn-stop" onclick="geStop()" style="font-size:.65rem;font-family:var(--mono);display:none;color:var(--red);border-color:var(--red)">■ STOP</button>
+              <button class="btn btn-outline" id="ge-btn-stop" onclick="geStop()" style="flex:0 0 auto;width:auto;white-space:nowrap;font-size:.65rem;font-family:var(--mono);display:none;color:var(--red);border-color:var(--red)">■ STOP</button>
             </div>
-            <div style="background:var(--bg);border-radius:3px;height:5px;overflow:hidden;border:1px solid var(--border);margin-bottom:.3rem"><div id="ge-bar" style="height:100%;width:0%;background:var(--teal);transition:width .4s"></div></div>
+            <div style="background:var(--bg);border-radius:4px;height:9px;overflow:hidden;border:1px solid var(--border);margin-bottom:.3rem"><div id="ge-bar" style="height:100%;width:0%;background:var(--teal);transition:width .4s"></div></div>
             <div id="ge-status" style="font-family:var(--mono);font-size:.55rem;color:var(--muted2);line-height:1.6;margin-bottom:.6rem;word-break:break-word"></div>
             <div style="display:flex;gap:.35rem">
-              <button class="btn btn-outline" id="og-btn-preview" onclick="geOpenReview()" style="flex:1;font-size:.65rem;font-family:var(--mono)">📋 REVIEW &amp; WRITE</button>
-              <button class="btn btn-outline" id="og-btn-stop" onclick="ogStop()" style="font-size:.65rem;font-family:var(--mono);display:none;color:var(--red);border-color:var(--red)">■ STOP</button>
+              <button class="btn btn-outline" id="og-btn-preview" onclick="geOpenReview()" style="flex:1;min-width:0;white-space:nowrap;font-size:.65rem;font-family:var(--mono)">📋 REVIEW &amp; WRITE</button>
+              <button class="btn btn-outline" id="og-btn-stop" onclick="ogStop()" style="flex:0 0 auto;width:auto;white-space:nowrap;font-size:.65rem;font-family:var(--mono);display:none;color:var(--red);border-color:var(--red)">■ STOP</button>
             </div>
             <button class="btn btn-outline" onclick="acOpen()" data-tip="Find songs whose ARTIST tag is really an album name, has the title glued on, lists several artists, or is spelled differently from your other songs — and fix them. Fixed artists get their Hit Scores back after a Top Dogs scan." style="width:100%;margin-top:.35rem;font-size:.65rem;font-family:var(--mono);color:var(--amber);border-color:var(--amber)">🎤 ARTIST CHECK</button>
             <details style="margin-top:.45rem;border:1px solid var(--border);border-radius:6px;padding:.45rem .55rem" ontoggle="if(this.open)geLoadRules()">
@@ -600,7 +600,12 @@
               <div style="font-family:var(--mono);font-size:.52rem;color:var(--muted2);line-height:1.6;margin:.4rem 0">Tags the sources use that no family or style catches yet, by number of your songs. Read-only — use it to pick new styles. Hover a tag for its top artists and sources.</div>
               <div id="ge-unmatched" style="max-height:340px;overflow-y:auto"></div>
             </details>
-            <button class="btn btn-outline" onclick="geRevote(this)" title="Recalculate genres and CHECK flags from saved lookups — no internet lookups, takes seconds. Your manual edits are kept." style="width:100%;margin-top:.35rem;font-size:.58rem;font-family:var(--mono);color:var(--muted)">↻ RE-VOTE (no lookups)</button>
+            <details style="margin-top:.35rem;border:1px solid var(--border);border-radius:6px;padding:.45rem .55rem" ontoggle="if(this.open)geLoadCounts()">
+              <summary style="cursor:pointer;font-family:var(--mono);font-size:.58rem;color:var(--muted);letter-spacing:1px">📊 STYLE COUNTS</summary>
+              <div style="font-family:var(--mono);font-size:.52rem;color:var(--muted2);line-height:1.6;margin:.4rem 0">Songs per family and style in your library (copies of the same song counted once). <span style="color:var(--amber)">Amber</span> = under 75 songs.</div>
+              <div id="ge-counts" style="max-height:380px;overflow-y:auto"></div>
+            </details>
+            <button class="btn btn-outline" id="ge-btn-revote" onclick="geRevote(this)" title="Recalculate genres and CHECK flags from saved lookups — no internet lookups, takes seconds. Your manual edits are kept." style="width:100%;margin-top:.35rem;font-size:.58rem;font-family:var(--mono);color:var(--muted)">↻ RE-VOTE (no lookups)</button>
             <div id="og-status" style="font-family:var(--mono);font-size:.55rem;color:var(--muted2);line-height:1.6;margin-top:.4rem;word-break:break-word"></div>
           </div>
 
@@ -628,9 +633,12 @@
                 <option value="album">Album or series name as artist</option>
                 <option value="multi">Several artists in one tag</option>
                 <option value="twin">Spelled differently elsewhere</option>
+                <option value="intitle">Artist name repeated in the title</option>
                 <option value="nofix">No suggestion — need you</option>
               </select>
               <button class="btn btn-outline" onclick="acLoad(1)" style="font-size:.65rem;font-family:var(--mono)">🔍 APPLY</button>
+              <button class="btn btn-outline" id="ac-find" onclick="acFind()" style="font-size:.65rem;font-family:var(--mono);color:var(--teal);border-color:var(--teal)" data-tip="For songs with no suggestion: search the song title on Last.fm and fill in the most-played artist whose song title really matches. Unsure matches stay blank. Nothing is written until you press ✓.">🔎 FIND ARTISTS</button>
+              <button class="btn btn-outline" id="ac-find-stop" onclick="acFindStop()" style="font-size:.65rem;font-family:var(--mono);color:var(--red);border-color:var(--red);display:none">■ STOP</button>
             </div>
             <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:.5rem;margin-bottom:.5rem">
               <div id="ac-count" style="font-family:var(--mono);font-size:.8rem;color:var(--muted)"></div>
@@ -656,6 +664,13 @@
           </div>
           <!-- GENRE REVIEW (M5b-1.2) -->
           <div id="ge-review" style="display:none">
+            <div id="ger-job" style="display:none;border:1px solid var(--teal);border-radius:8px;padding:.55rem .75rem;margin-bottom:.7rem;background:rgba(45,212,191,.06)">
+              <div style="display:flex;justify-content:space-between;gap:1rem;font-family:var(--mono);font-size:.7rem;margin-bottom:.35rem">
+                <span id="ger-job-label" style="color:var(--teal)"></span><span id="ger-job-eta" style="color:var(--muted)"></span>
+              </div>
+              <div style="background:var(--bg);border-radius:4px;height:10px;overflow:hidden;border:1px solid var(--border)"><div id="ger-job-bar" style="height:100%;width:0%;background:var(--teal);transition:width .4s"></div></div>
+              <div id="ger-job-msg" style="font-family:var(--mono);font-size:.58rem;color:var(--muted2);margin-top:.3rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
+            </div>
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.6rem">
               <div style="font-family:var(--display);font-size:1.3rem;letter-spacing:2px;color:var(--teal)">GENRE REVIEW</div>
               <button class="btn btn-outline" onclick="geCloseReview()" style="font-size:.65rem;font-family:var(--mono)">✕ CLOSE</button>
@@ -1900,14 +1915,14 @@
 
 <div id="toastWrap"></div>
 
-<script src="/static/js/core.js?v=m10c2"></script>
-<script src="/static/js/start.js?v=m10c2"></script>
-<script src="/static/js/retriever.js?v=m10c2"></script>
-<script src="/static/js/topdogs.js?v=m10c2"></script>
-<script src="/static/js/sniffer.js?v=m10c2"></script>
-<script src="/static/js/bloodhound.js?v=m10c2"></script>
-<script src="/static/js/vet.js?v=m10c2"></script>
-<script src="/static/js/tracker.js?v=m10c2"></script>
-<script src="/static/js/guide.js?v=m10c2"></script>
+<script src="/static/js/core.js?v=m10f2"></script>
+<script src="/static/js/start.js?v=m10f2"></script>
+<script src="/static/js/retriever.js?v=m10f2"></script>
+<script src="/static/js/topdogs.js?v=m10f2"></script>
+<script src="/static/js/sniffer.js?v=m10f2"></script>
+<script src="/static/js/bloodhound.js?v=m10f2"></script>
+<script src="/static/js/vet.js?v=m10f2"></script>
+<script src="/static/js/tracker.js?v=m10f2"></script>
+<script src="/static/js/guide.js?v=m10f2"></script>
 </body>
 </html>

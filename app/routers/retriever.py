@@ -212,7 +212,7 @@ async def get_write_log(limit: int = 50, user: dict = Depends(require_auth)):
 GE_FAMILIES = {
     "rock": "Rock", "pop": "Pop", "country": "Country", "rnb": "R&B", "hiphop": "Hip-Hop",
     "metal": "Metal", "dance": "Dance", "folk": "Folk", "jazz": "Jazz", "blues": "Blues",
-    "classical": "Classical", "ccm": "Christian", "gospel": "Gospel", "world": "World",
+    "classical": "Classical", "ccm": "Christian", "world": "World",
 }
 # style key → (display, families it belongs to). Two families = a bridge style.
 GE_STYLES = {
@@ -229,7 +229,7 @@ GE_STYLES = {
     "adultpop": ("Adult Contemporary", ("pop",)), "indipop": ("Indie Pop", ("pop",)),
     "easylistening": ("Easy Listening", ("pop", "jazz")),
     "tradcountry": ("Traditional Country", ("country",)), "countrypop": ("Country Pop", ("country", "pop")),
-    "outlawcountry": ("Outlaw Country", ("country",)), "americana": ("Americana", ("country", "folk")),
+    "outlawcountry": ("Outlaw / Texas Country", ("country",)), "americana": ("Americana", ("country", "folk")),
     "brocountry": ("Bro-Country", ("country",)), "texascountry": ("Texas Country", ("country",)),
     "soul": ("Soul", ("rnb",)), "neosoul": ("Neo-Soul", ("rnb",)), "funk": ("Funk", ("rnb",)),
     "motown": ("Motown", ("rnb",)), "quietstorm": ("Quiet Storm", ("rnb",)),
@@ -251,7 +251,7 @@ GE_STYLES = {
     "orchestral": ("Orchestral", ("classical",)), "opera": ("Opera", ("classical",)),
     "baroque": ("Baroque", ("classical",)),
     "ccm-rock": ("Christian Rock", ("ccm", "rock")), "ccm-pop": ("Christian Pop", ("ccm", "pop")),
-    "worship": ("Worship", ("ccm",)), "sgospel": ("Southern Gospel", ("gospel",)),
+    "worship": ("Worship", ("ccm",)), "gospel": ("Gospel", ("ccm",)),
     # M10c new styles
     "artrock": ("Art Rock", ("rock",)), "newwave": ("New Wave", ("rock", "pop")),
     "yachtrock": ("Yacht Rock", ("rock", "pop")), "britinv": ("British Invasion", ("rock", "pop")),
@@ -345,9 +345,38 @@ GE_TAGS = {
     "jazz-rock": "jazzfusion", "cool jazz": "jazz", "contemporary folk": "folk",
     "progressive house": "house", "electro house": "house", "deep house": "house", "garage house": "house",
     "tech house": "house", "progressive trance": "trance", "uplifting trance": "trance", "vocal trance": "trance",
-    "idm": "techno", "dubstep": "edm", "drum n bass": "edm", "drum and bass": "edm",
-    "breaks": "edm", "breakbeat": "edm", "electro": "dance",
+    "idm": "techno", "dubstep": "edm", "electro": "dance",
 }
+# M10c prune: small styles fold into a bigger style, or (family key) back to the family alone.
+# Gospel became a style of Christian. Applied to tag mapping, stored decisions and Last.fm keys.
+GE_FOLD = {
+    "yachtrock": "softrock", "motown": "soul", "quietstorm": "soul", "brocountry": "countrypop",
+    "texascountry": "outlawcountry", "deathmetal": "heavymetal", "doommetal": "heavymetal",
+    "sgospel": "gospel", "altrap": "hiphop", "tradfolk": "folk", "indifolk": "folk",
+    "chicagoblues": "blues", "deltablues": "blues", "texasblues": "blues", "celtic": "world",
+    "opera": "classical", "baroque": "classical", "orchestral": "classical",
+}
+for _k in GE_FOLD:
+    GE_STYLES.pop(_k, None)
+for _t, _k in list(GE_TAGS.items()):
+    if _k in GE_FOLD:
+        GE_TAGS[_t] = GE_FOLD[_k]
+
+
+def _ge_fold_styles(family: str, styles: list) -> tuple:
+    """Old decision → current taxonomy (family 'gospel' → Christian + Gospel style)."""
+    out = []
+    if family == "gospel":
+        family, styles = "ccm", ["gospel"] + [x for x in styles if x != "gospel"]
+    for x in styles:
+        x = GE_FOLD.get(x, x)
+        if (x in GE_STYLES or x in GE_EXTRA) and x not in out:
+            out.append(x)
+    if "holiday" in out:
+        out = [x for x in out if x != "holiday"][:2] + ["holiday"]
+    return family, out[:3]
+
+
 # Holiday (M10c): a style any family can carry — kept out of GE_STYLES so it never bridges families.
 GE_EXTRA = {"holiday": "Holiday"}
 _HOL_TAGS = {"christmas", "xmas", "x-mas", "christmas music", "christmas songs", "christmas carols",
@@ -380,7 +409,7 @@ def _ge_add_holiday(styles: list) -> list:
 
 GE_WEIGHTS = {"discogs": 3.0, "discogs_g": 2.0, "mb": 2.0, "lfm_track": 2.0, "lfm_artist": 1.0,
               "mine": 5.0}   # your own Christian/Gospel tags — the strongest voice
-GE_SACRED = {"ccm", "gospel"}
+GE_SACRED = {"ccm"}
 GE_DEFAULT_RULES = [{"prefix": "/music/FULL CHRISTIAN ALBUMS", "family": "ccm"}]
 
 
@@ -402,8 +431,6 @@ def _ge_apply_rule(family: str, vote: Optional[dict]) -> tuple:
             keep = ["ccm-rock"]
         elif vf in ("pop", "dance", "hiphop", "rnb"):
             keep = ["ccm-pop"]
-        elif vf == "gospel":
-            keep = []
     return family, keep[:3]
 # Discogs lists an album's genres alphabetically, so their order carries no meaning
 _GE_FLAT = {"discogs_g"}
@@ -426,7 +453,7 @@ def _ge_tag_keys(tags) -> list:
 # Families that sit next to each other — disagreement between them isn't a real conflict
 GE_NEIGHBORS = {frozenset(p) for p in (
     ("pop", "rnb"), ("rock", "metal"), ("country", "folk"), ("rnb", "hiphop"), ("jazz", "blues"),
-    ("rnb", "blues"), ("pop", "dance"), ("rock", "blues"), ("rock", "folk"), ("ccm", "gospel"),
+    ("rnb", "blues"), ("pop", "dance"), ("rock", "blues"), ("rock", "folk"),
     ("dance", "rnb"), ("pop", "hiphop"), ("world", "pop"), ("world", "folk"),
     ("world", "rock"), ("world", "rnb"), ("world", "dance"), ("world", "hiphop"),
 )}
@@ -509,7 +536,25 @@ async def _ge_migrate():
         cols = [r[1] for r in await (await db.execute("PRAGMA table_info(tracks)")).fetchall()]
         if "missing" not in cols:
             await db.execute("ALTER TABLE tracks ADD COLUMN missing INTEGER DEFAULT 0")
+        if not _ge_folded["done"]:   # M10c prune — convert stored decisions (incl. your edits) once per start
+            like = " OR ".join(["styles LIKE ?"] * len(GE_FOLD))
+            rows = await (await db.execute(
+                f"SELECT track_id, family, styles FROM track_genres WHERE family='gospel' OR {like}",
+                [f'%"{k}"%' for k in GE_FOLD])).fetchall()
+            upd = []
+            for tid, fam, st in rows:
+                old = json.loads(st or "[]")
+                nf, ns = _ge_fold_styles(fam, old)
+                if nf != fam or ns != old:
+                    upd.append((nf, json.dumps(ns), tid))
+            if upd:
+                await db.executemany("UPDATE track_genres SET family=?, styles=? WHERE track_id=?", upd)
+                log.info(f"Genre Engine: {len(upd):,} decisions moved to the pruned style list")
+            _ge_folded["done"] = True
         await db.commit()
+
+
+_ge_folded = {"done": False}
 
 
 def _ge_album_dir(file_path: str) -> str:
@@ -793,7 +838,11 @@ async def _run_genre_engine():
             rules = sorted(await _ge_get_rules(), key=lambda r: -len(r["prefix"]))
             out, n_check, n_conflict, n_skip, retry = [], 0, 0, 0, []
             hol, n_hol = set(), 0
-            for tid, artist, title, fp, alb in tracks:
+            _ge_job.update({"vote_done": 0, "vote_total": len(tracks)})
+            for vi, (tid, artist, title, fp, alb) in enumerate(tracks):
+                if vi % 2000 == 0:   # let the status endpoint answer during a long vote
+                    _ge_job["vote_done"] = vi
+                    await asyncio.sleep(0)
                 ak, tk = _artist_key(artist), _title_key(title)
                 d_alb = disc.get(track_album.get(tid))
                 d = d_alb or disc.get(f"artist:{ak}")
@@ -901,6 +950,7 @@ async def _run_genre_engine():
             n_hol = sum(1 for r in out if '"holiday"' in r[2])
             if alt_for:
                 log.info(f"Genre Engine: second try with a better artist name — {n_alt:,} of {len(retry):,} songs decided")
+            _ge_job.update({"phase": "saving", "vote_done": len(tracks), "message": "Saving decisions…"})
             # Manual edits are never overwritten by a re-run
             await db.execute("DELETE FROM track_genres WHERE confidence != 'manual'")
             await db.executemany(
@@ -1319,7 +1369,7 @@ _UT_IGNORE = {
     "vocalist", "ballad", "acoustic", "guitar", "piano", "instrumental", "compilation", "special purpose",
     "special purpose artist", "bogus artist", "interview", "american idol", "my top songs", "non-music",
     "experimental", "progressive", "hardcore", "groove", "2008 universal fire victim", "death by plane crash",
-    "aln-sh", "chanson", "beat", "theme", "score", "minimal",
+    "aln-sh", "chanson", "beat", "theme", "score", "minimal", "breaks", "breakbeat", "drum n bass", "drum and bass",
 }
 _UT_JUNK = re.compile(
     r"^(\d0s|\d{4}s?|\d{2}s|seen live|favou?rites?|my favou?rites?|love|loved|awesome|beautiful|best|"
@@ -1376,6 +1426,31 @@ async def genre_engine_unmatched_tags(min_songs: int = 15, limit: int = 150,
             "tags": [{"tag": t, "songs": n, "sources": by_src.get(t, {}),
                       "artists": [x for x, _ in sorted(artists[t].items(), key=lambda kv: -kv[1])[:5]]}
                      for t, n in top[:max(1, min(limit, 500))]]}
+
+
+@router.get("/genre-engine/style-counts")
+async def genre_engine_style_counts(user: dict = Depends(require_auth)):
+    """Songs per family and per style (duplicate copies of a song counted once). Read-only."""
+    from app.routers.groomer import _artist_key, _title_key
+    await _ge_migrate()
+    async with aiosqlite.connect(settings.database_url) as db:
+        rows = await (await db.execute(
+            "SELECT COALESCE(t.tag_artist, a.name, ''), t.title, g.family, g.styles FROM track_genres g "
+            "JOIN tracks t ON t.track_id = g.track_id LEFT JOIN artists a ON t.artist_id = a.artist_id "
+            "WHERE COALESCE(t.missing, 0) = 0")).fetchall()
+    fam, sty, seen = {}, {}, set()
+    for artist, title, f, st in rows:
+        k = (_artist_key(artist or ""), _title_key(title or ""))
+        if k in seen:
+            continue
+        seen.add(k)
+        fam[f] = fam.get(f, 0) + 1
+        for x in json.loads(st or "[]"):
+            sty[x] = sty.get(x, 0) + 1
+    return {"songs": len(seen), "families": fam, "styles": sty,
+            "labels": {**{k: v[0] for k, v in GE_STYLES.items()}, **GE_EXTRA},
+            "style_families": {k: list(v[1]) for k, v in GE_STYLES.items()},
+            "family_labels": GE_FAMILIES}
 
 
 @router.get("/genre-engine/taxonomy")
@@ -1775,7 +1850,15 @@ async def genre_engine_why(track_id: int, user: dict = Depends(require_auth)):
 _AC_SERIES = re.compile(r"\b(greatest|essentials?|hits|songs|collection|compilation|best of|top \d+|vol(ume)?\.?\s*\d+|"
                         r"various artists|now that'?s|anthology|\d{2,4}s)\b|\s-\s\d+\s-\s", re.I)
 _AC_REASONS = {"joined": "Artist and title run together", "album": "Album or series name as artist",
-               "multi": "Several artists in one tag", "twin": "Spelled differently elsewhere"}
+               "multi": "Several artists in one tag", "twin": "Spelled differently elsewhere",
+               "intitle": "Artist name repeated in the title"}
+
+
+def _ac_best_spelling(variants: dict) -> str:
+    """Most common spelling, but never one with a lowercased real word ('Alexandra stan') when a capitalised one exists."""
+    def low_words(v):
+        return sum(1 for w in v.split() if len(w) >= 4 and w[:1].islower())
+    return max(variants.items(), key=lambda kv: (low_words(kv[0]) == 0, kv[1], kv[0] != kv[0].lower(), kv[0]))[0]
 _ac_job = {"status": "idle", "done": 0, "total": 0, "written": 0, "failed": 0, "message": ""}
 
 
@@ -1789,6 +1872,9 @@ def _ac_clean_lead(s: str) -> str:
 
 async def _ac_migrate(db):
     await db.execute("CREATE TABLE IF NOT EXISTS ac_ignore (track_id INTEGER PRIMARY KEY)")
+    await db.execute("""CREATE TABLE IF NOT EXISTS ac_lookup (
+        title_key TEXT PRIMARY KEY, status TEXT NOT NULL, artist TEXT, listeners INTEGER,
+        fetched_at TEXT NOT NULL DEFAULT (datetime('now')))""")
 
 
 async def _ac_rows() -> list:
@@ -1803,6 +1889,8 @@ async def _ac_rows() -> list:
             "FROM tracks t LEFT JOIN artists a ON t.artist_id = a.artist_id "
             "WHERE COALESCE(t.missing, 0) = 0 AND t.file_path IS NOT NULL "
             "AND t.track_id NOT IN (SELECT track_id FROM ac_ignore)")).fetchall()
+        found = {k: (a, n) for k, a, n in await (await db.execute(
+            "SELECT title_key, artist, listeners FROM ac_lookup WHERE status='ok'")).fetchall()}
     # library-wide counts: exact spellings per twin key, and artist keys that exist on their own
     spell, solo = {}, set()
     for _tid, _fp, artist, _t, _al in rows:
@@ -1812,6 +1900,7 @@ async def _ac_rows() -> list:
             spell[k][artist] = spell[k].get(artist, 0) + 1
             solo.add(_artist_key(artist))
     out = []
+    pending = []   # rows still without a suggestion → chart database, then Last.fm
     for tid, fp, artist, title, alb in rows:
         a = (artist or "").strip()
         if not a:
@@ -1827,6 +1916,13 @@ async def _ac_rows() -> list:
                 reason, prop = "joined", left
                 if _title_key(a) == tk or _title_key(title).startswith(_title_key(left) + " "):
                     ptitle = right.strip()
+        # 1b. the artist is repeated at the start of the title ("Alexandra Stan - Mr. Saxobeat")
+        if not reason and " - " in (title or ""):
+            tl, tr = title.split(" - ", 1)
+            if tr.strip() and _artist_key(_ac_clean_lead(tl)) == _artist_key(a):
+                reason, ptitle = "intitle", tr.strip()
+                sp = spell.get(_ac_twin_key(a), {})
+                prop = _ac_best_spelling(sp) if len(sp) > 1 else a
         # 2. album / series name used as the artist
         if not reason:
             album = _ge_album_display(_ge_album_name(alb, fp or ""), "")
@@ -1853,12 +1949,26 @@ async def _ac_rows() -> list:
         if not reason:
             sp = spell.get(_ac_twin_key(a), {})
             if len(sp) > 1:
-                best = max(sp.items(), key=lambda kv: (kv[1], kv[0] != kv[0].lower(), kv[0]))[0]
+                best = _ac_best_spelling(sp)
                 if best != a:
                     reason, prop = "twin", best
         if reason:
             out.append({"track_id": tid, "fp": fp or "", "artist": a, "title": title, "album": alb,
-                        "proposed": prop or "", "proposed_title": ptitle or "", "reason": reason})
+                        "proposed": prop or "", "proposed_title": ptitle or "", "reason": reason,
+                        "source": ""})
+            if not prop:
+                pending.append(out[-1])
+    if pending:
+        # 1. the chart database knows who had the hit (best peak; your own artists win a tie)
+        charts = await asyncio.get_event_loop().run_in_executor(
+            None, _ac_chart_artists, sorted({r["title"] for r in pending}), solo)
+        for r in pending:
+            hit = charts.get(_title_key(r["title"]))
+            if hit:
+                r["proposed"], r["source"] = hit[0], f"🏆 Charts · {hit[1]} #{hit[2]}"
+            elif _title_key(r["title"]) in found:   # 2. 🔎 FIND ARTISTS result (Last.fm)
+                prop, n = found[_title_key(r["title"])]
+                r["proposed"], r["source"] = prop, f"🔎 Last.fm · {_ac_fmt(n)} listeners"
     out.sort(key=lambda r: (_artist_key(r["artist"]), r["artist"].lower(),
                             _ge_album_dir(r["fp"]).lower(), r["title"].lower()))
     return out
@@ -1893,7 +2003,7 @@ async def artist_check_list(req: ArtistCheckRequest, page: int = 1, size: int = 
     return {"total": len(rows), "page": page, "size": size, "counts": counts, "all": sum(counts[k] for k in _AC_REASONS),
             "rows": [{"track_id": r["track_id"], "artist": r["artist"], "title": r["title"],
                       "proposed": r["proposed"], "proposed_title": r["proposed_title"],
-                      "reason": r["reason"], "why": _AC_REASONS[r["reason"]],
+                      "reason": r["reason"], "why": _AC_REASONS[r["reason"]], "source": r.get("source", ""),
                       "album": _ge_album_display(_ge_album_name(r["album"], r["fp"]), "") or "(no album)",
                       "akey": _artist_key(r["artist"]) or r["artist"].lower(),
                       "ext": os.path.splitext(r["fp"])[1].lower()} for r in chunk]}
@@ -2051,6 +2161,180 @@ async def artist_check_write(req: ArtistWriteRequest, background_tasks: Backgrou
         raise HTTPException(400, "Nothing to write — no artist given.")
     background_tasks.add_task(_run_artist_write, items)
     return {"ok": True, "count": len(items)}
+
+
+_AC_CHART_LABEL = {"hot100": "Hot 100", "uk": "UK", "dance": "Dance", "rnb": "R&B", "country": "Country",
+                   "rock": "Rock", "ac": "AC", "adultpop": "Pop", "ccm": "Christian", "gospel": "Gospel"}
+
+
+def _ac_chart_artists(titles: list, library: set) -> dict:
+    """title_key → (artist, chart label, peak) from the static chart DB + imported extras."""
+    from app.routers.groomer_common import _open_static_conn, _norm, _EXCL_SQL
+    from app.routers.groomer import _artist_key, _title_key
+    want = {}
+    for t in titles:
+        for n in {_norm(t), _title_key(t)}:
+            if n:
+                want[n] = _title_key(t)
+    if not want:
+        return {}
+    conn, has_extras = _open_static_conn()
+    if conn is None:
+        return {}
+    cand = {}
+    try:
+        keys = list(want)
+        for i in range(0, len(keys), 400):
+            part = keys[i:i + 400]
+            qm = ",".join("?" * len(part))
+            sql = (f"SELECT artist, chart_name, peak_position, title_norm FROM chart_reference "
+                   f"WHERE title_norm IN ({qm}) {_EXCL_SQL}")
+            params = list(part)
+            if has_extras:
+                sql += (f" UNION ALL SELECT artist, chart_name, peak_position, title_norm FROM dyn.chart_reference_extras "
+                        f"WHERE title_norm IN ({qm}) {_EXCL_SQL}")
+                params += part
+            for artist, chart, peak, tn in conn.execute(sql, params).fetchall():
+                if not artist or not peak or _AC_SERIES.search(artist):
+                    continue
+                cand.setdefault(want[tn], []).append((artist, chart, int(peak)))
+    except Exception as e:
+        log.warning(f"Artist check: chart lookup failed: {e}")
+    finally:
+        conn.close()
+    out = {}
+    for tk, rows in cand.items():
+        mine = [r for r in rows if _artist_key(r[0]) in library]
+        a, chart, peak = min(mine or rows, key=lambda r: r[2])
+        out[tk] = (a, _AC_CHART_LABEL.get(chart, chart.upper()), peak)
+    return out
+
+
+def _ac_fmt(n) -> str:
+    n = int(n or 0)
+    return f"{n / 1e6:.1f}M" if n >= 1e6 else (f"{n // 1000}k" if n >= 1000 else str(n))
+
+
+# ── 🔎 FIND ARTISTS (M10f): look up songs with no suggestion by title on Last.fm ──
+_af_job = {"status": "idle", "done": 0, "total": 0, "found": 0, "unsure": 0, "message": ""}
+_af_stop = {"flag": False}
+_AF_MIN_LISTENERS = 10_000
+
+
+def _af_pick(results: list, tk: str, library: set, title: str = ""):
+    """Best artist for this title, or (None, reason). Title must really match; a close second = unsure.
+    Exact title matches win over remix / live versions of the same song."""
+    from app.routers.groomer import _artist_key, _title_key
+    best = {}
+    results = [r for r in results or [] if _title_key(r.get("name", "")) == tk]
+    exact = [r for r in results if (r.get("name") or "").strip().lower() == (title or "").strip().lower()]
+    for r in exact or results:
+        a = (r.get("artist") or "").strip()
+        ak = _artist_key(a)
+        if not a or ak in ("", "variousartists", "various") or _AC_SERIES.search(a):
+            continue
+        n = int(r.get("listeners") or 0)
+        if n > best.get(ak, ("", -1))[1]:
+            best[ak] = (a, n)
+    if not best:
+        return None, 0, "none"
+    ranked = sorted(best.items(), key=lambda kv: -kv[1][1])
+    (k1, (a1, n1)) = ranked[0]
+    if n1 < _AF_MIN_LISTENERS:
+        return None, n1, "unsure"
+    if len(ranked) > 1:
+        k2, (a2, n2) = ranked[1]
+        close = n2 >= 0.25 * n1
+        if close and not (k1 in library and k2 not in library):
+            return None, n1, "unsure"
+    return a1, n1, "ok"
+
+
+async def _run_find_artists():
+    global _af_job
+    from app.routers.groomer import _artist_key, _title_key
+    from app.routers.hitscore import _get_lastfm_key
+    _af_stop["flag"] = False
+    _af_job = {"status": "running", "done": 0, "total": 0, "found": 0, "unsure": 0, "message": "Preparing…"}
+    try:
+        key = await _get_lastfm_key()
+        if not key:
+            _af_job.update({"status": "failed", "message": "Last.fm is not connected — add it in The Kennel."})
+            return
+        rows = await _ac_rows()
+        async with aiosqlite.connect(settings.database_url) as db:
+            library = {_artist_key(a) for (a,) in await (await db.execute(
+                "SELECT DISTINCT COALESCE(t.tag_artist, a.name, '') FROM tracks t "
+                "LEFT JOIN artists a ON t.artist_id = a.artist_id")).fetchall() if a}
+            cached = {k for (k,) in await (await db.execute("SELECT title_key FROM ac_lookup")).fetchall()}
+        todo = {}
+        for r in rows:
+            tk = _title_key(r["title"])
+            if (not r["proposed"] or r.get("source", "").startswith("🔎")) and tk and tk not in cached:
+                todo.setdefault(tk, r["title"])
+        _af_job.update({"total": len(todo), "message": f"Looking up {len(todo):,} titles on Last.fm…"})
+        async with httpx.AsyncClient(timeout=15.0) as client, \
+                aiosqlite.connect(settings.database_url, timeout=30) as db:
+            for i, (tk, title) in enumerate(todo.items()):
+                if _af_stop["flag"]:
+                    break
+                status, artist, n = "error", None, 0
+                try:
+                    r = await client.get("https://ws.audioscrobbler.com/2.0/", params={
+                        "method": "track.search", "track": title, "limit": 15, "api_key": key, "format": "json"})
+                    if r.status_code == 429:
+                        _af_job["message"] = "Last.fm rate limit — pausing 30s…"
+                        await asyncio.sleep(30)
+                        continue
+                    res = (r.json().get("results") or {}).get("trackmatches", {}).get("track", [])
+                    if isinstance(res, dict):
+                        res = [res]
+                    artist, n, status = _af_pick(res, tk, library, title)
+                except Exception as e:
+                    log.warning(f"Find artists: lookup failed for '{title}': {e}")
+                if status != "error":
+                    await db.execute(
+                        "INSERT OR REPLACE INTO ac_lookup (title_key, status, artist, listeners, fetched_at) "
+                        "VALUES (?, ?, ?, ?, datetime('now'))", (tk, status, artist, n))
+                _af_job["found"] += status == "ok"
+                _af_job["unsure"] += status in ("unsure", "none")
+                _af_job["done"] = i + 1
+                _af_job["message"] = f"{title} → {artist}" if artist else f"{title} — no sure match"
+                if (i + 1) % 25 == 0:
+                    await db.commit()
+                await asyncio.sleep(0.25)   # ~4 requests/second, under Last.fm's limit
+            await db.commit()
+        stopped = _af_stop["flag"]
+        _af_job.update({"status": "stopped" if stopped else "done", "message": (
+            f"{'Stopped' if stopped else 'Done'} — {_af_job['found']:,} artists found, "
+            f"{_af_job['unsure']:,} left blank (no sure match). Check them, then ✓ WRITE.")})
+        log.info(f"Find artists: {_af_job['message']}")
+    except Exception as e:
+        log.exception("Find artists failed")
+        _af_job.update({"status": "failed", "message": f"Error: {e}"})
+
+
+_af_task = {"task": None}
+
+
+@router.post("/artist-check/find")
+async def artist_check_find(user: dict = Depends(require_auth)):
+    t = _af_task["task"]
+    if t is not None and not t.done():
+        raise HTTPException(409, "Already looking up artists.")
+    _af_task["task"] = asyncio.create_task(_run_find_artists())
+    return {"ok": True}
+
+
+@router.post("/artist-check/find-stop")
+async def artist_check_find_stop(user: dict = Depends(require_auth)):
+    _af_stop["flag"] = True
+    return {"ok": True}
+
+
+@router.get("/artist-check/find-status")
+async def artist_check_find_status(user: dict = Depends(require_auth)):
+    return _af_job
 
 
 @router.get("/artist-check/status")
