@@ -569,3 +569,93 @@ async function vetMovedApply() {
     document.getElementById('mv-apply').style.display = 'none';
   } catch (e) { toast(e.message, 'error'); }
 }
+
+// ── 🖼 Cover Art (M12c) ──────────────────────────────────────────────────────
+const _art = {page: 1, pages: 1, total: 0, rows: [], sel: new Set(), t: '', poll: null};
+const _ART_SRC = {local: ['var(--green)', 'IN FOLDER'], caa: ['var(--teal)', 'COVER ART ARCHIVE'], itunes: ['var(--teal)', 'ITUNES'], deezer: ['var(--teal)', 'DEEZER'], generic: ['var(--amber)', 'GENERIC']};
+async function artCheck() {
+  try {
+    const r = await fetch(`${API}/api/art/check`, {method: 'POST', headers: authHdrs()});
+    const d = await r.json(); if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    toast('Checking cover art — runs in the background', 'ok'); artPoll();
+  } catch (e) { toast(e.message, 'error'); }
+}
+async function artStop() { await fetch(`${API}/api/art/stop`, {method: 'POST', headers: authHdrs()}); toast('Stopping — covers found so far are kept', 'ok'); }
+function artPoll() {
+  clearTimeout(_art.poll);
+  _art.poll = setTimeout(async () => {
+    try {
+      const d = await (await fetch(`${API}/api/art/status`, {headers: authHdrs()})).json();
+      const running = d.status === 'running', st = document.getElementById('art-status');
+      document.getElementById('art-stop').style.display = running ? '' : 'none';
+      const cb = document.getElementById('art-check'); cb.disabled = running; cb.style.opacity = running ? '.4' : '1';
+      if (running) {
+        const p = _jobProgress('art', d.phase, d.done || 0, d.total || 0);
+        st.innerHTML = `${d.phase === 'scan' ? 'Looking at album folders' : 'Finding covers'} — ${(d.done||0).toLocaleString()} / ${(d.total||0).toLocaleString()} · ${p.pct}%${p.eta ? ' · ' + p.eta : ''} · ${(d.found||0).toLocaleString()} found<br><span style="color:var(--muted2)">${esc(d.message || '')}</span>`;
+        if (d.phase === 'lookups' && (_art.tick = (_art.tick || 0) + 1) % 8 === 0) artLoad(_art.page, true);
+        return artPoll();
+      }
+      if (d.status !== 'idle') st.textContent = d.message || '';
+      artLoad(_art.page);
+    } catch (e) { artPoll(); }
+  }, 2000);
+}
+async function artLoad(page, quiet) {
+  page = Math.max(1, Math.min(page || 1, _art.pages || 1));
+  try {
+    const kind = document.getElementById('art-kind').value;
+    const r = await fetch(`${API}/api/art/list?page=${page}&size=60&kind=${kind}`, {headers: authHdrs()});
+    const d = await r.json(); if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    Object.assign(_art, {page: d.page, pages: Math.max(1, Math.ceil(d.total / d.size)), total: d.total, rows: d.rows, t: d.t});
+    if (!quiet) _art.sel.clear();
+    document.getElementById('art-pager').style.display = d.total ? '' : 'none';
+    document.getElementById('art-page').textContent = `page ${_art.page} / ${_art.pages} · ${d.total.toLocaleString()} ready`;
+    const c = d.counts || {};
+    if (!document.getElementById('art-status').textContent && (c.found || c.written))
+      document.getElementById('art-status').textContent = `${(c.found||0).toLocaleString()} covers ready to save · ${(c.written||0).toLocaleString()} saved before · ${(c.none||0).toLocaleString()} nothing found`;
+    artRender();
+  } catch (e) { if (!quiet) toast(e.message, 'error'); }
+}
+function artRender() {
+  const g = document.getElementById('art-grid');
+  g.innerHTML = _art.rows.map((x, i) => {
+    const [col, lab] = _ART_SRC[x.source] || ['var(--muted)', x.source || ''];
+    const on = _art.sel.has(x.id);
+    return `<label style="display:block;cursor:pointer;border:1px solid ${on ? 'var(--teal)' : 'var(--border)'};border-radius:8px;padding:.35rem;font-family:var(--mono);font-size:.55rem;line-height:1.35">
+      <img src="${API}/api/art/img/${x.id}?t=${encodeURIComponent(_art.t)}" loading="lazy" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:${x.kind === 'artist' ? '50%' : '4px'};background:var(--bg)">
+      <div style="display:flex;gap:.3rem;align-items:center;margin-top:.25rem"><input type="checkbox" ${on ? 'checked' : ''} onchange="artToggle(${i}, this.checked)"><span style="color:${col}">${lab}</span>${x.discs > 1 ? `<span style="color:var(--muted2)">· ${x.discs} CDs</span>` : ''}</div>
+      <div style="color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(x.artist).replace(/"/g, '&quot;')}">${x.kind === 'artist' ? '👤 ' : ''}${esc(x.artist || '')}</div>
+      ${x.kind === 'album' ? `<div style="color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(esc(x.album) + ' — folder: ' + esc(x.folder)).replace(/"/g, '&quot;')}">${esc(x.album || x.folder)}</div>` : ''}
+    </label>`;
+  }).join('') || '';
+  artSync();
+}
+function artToggle(i, on) { const id = _art.rows[i].id; on ? _art.sel.add(id) : _art.sel.delete(id); artRender(); }
+function artSelectAll(on) { _art.rows.forEach(r => on ? _art.sel.add(r.id) : _art.sel.delete(r.id)); artRender(); }
+function artSync() {
+  const n = _art.sel.size;
+  const s = document.getElementById('art-save-sel'); s.textContent = `✓ SAVE SELECTED (${n})`; s.disabled = !n; s.style.opacity = n ? '1' : '.4';
+  const dr = document.getElementById('art-drop'); dr.textContent = `✕ DON'T USE (${n})`; dr.disabled = !n; dr.style.opacity = n ? '1' : '.4';
+  const a = document.getElementById('art-save-all'); a.textContent = `✓ SAVE ALL ${_art.total.toLocaleString()}`; a.disabled = !_art.total; a.style.opacity = _art.total ? '1' : '.4';
+  const hd = document.getElementById('art-all'); if (hd) hd.checked = _art.rows.length > 0 && _art.rows.every(r => _art.sel.has(r.id));
+}
+async function artSave(all) {
+  const kind = document.getElementById('art-kind').value;
+  const n = all ? _art.total : _art.sel.size;
+  if (!n || !confirm(`Save ${n.toLocaleString()} cover${n > 1 ? 's' : ''} into your music folders?\n\nAdds cover.jpg (artist.jpg for artists). Art that's already there is never replaced. Plex, Emby and Jellyfin are asked to refresh.\nTip: turn off Plex "Scan automatically" first if you're saving thousands.`)) return;
+  try {
+    const r = await fetch(`${API}/api/art/save`, {method: 'POST', headers: authHdrs(), body: JSON.stringify(all ? {all: true, kind} : {ids: [..._art.sel]})});
+    const d = await r.json(); if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    toast(d.message, 'success'); document.getElementById('art-status').textContent = d.message;
+    artLoad(1);
+  } catch (e) { toast(e.message, 'error'); }
+}
+async function artDrop() {
+  const ids = [..._art.sel]; if (!ids.length) return;
+  try {
+    const r = await fetch(`${API}/api/art/drop`, {method: 'POST', headers: authHdrs(), body: JSON.stringify({ids})});
+    const d = await r.json(); if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    toast(`${d.dropped} cover${d.dropped > 1 ? 's' : ''} won't be used`, 'ok'); artLoad(_art.page);
+  } catch (e) { toast(e.message, 'error'); }
+}
+document.addEventListener('DOMContentLoaded', () => setTimeout(() => { if (document.getElementById('art-grid')) { artLoad(1); artPoll(); } }, 3000));
