@@ -22,7 +22,7 @@ from app.config import get_settings
 from app.database import init_db, get_user_count
 from app.security import lockdown_status
 from app.models import HealthResponse
-from app.routers import auth, kennel, retriever, groomer, debug, sniffer, bloodhound, tracker, start
+from app.routers import auth, kennel, retriever, groomer, debug, sniffer, bloodhound, tracker, start, coverart
 
 logging.basicConfig(
     level=logging.INFO,
@@ -125,6 +125,7 @@ app.include_router(sniffer.router)
 app.include_router(bloodhound.router)
 app.include_router(tracker.router)
 app.include_router(start.router)
+app.include_router(coverart.router)
 
 
 @app.get("/api/health", response_model=HealthResponse, tags=["system"])

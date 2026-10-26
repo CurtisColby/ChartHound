@@ -7,7 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐕</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/css/app.css?v=m12a">
+<link rel="stylesheet" href="/static/css/app.css?v=m12c">
 <script>try{document.documentElement.style.fontSize=(+localStorage.getItem('ch_textsize')||18)+'px'}catch(e){}</script>
 </head>
 <body>
@@ -1868,6 +1868,26 @@
             <div id="mv-preview" style="font-family:var(--mono);font-size:.6rem;margin-top:.4rem"></div>
           </div>
 
+          <!-- Cover Art (M12c) -->
+          <div class="card" style="padding:1.25rem 1.5rem;margin-top:.75rem">
+            <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.4rem">
+              <div style="font-family:var(--display);font-size:1.1rem;letter-spacing:1.5px;color:var(--red)">🖼 COVER ART</div>
+              <span class="grm-q" tabindex="0" data-tip="CHECK finds albums with no cover your media server can read, and artist folders with no artist photo. Art already in the album (an Artwork or Scans folder, Front.jpg…) is used first. Then the Cover Art Archive and iTunes — only when artist AND album match. Artist photos come from Deezer. Various Artists albums with nothing found get a generic cover with the album title. Nothing is saved until you press SAVE. Saving adds cover.jpg (artist.jpg for artists) to the folder — one in each CD folder — and never replaces art that's already there.">?</span>
+            </div>
+            <div style="font-family:var(--mono);font-size:.62rem;color:var(--muted);line-height:1.6;margin-bottom:.6rem">Find covers for albums and photos for artists, check them, then save <code>cover.jpg</code> / <code>artist.jpg</code> into the folders.</div>
+            <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
+              <button class="btn btn-outline btn-sm" id="art-check" onclick="artCheck()" style="font-size:.62rem">🔍 CHECK</button>
+              <button class="btn btn-outline btn-sm" id="art-stop" onclick="artStop()" style="font-size:.62rem;color:var(--red);border-color:var(--red);display:none">■ STOP</button>
+              <select id="art-kind" onchange="artLoad(1)" class="ger-in" style="font-size:.62rem;padding:.25rem .4rem"><option value="">All</option><option value="album">Albums</option><option value="artist">Artists</option><option value="generic">Generic covers</option></select>
+              <button class="btn btn-sm" id="art-save-sel" onclick="artSave(false)" style="font-size:.62rem;background:var(--teal);color:#000">✓ SAVE SELECTED (0)</button>
+              <button class="btn btn-outline btn-sm" id="art-save-all" onclick="artSave(true)" style="font-size:.62rem;color:var(--teal);border-color:var(--teal)">✓ SAVE ALL</button>
+              <button class="btn btn-outline btn-sm" id="art-drop" onclick="artDrop()" style="font-size:.62rem;color:var(--amber);border-color:var(--amber)">✕ DON'T USE (0)</button>
+            </div>
+            <div id="art-status" style="font-family:var(--mono);font-size:.62rem;color:var(--muted);margin-top:.6rem;line-height:1.7"></div>
+            <div id="art-pager" style="font-family:var(--mono);font-size:.6rem;margin-top:.3rem;display:none"><button class="btn btn-outline btn-sm" onclick="artLoad(_art.page-1)" style="font-size:.6rem">◀</button> <span id="art-page"></span> <button class="btn btn-outline btn-sm" onclick="artLoad(_art.page+1)" style="font-size:.6rem">▶</button> <label style="margin-left:.6rem;color:var(--muted)"><input type="checkbox" id="art-all" onchange="artSelectAll(this.checked)"> this page</label></div>
+            <div id="art-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:.6rem;margin-top:.5rem;max-height:560px;overflow:auto"></div>
+          </div>
+
           <!-- Debug Console -->
           <div class="card" style="padding:1.25rem 1.5rem;margin-top:.75rem">
             <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.75rem">
@@ -1937,14 +1957,14 @@
 
 <div id="toastWrap"></div>
 
-<script src="/static/js/core.js?v=m12a"></script>
-<script src="/static/js/start.js?v=m12a"></script>
-<script src="/static/js/retriever.js?v=m12a"></script>
-<script src="/static/js/topdogs.js?v=m12a"></script>
-<script src="/static/js/sniffer.js?v=m12a"></script>
-<script src="/static/js/bloodhound.js?v=m12a"></script>
-<script src="/static/js/vet.js?v=m12a"></script>
-<script src="/static/js/tracker.js?v=m12a"></script>
-<script src="/static/js/guide.js?v=m12a"></script>
+<script src="/static/js/core.js?v=m12c"></script>
+<script src="/static/js/start.js?v=m12c"></script>
+<script src="/static/js/retriever.js?v=m12c"></script>
+<script src="/static/js/topdogs.js?v=m12c"></script>
+<script src="/static/js/sniffer.js?v=m12c"></script>
+<script src="/static/js/bloodhound.js?v=m12c"></script>
+<script src="/static/js/vet.js?v=m12c"></script>
+<script src="/static/js/tracker.js?v=m12c"></script>
+<script src="/static/js/guide.js?v=m12c"></script>
 </body>
 </html>

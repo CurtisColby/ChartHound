@@ -22,6 +22,8 @@ mutagen==1.48.1
 httpx==0.28.1
 # Billboard chart pages (genre-chart importers)
 billboard.py==7.1.0
+# Cover art: resize found covers, draw generic Various Artists covers (M12c)
+pillow==12.0.0
 # Data validation
 pydantic==2.14.0
 # Settings from docker-compose environment
