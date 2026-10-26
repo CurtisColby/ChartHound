@@ -585,3 +585,5 @@ details.adv[open]>summary{margin-bottom:.7rem}
 .grm-gwrite{display:block;margin:.4rem 0 .8rem}
 .grm-gbtns{display:flex;justify-content:flex-end;gap:.5rem}
 .grm-gbtns .btn{width:auto!important}
+
+.ger-heard{margin-left:.5rem;font-size:.6rem;color:var(--green);border:1px solid var(--green);border-radius:9px;padding:0 .4rem;cursor:help}

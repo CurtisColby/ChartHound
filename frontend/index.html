@@ -7,7 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐕</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/css/app.css?v=m11b">
+<link rel="stylesheet" href="/static/css/app.css?v=m12a">
 <script>try{document.documentElement.style.fontSize=(+localStorage.getItem('ch_textsize')||18)+'px'}catch(e){}</script>
 </head>
 <body>
@@ -724,6 +724,7 @@
                 <button class="btn btn-outline" id="ger-ok-all" onclick="geApprove('all')" style="font-size:.65rem;font-family:var(--mono);color:var(--green);border-color:var(--green)" data-tip="Keep the genre for every flagged song matching the current filters, on all pages. You'll be asked to confirm. Tip: back up first on The Veterinarian.">✓ ALL 0 MATCHING</button>
                 <button class="btn btn-outline" id="ger-ok-sel" onclick="geApprove(true)" style="font-size:.65rem;font-family:var(--mono);color:var(--green);border-color:var(--green)" data-tip="Keep the genre shown for the selected songs as your own decision and write it to the files now. They stop counting as conflicts and the engine never changes them.">✓ LOOKS RIGHT (0)</button>
                 <button class="btn btn-outline" id="ger-edit-sel" onclick="geEditSelected()" style="font-size:.65rem;font-family:var(--mono);color:var(--amber);border-color:var(--amber)" data-tip="Set one genre for the ticked songs only. The artist's other songs are not changed.">✎ EDIT SELECTED (0)</button>
+                <button class="btn btn-outline" id="ger-fp" onclick="geFp()" style="font-size:.65rem;font-family:var(--mono);color:var(--green);border-color:var(--green)" data-tip="Tick rows to fingerprint only those; nothing ticked = every song matching the filters. Identifies the recording by sound (AcoustID), takes its genres from MusicBrainz and re-votes. Best for No genre found and Little data. Nothing is written to files.">🎧 FINGERPRINT</button>
                 <button class="btn" id="ger-write-sel" onclick="geWrite(true)" style="font-size:.65rem;font-family:var(--mono);background:var(--teal);color:#000">✎ WRITE SELECTED (0)</button>
                 <button class="btn btn-outline" id="ger-write-all" onclick="geWrite(false)" style="font-size:.65rem;font-family:var(--mono);color:var(--teal);border-color:var(--teal)">✎ WRITE ALL MATCHING</button>
               </div>
@@ -1936,14 +1937,14 @@
 
 <div id="toastWrap"></div>
 
-<script src="/static/js/core.js?v=m11b"></script>
-<script src="/static/js/start.js?v=m11b"></script>
-<script src="/static/js/retriever.js?v=m11b"></script>
-<script src="/static/js/topdogs.js?v=m11b"></script>
-<script src="/static/js/sniffer.js?v=m11b"></script>
-<script src="/static/js/bloodhound.js?v=m11b"></script>
-<script src="/static/js/vet.js?v=m11b"></script>
-<script src="/static/js/tracker.js?v=m11b"></script>
-<script src="/static/js/guide.js?v=m11b"></script>
+<script src="/static/js/core.js?v=m12a"></script>
+<script src="/static/js/start.js?v=m12a"></script>
+<script src="/static/js/retriever.js?v=m12a"></script>
+<script src="/static/js/topdogs.js?v=m12a"></script>
+<script src="/static/js/sniffer.js?v=m12a"></script>
+<script src="/static/js/bloodhound.js?v=m12a"></script>
+<script src="/static/js/vet.js?v=m12a"></script>
+<script src="/static/js/tracker.js?v=m12a"></script>
+<script src="/static/js/guide.js?v=m12a"></script>
 </body>
 </html>
