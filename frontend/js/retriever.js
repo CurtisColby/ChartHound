@@ -733,7 +733,7 @@ function acRender() {
     const v = _acVal(x), [cls, txt] = _AC_BADGE[x.reason] || ['fine', x.reason];
     html += `<tr class="ger-song" id="ac-row-${i}"><td><input type="checkbox" ${_acr.sel.has(x.track_id) ? 'checked' : ''} onchange="acToggle(${i}, this.checked)"></td>
       <td>${gePlayBtn(x)}${esc(x.title)}<div class="ac-album">💿 ${esc(x.album)}</div></td>
-      <td><input class="ac-in" value="${esc(v.artist || '').replace(/"/g, '&quot;')}" placeholder="type the artist" oninput="acEdit(${i}, 'artist', this.value)">${x.source ? `<div class="ac-album" style="color:${x.source.startsWith('🏆') ? 'var(--amber)' : x.source.startsWith('🎧') ? 'var(--green)' : 'var(--teal)'}">${esc(x.source)}</div>` : ''}${x.proposed_title ? `<div class="ac-tl">title → <input class="ac-in ac-in-t" value="${esc(v.title || '').replace(/"/g, '&quot;')}" oninput="acEdit(${i}, 'title', this.value)"></div>` : ''}</td>
+      <td><input class="ac-in" value="${esc(v.artist || '').replace(/"/g, '&quot;')}" placeholder="type the artist" oninput="acEdit(${i}, 'artist', this.value)">${x.source ? `<div class="ac-album" style="color:${x.source.startsWith('🏆') ? 'var(--amber)' : x.source.startsWith('🎧 low') ? 'var(--amber)' : x.source.startsWith('🎧') ? 'var(--green)' : 'var(--teal)'}">${esc(x.source)}</div>` : ''}${x.proposed_title ? `<div class="ac-tl">title → <input class="ac-in ac-in-t" value="${esc(v.title || '').replace(/"/g, '&quot;')}" oninput="acEdit(${i}, 'title', this.value)"></div>` : ''}</td>
       <td><span class="ger-badge ${cls}" data-tip="${esc(x.why)}">${txt}</span></td>
       <td class="ger-conf"><button class="ger-ok" onclick="acWrite([${i}])" data-tip="Write this artist${x.proposed_title ? ' and title' : ''} into the file now.">✓</button><button class="ger-redo" onclick="acIgnore([${x.track_id}])" data-tip="Keep the tag as it is — this song is never flagged again.">✕</button></td></tr>`;
   });
@@ -756,13 +756,14 @@ function acSyncSel() {
   const hd = document.getElementById('ac-all'); if (hd) hd.checked = _acr.rows.length > 0 && _acr.rows.every(r => _acr.sel.has(r.track_id));
   const w = document.getElementById('ac-write-sel'); w.textContent = `✓ WRITE SELECTED (${n})`; w.disabled = !n; w.style.opacity = n ? '1' : '.4';
   const k = document.getElementById('ac-keep-sel'); k.textContent = `✕ KEEP AS IS (${n})`; k.disabled = !n; k.style.opacity = n ? '1' : '.4';
+  const fb = document.getElementById('ac-fp'); if (fb) fb.textContent = n ? `🎧 FINGERPRINT (${n})` : '🎧 FINGERPRINT';
   document.getElementById('ac-write-all').textContent = `✓ WRITE ALL ${_acr.total.toLocaleString()} MATCHING`;
 }
 async function acWrite(which) {
   let body, n;
   if (which === 'all') {
     n = _acr.total;
-    if (!n || !confirm(`Write the suggested artist for every matching song (all pages)?\n\nSongs with no suggestion are skipped. Only the ARTIST tag changes (and TITLE for run-together tags).\nTip: back up first on The Veterinarian.`)) return;
+    if (!n || !confirm(`Write the suggested artist for every matching song (all pages)?\n\nSongs with no suggestion and 🎧 low guesses are skipped (✓ those one by one). Only the ARTIST tag changes (and TITLE for run-together tags).\nTip: back up first on The Veterinarian.`)) return;
     body = {filters: _acFilters()};
   } else {
     const rows = which === 'sel' ? _acr.rows.filter(r => _acr.sel.has(r.track_id)) : which.map(i => _acr.rows[i]);
@@ -819,8 +820,10 @@ async function acFindPoll(started) {
 // ── 🎧 FINGERPRINT (AcoustID) ──
 let _fpTimer = null;
 async function acFp() {
-  if (!confirm('Fingerprint every album-as-artist song and every song with no suggestion?\n\nRuns in the background (about 1 song a second). Already-checked files are skipped. Nothing is written until you press ✓.')) return;
-  const r = await fetch(`${API}/api/retriever/artist-check/fp`, {method: 'POST', headers: authHdrs()});
+  const ids = [..._acr.sel];
+  if (ids.length ? !confirm(`Fingerprint the ${ids.length} ticked song${ids.length > 1 ? 's' : ''}?\n\nChecked again even if done before. Low scores are shown as a labelled guess. Nothing is written until you press ✓.`)
+                 : !confirm('Fingerprint every album-as-artist song and every song with no suggestion?\n\nRuns in the background (about 1 song a second). Already-checked files are skipped. Tick rows first to fingerprint only those. Nothing is written until you press ✓.')) return;
+  const r = await fetch(`${API}/api/retriever/artist-check/fp`, {method: 'POST', headers: authHdrs(), body: JSON.stringify({track_ids: ids})});
   if (!r.ok) { const d = await r.json().catch(() => ({})); toast(d.detail || `HTTP ${r.status}`, 'error'); return; }
   toast('Fingerprinting — progress shows above the list', 'ok');
   acFpPoll(true);

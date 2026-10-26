@@ -1879,6 +1879,10 @@ async def _ac_migrate(db):
         file_path TEXT PRIMARY KEY, size INTEGER, mtime INTEGER, status TEXT NOT NULL,
         artist TEXT, title TEXT, score REAL, tmatch INTEGER DEFAULT 0,
         fetched_at TEXT NOT NULL DEFAULT (datetime('now')))""")
+    try:
+        await db.execute("ALTER TABLE ac_fp ADD COLUMN req INTEGER DEFAULT 0")
+    except Exception:
+        pass
 
 
 async def _ac_rows() -> list:
@@ -1895,8 +1899,9 @@ async def _ac_rows() -> list:
             "AND t.track_id NOT IN (SELECT track_id FROM ac_ignore)")).fetchall()
         found = {k: (a, n) for k, a, n in await (await db.execute(
             "SELECT title_key, artist, listeners FROM ac_lookup WHERE status='ok'")).fetchall()}
-        heard = {f: (a, t, sc, tm) for f, a, t, sc, tm in await (await db.execute(
-            "SELECT file_path, artist, title, score, tmatch FROM ac_fp WHERE status='ok'")).fetchall()}
+        heard = {f: (a, t, sc, tm, st, rq) for f, a, t, sc, tm, st, rq in await (await db.execute(
+            "SELECT file_path, artist, title, score, tmatch, status, COALESCE(req, 0) FROM ac_fp "
+            "WHERE status IN ('ok', 'low')")).fetchall()}
     # library-wide counts: exact spellings per twin key, and artist keys that exist on their own
     spell, solo = {}, set()
     for _tid, _fp, artist, _t, _al in rows:
@@ -1976,9 +1981,16 @@ async def _ac_rows() -> list:
                 prop, n = found[_title_key(r["title"])]
                 r["proposed"], r["source"] = prop, f"🔎 Last.fm · {_ac_fmt(n)} listeners"
     for r in out:   # 🎧 fingerprint beats every title guess
-        h = heard.get(r["fp"]) if r["fpt"] else None
-        if h:
-            a, t, sc, tm = h
+        h = heard.get(r["fp"])
+        if not h or not (r["fpt"] or h[5]):
+            continue
+        a, t, sc, tm, st, rq = h
+        if st == "low":
+            if r["proposed"] and not rq:
+                continue
+            r["proposed"] = a
+            r["source"] = f"🎧 low · {round(sc * 100)}% · guess" + ("" if tm else f", heard as “{t}”")
+        else:
             r["proposed"] = a
             if _artist_key(a) == _artist_key(r["artist"]):
                 r["source"] = f"🎧 AcoustID · {round(sc * 100)}% · tag already right → ✕"
@@ -2173,7 +2185,7 @@ async def artist_check_write(req: ArtistWriteRequest, background_tasks: Backgrou
         if needle:
             rows = [r for r in rows if needle in r["artist"].lower() or needle in r["title"].lower()]
         items += [ArtistFix(track_id=r["track_id"], artist=r["proposed"], title=r["proposed_title"] or None)
-                  for r in rows if r["proposed"]][:5000]
+                  for r in rows if r["proposed"] and not r.get("source", "").startswith("🎧 low")][:5000]
     if not items:
         raise HTTPException(400, "Nothing to write — no artist given.")
     background_tasks.add_task(_run_artist_write, items)
@@ -2400,12 +2412,11 @@ def _fp_pick(results: list, title: str, spell: dict):
     if not results:
         return "none", None, None, 0.0, 0
     top = float(results[0].get("score") or 0)
-    if top < _FP_MIN_SCORE:
-        return "unsure", None, None, top, 0
+    floor = _FP_MIN_SCORE if top >= _FP_MIN_SCORE else 0.0   # under 80%: still give a labelled guess
     cand = []
     for res in results:
         sc = float(res.get("score") or 0)
-        if sc < _FP_MIN_SCORE:
+        if sc < floor:
             break
         for rec in res.get("recordings") or []:
             arts = rec.get("artists") or []
@@ -2432,10 +2443,10 @@ def _fp_pick(results: list, title: str, spell: dict):
     ak, (_n, name, t, sc) = ranked[0]
     if ak in spell:   # use the spelling already in your library
         name = _ac_best_spelling(spell[ak])
-    return "ok", name, t, sc, int(bool(match))
+    return ("ok" if top >= _FP_MIN_SCORE else "low"), name, t, sc, int(bool(match))
 
 
-async def _run_fingerprint():
+async def _run_fingerprint(track_ids: Optional[List[int]] = None):
     global _fp_job
     import shutil
     from app.routers.groomer import _artist_key
@@ -2449,7 +2460,13 @@ async def _run_fingerprint():
         if not shutil.which("fpcalc"):
             _fp_job.update({"status": "failed", "message": "fpcalc is missing — rebuild: docker compose up -d --build"})
             return
-        rows = await _ac_rows()
+        if track_ids:
+            async with aiosqlite.connect(settings.database_url) as db:
+                qm = ",".join("?" * len(track_ids))
+                rows = [{"fp": f, "title": t or "", "fpt": True} for f, t in await (await db.execute(
+                    f"SELECT file_path, title FROM tracks WHERE track_id IN ({qm})", track_ids)).fetchall()]
+        else:
+            rows = await _ac_rows()
         async with aiosqlite.connect(settings.database_url) as db:
             await _ac_migrate(db)
             spell = {}
@@ -2472,7 +2489,7 @@ async def _run_fingerprint():
                 st = os.stat(real)
             except OSError:
                 continue
-            c = cache.get(fp)
+            c = None if track_ids else cache.get(fp)
             if c and c[2] != "lookup_failed" and c[0] == st.st_size and c[1] == int(st.st_mtime):
                 continue
             todo.append((fp, real, st.st_size, int(st.st_mtime), r["title"]))
@@ -2515,10 +2532,11 @@ async def _run_fingerprint():
                             await asyncio.sleep(5)
                 await db.execute(
                     "INSERT OR REPLACE INTO ac_fp (file_path, size, mtime, status, artist, title, score, tmatch, "
-                    "fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))",
-                    (fp, size, mtime, status, artist, heard, score, tm))
+                    "req, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))",
+                    (fp, size, mtime, status, artist, heard, score, tm, 1 if track_ids else 0))
                 _fp_job["found"] += status == "ok"
-                _fp_job["unsure"] += status != "ok"
+                _fp_job["low"] = _fp_job.get("low", 0) + (status == "low")
+                _fp_job["unsure"] += status not in ("ok", "low")
                 _fp_job["done"] = i + 1
                 _fp_job["message"] = (f"{title} → {artist}" if artist
                                       else f"{title} — {'no fingerprint' if status == 'no_fp' else 'no sure match'}")
@@ -2528,19 +2546,24 @@ async def _run_fingerprint():
         stopped = _fp_stop["flag"]
         _fp_job.update({"status": "stopped" if stopped else "done", "message": (
             f"{'Stopped' if stopped else 'Done'} — {_fp_job['found']:,} songs identified, "
-            f"{_fp_job['unsure']:,} not sure. Check them, then ✓ WRITE.")})
+            f"{_fp_job.get('low', 0):,} low-score guesses, {_fp_job['unsure']:,} no match. Check them, then ✓ WRITE.")})
         log.info(f"Fingerprint: {_fp_job['message']}")
     except Exception as e:
         log.exception("Fingerprint failed")
         _fp_job.update({"status": "failed", "message": f"Error: {e}"})
 
 
+class FpRequest(BaseModel):
+    track_ids: List[int] = []
+
+
 @router.post("/artist-check/fp")
-async def artist_check_fp(user: dict = Depends(require_auth)):
+async def artist_check_fp(req: Optional[FpRequest] = None, user: dict = Depends(require_auth)):
     for t in (_fp_task["task"], _af_task["task"]):
         if t is not None and not t.done():
             raise HTTPException(409, "A lookup is already running.")
-    _fp_task["task"] = asyncio.create_task(_run_fingerprint())
+    ids = (req.track_ids if req else [])[:2000]
+    _fp_task["task"] = asyncio.create_task(_run_fingerprint(ids or None))
     return {"ok": True}
 
 

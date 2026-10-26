@@ -7,7 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐕</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/css/app.css?v=m11">
+<link rel="stylesheet" href="/static/css/app.css?v=m11b">
 <script>try{document.documentElement.style.fontSize=(+localStorage.getItem('ch_textsize')||18)+'px'}catch(e){}</script>
 </head>
 <body>
@@ -658,7 +658,7 @@
               <button class="btn btn-outline" onclick="acLoad(1)" style="font-size:.65rem;font-family:var(--mono)">🔍 APPLY</button>
               <button class="btn btn-outline" id="ac-find" onclick="acFind()" style="font-size:.65rem;font-family:var(--mono);color:var(--teal);border-color:var(--teal)" data-tip="For songs with no suggestion: search the song title on Last.fm and fill in the most-played artist whose song title really matches. Unsure matches stay blank. Nothing is written until you press ✓.">🔎 FIND ARTISTS</button>
               <button class="btn btn-outline" id="ac-find-stop" onclick="acFindStop()" style="font-size:.65rem;font-family:var(--mono);color:var(--red);border-color:var(--red);display:none">■ STOP</button>
-              <button class="btn btn-outline" id="ac-fp" onclick="acFp()" style="font-size:.65rem;font-family:var(--mono);color:var(--green);border-color:var(--green)" data-tip="For album-as-artist songs and songs with no suggestion: listen to the file (fpcalc), ask AcoustID who recorded it. Beats every title guess. Unsure matches stay as they are. Nothing is written until you press ✓.">🎧 FINGERPRINT</button>
+              <button class="btn btn-outline" id="ac-fp" onclick="acFp()" style="font-size:.65rem;font-family:var(--mono);color:var(--green);border-color:var(--green)" data-tip="Tick rows to fingerprint only those (any problem, low scores shown as a guess). With nothing ticked: album-as-artist songs and songs with no suggestion. Listens to the file (fpcalc) and asks AcoustID who recorded it. Beats every title guess. Unsure matches stay as they are. Nothing is written until you press ✓.">🎧 FINGERPRINT</button>
               <button class="btn btn-outline" id="ac-fp-stop" onclick="acFpStop()" style="font-size:.65rem;font-family:var(--mono);color:var(--red);border-color:var(--red);display:none">■ STOP</button>
             </div>
             <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:.5rem;margin-bottom:.5rem">
@@ -1936,14 +1936,14 @@
 
 <div id="toastWrap"></div>
 
-<script src="/static/js/core.js?v=m11"></script>
-<script src="/static/js/start.js?v=m11"></script>
-<script src="/static/js/retriever.js?v=m11"></script>
-<script src="/static/js/topdogs.js?v=m11"></script>
-<script src="/static/js/sniffer.js?v=m11"></script>
-<script src="/static/js/bloodhound.js?v=m11"></script>
-<script src="/static/js/vet.js?v=m11"></script>
-<script src="/static/js/tracker.js?v=m11"></script>
-<script src="/static/js/guide.js?v=m11"></script>
+<script src="/static/js/core.js?v=m11b"></script>
+<script src="/static/js/start.js?v=m11b"></script>
+<script src="/static/js/retriever.js?v=m11b"></script>
+<script src="/static/js/topdogs.js?v=m11b"></script>
+<script src="/static/js/sniffer.js?v=m11b"></script>
+<script src="/static/js/bloodhound.js?v=m11b"></script>
+<script src="/static/js/vet.js?v=m11b"></script>
+<script src="/static/js/tracker.js?v=m11b"></script>
+<script src="/static/js/guide.js?v=m11b"></script>
 </body>
 </html>

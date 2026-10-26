@@ -15,6 +15,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
+from app import logsafe
+logsafe.install()
+
 from app.config import get_settings
 from app.database import init_db, get_user_count
 from app.security import lockdown_status
