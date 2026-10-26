@@ -42,7 +42,9 @@ _ALBUM_ART = {"cover", "folder", "album", "front", "poster"}
 _ARTIST_ART = {"artist", "poster", "folder"}
 _DISC_RE = re.compile(r"^(cd|disc|disk)\s*\d+$", re.I)
 _ART_DIRS = re.compile(r"^(artwork|art|scans?|covers?|images?|pics?|jpg|booklet)$", re.I)
-_BAD_IMG = re.compile(r"back|inlay|inside|tray|booklet|spine|matrix|disc|\bcd\b|label|rear", re.I)
+_BAD_IMG = re.compile(r"back|inlay|inside|tray|booklet|spine|matrix|disc|\bcd\b|label|rear|"
+                      r"advert|\bad\b|promo|catalog|binnenkort|verkrijgbaar|sticker|\bobi\b|logo|flyer", re.I)
+_STRONG = re.compile(r"front|cover|folder", re.I)
 _UA = {"User-Agent": "ChartHound/1.0 (https://github.com/CurtisColby/ChartHound)"}
 _VA = {"variousartists", "various", "va"}
 
@@ -123,8 +125,8 @@ def _embedded(folder: str) -> bool:
     return False
 
 
-def _local_candidate(root: str, targets: list) -> Optional[str]:
-    """Best front-cover image already on disk for this album, or None."""
+def _local_candidate(root: str, targets: list) -> Optional[tuple]:
+    """(best front-cover image already on disk, strong?) — strong = named front/cover/folder."""
     places = list(dict.fromkeys(targets + [root]))
     for d in [root] + targets:
         for f in _listdir(d):
@@ -145,13 +147,13 @@ def _local_candidate(root: str, targets: list) -> Optional[str]:
             if size < 10_000:
                 continue
             s = stem.lower()
-            score = 3 if "front" in s else 2 if ("cover" in s or "folder" in s) else 0 if _BAD_IMG.search(s) else 1
-            if score == 0:
+            if _BAD_IMG.search(s) and not _STRONG.search(s):
                 continue
+            score = 3 if "front" in s else 2 if ("cover" in s or "folder" in s) else 1
             key = (score, size)
             if best is None or key > best[0]:
                 best = (key, p)
-    return best[1] if best else None
+    return (best[1], best[0][0] >= 2) if best else None
 
 
 def _scan_sync(rows: list, items: dict) -> dict:
@@ -205,6 +207,21 @@ def _scan_sync(rows: list, items: dict) -> dict:
             parent = os.path.dirname(root)
             if os.path.realpath(parent) not in roots and _artist_key(os.path.basename(parent)) == top_ak:
                 artist_dirs.setdefault(parent, artist)
+    # a weak folder image that shows up in 3+ different albums is a catalogue/ad page, not a cover
+    seen = Counter()
+    for a in albums:
+        if a["local"] and not a["local"][1]:
+            try:
+                seen[(os.path.basename(a["local"][0]).lower(), os.path.getsize(a["local"][0]))] += 1
+            except OSError:
+                pass
+    for a in albums:
+        if a["local"] and not a["local"][1]:
+            try:
+                if seen[(os.path.basename(a["local"][0]).lower(), os.path.getsize(a["local"][0]))] >= 3:
+                    a["local"] = None
+            except OSError:
+                a["local"] = None
     # every artist folder (also for albums that already have covers)
     for root, g in groups.items():
         parent = os.path.dirname(root)
@@ -441,9 +458,11 @@ async def _run_check():
                 + ("LEFT JOIN track_genres g ON g.track_id = t.track_id " if has_tg else "")
                 + "WHERE t.file_path IS NOT NULL AND COALESCE(t.missing, 0) = 0")).fetchall()
             items = {}
-            for kind, root, status, gen, ck in await (await db.execute(
-                    "SELECT kind, root, status, generic, checked_at FROM art_items")).fetchall():
-                items[(kind, root)] = {"status": status, "generic": gen, "checked_at": ck}
+            for kind, root, status, gen, ck, source, src in await (await db.execute(
+                    "SELECT kind, root, status, generic, checked_at, source, src FROM art_items")).fetchall():
+                items[(kind, root)] = {"status": status, "generic": gen, "checked_at": ck,
+                                       "weak": status == "found" and source == "local"
+                                       and not _STRONG.search(os.path.basename(src or ""))}
         loop = asyncio.get_event_loop()
         plan = await loop.run_in_executor(None, _scan_sync, rows, items)
         if _stop["flag"]:
@@ -462,7 +481,11 @@ async def _run_check():
                 return age < 30 * 86400
             return it["status"] in ("none", "skipped") and age < 60 * 86400
 
-        todo = [("album", a) for a in plan["albums"] if not (items.get(("album", a["root"]), {}).get("status") == "found")
+        def keep(kind, root):   # already found — unless it was a weak folder pick (M12c.1: re-check those)
+            it = items.get((kind, root), {})
+            return it.get("status") == "found" and not it.get("weak")
+
+        todo = [("album", a) for a in plan["albums"] if not keep("album", a["root"])
                 and not recent_none("album", a["root"])]
         todo += [("artist", a) for a in plan["artists"] if not (items.get(("artist", a["root"]), {}).get("status") == "found")
                  and not recent_none("artist", a["root"])]
@@ -481,19 +504,25 @@ async def _run_check():
                 cache = os.path.join(_CACHE, f"{kind}-{hashlib.md5(a['root'].encode()).hexdigest()}.jpg")
                 source, src, ok = None, None, False
                 if kind == "album":
-                    if a["local"]:
+                    async def use_local():
                         try:
-                            with open(a["local"], "rb") as f:
-                                ok = await loop.run_in_executor(None, _prepare, f.read(), cache)
+                            with open(a["local"][0], "rb") as f:
+                                return await loop.run_in_executor(None, _prepare, f.read(), cache)
                         except OSError:
-                            ok = False
-                        source, src = "local", a["local"]
+                            return False
+                    # a file named front/cover/folder wins; any other folder image only if nothing online matches
+                    if a["local"] and a["local"][1]:
+                        ok = await use_local()
+                        source, src = "local", a["local"][0]
                     if not ok:
                         for name, fn in (("caa", _find_caa), ("itunes", _find_itunes)):
                             hit = await fn(client, a["artist"], a["names"], a["va"])
                             if hit and await loop.run_in_executor(None, _prepare, hit[1], cache):
                                 source, src, ok = name, hit[0], True
                                 break
+                    if not ok and a["local"] and not a["local"][1]:
+                        ok = await use_local()
+                        source, src = "guess", a["local"][0]
                     if not ok and a["va"] and not a["generic_written"]:
                         ok = await loop.run_in_executor(None, _generic, a["album"], a["family"], cache)
                         source, src = "generic", ""
@@ -503,7 +532,7 @@ async def _run_check():
                                            a["family"], source if ok else None, src if ok else None, cache if ok else None,
                                            "written" if st_written else status))
                     _job["message"] = f"{a['artist']} — {a['album']}: " + (
-                        {"local": "found in the folder", "caa": "Cover Art Archive", "itunes": "iTunes",
+                        {"local": "found in the folder", "guess": "folder image (guess)", "caa": "Cover Art Archive", "itunes": "iTunes",
                          "generic": "generic cover"}.get(source, "") if ok else "nothing found")
                 else:
                     hit = await _find_deezer(client, a["artist"])
