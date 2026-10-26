@@ -408,6 +408,7 @@ def _ge_add_holiday(styles: list) -> list:
 
 
 GE_WEIGHTS = {"discogs": 3.0, "discogs_g": 2.0, "mb": 2.0, "lfm_track": 2.0, "lfm_artist": 1.0,
+              "comp": 2.0, "comp_g": 1.0, "comp_kw": 1.0,   # compilation fallback (always ? LITTLE)
               "mb_rec": 3.0,   # 🎧 MusicBrainz genres of the fingerprinted recording / album / artist
               "mine": 5.0}   # your own Christian/Gospel tags — the strongest voice
 GE_SACRED = {"ccm"}
@@ -434,7 +435,7 @@ def _ge_apply_rule(family: str, vote: Optional[dict]) -> tuple:
             keep = ["ccm-pop"]
     return family, keep[:3]
 # Discogs lists an album's genres alphabetically, so their order carries no meaning
-_GE_FLAT = {"discogs_g"}
+_GE_FLAT = {"discogs_g", "comp_g"}
 _ge_job = {"status": "idle", "phase": "", "albums_done": 0, "albums_total": 0,
            "artists_done": 0, "artists_total": 0, "scored": 0, "check": 0, "message": ""}
 _ge_stop = {"flag": False}
@@ -759,6 +760,34 @@ def _ge_group_albums(tracks) -> tuple:
     return track_album, album_names, names
 
 
+# Album-title words → family/style key, most specific first (compilation fallback only)
+_GE_COMP_WORDS = [(re.compile(p, re.I), k) for p, k in (
+    (r"country\s*rock", "countryrock"), (r"classic\s*rock", "classicrock"),
+    (r"soft\s*rock|smooth\s*rock|yacht", "softrock"), (r"southern\s*rock", "southernrock"),
+    (r"power\s*ballad|hair\s*metal|glam", "glaemmetal"), (r"\bmetal\b", "metal"), (r"\bpunk\b", "punkrock"),
+    (r"new\s*wave", "newwave"), (r"alternative|\balt\b|grunge", "alternative"),
+    (r"oldies|doo.?wop|rock.?n.?roll|rock\s*&\s*roll|happy\s*days|\b50s\b|fifties", "rocknroll"),
+    (r"motown|\bsoul\b", "soul"), (r"\bfunk", "funk"), (r"r\s*&\s*b|\brnb\b", "rnb"),
+    (r"disco", "disco"), (r"euro\s*dance|eurodance", "eurodance"), (r"trance", "trance"), (r"\bhouse\b", "house"),
+    (r"\bdance\b|\bclub\b|\bedm\b|hitzone|538", "dance"), (r"hip.?hop|\brap\b", "hiphop"),
+    (r"smooth\s*jazz", "smoothjazz"), (r"swing|big\s*band", "swing"), (r"\bjazz", "jazz"), (r"blues", "blues"),
+    (r"outlaw|texas\s*country|red\s*dirt", "outlawcountry"), (r"bluegrass|americana", "americana"),
+    (r"\bcountry\b|honky", "country"), (r"folk", "folk"), (r"reggae|\bska\b", "reggae"), (r"latin|salsa", "latin"),
+    (r"worship|praise|\bwow\b|christian|\bccm\b", "ccm"), (r"gospel", "gospel"),
+    (r"chill|lounge|relax|ambient", "chill"), (r"easy\s*listening|love\s*songs|ballads", "easylistening"),
+    (r"soundtrack|\bost\b|movie|musical|disney", "soundtrack"), (r"classical|symphon|orchestra", "classical"),
+    (r"\brock\b", "rock"), (r"\bpop\b|top\s*40|now\s*that|\bhits\b|chart", "pop"),
+)]
+
+
+def _ge_comp_keys(album: str) -> list:
+    out = []
+    for rx, k in _GE_COMP_WORDS:
+        if rx.search(album or "") and k not in out:
+            out.append(k)
+    return out[:3]
+
+
 async def _run_genre_engine():
     global _ge_job
     from app.routers.groomer import _artist_key, _title_key, _FEAT_RE, _migrate_chart_data
@@ -960,6 +989,45 @@ async def _run_genre_engine():
                     n_conflict += v["confidence"] == "conflict"
                     out.append((tid, v["family"], json.dumps(v["styles"]), v["confidence"],
                                 ",".join(v["sources"] + ["alt"])))
+            # ── Last resort: the compilation the song came from (Discogs, then album-title words) ──
+            decided = {r[0] for r in out}
+            alb_of = {t[0]: t[4] for t in tracks}
+            comp_for = {}
+            for tid, artist, title, fp in retry:
+                if tid not in decided:
+                    name = _ge_album_name(alb_of.get(tid), fp or "")
+                    if name and _title_key(name):
+                        comp_for[tid] = (f"comp:{_title_key(name)}", name)
+            n_comp = 0
+            if comp_for:
+                todo = {k: ("Various", n) for k, n in comp_for.values()
+                        if k not in disc and not fresh(dcache.get(k))}
+                if todo and token and not _ge_revote_only["flag"] and not _ge_stop["flag"]:
+                    _ge_job.update({"phase": "lookups", "albums_done": 0, "artists_done": 0, "artists_total": 0,
+                                    "message": f"Last try: {len(todo):,} compilations on Discogs…"})
+                    await _guard("Discogs", _ge_discogs_phase(todo, {}, token))
+                    _ge_job.update({"phase": "voting", "message": "Voting on genres…"})
+                ck = sorted({k for k, _n in comp_for.values()})
+                for i in range(0, len(ck), 500):
+                    part = ck[i:i + 500]
+                    for k, g, st in await (await db.execute(
+                            f"SELECT lookup_key, genres, styles FROM ge_discogs WHERE status='ok' AND lookup_key IN ({','.join('?' * len(part))})",
+                            part)).fetchall():
+                        disc[k] = (json.loads(g or "[]"), json.loads(st or "[]"))
+                for tid, (k, name) in comp_for.items():
+                    d = disc.get(k)
+                    v = _ge_vote([("comp", _ge_tag_keys(d[1] if d else [])),
+                                  ("comp_g", _ge_tag_keys(d[0] if d else [])),
+                                  ("comp_kw", _ge_comp_keys(name))])
+                    if not v:
+                        continue
+                    if tid in hol:
+                        v["styles"] = _ge_add_holiday(v["styles"])
+                    n_comp += 1
+                    n_check += 1
+                    out.append((tid, v["family"], json.dumps(v["styles"]), "thin",
+                                ",".join(v["sources"] + ["compilation"])))
+                log.info(f"Genre Engine: compilation fallback — {n_comp:,} of {len(comp_for):,} songs decided")
             # Christmas songs no source knew: still filed as Holiday (Pop, little data) so they can be hidden
             decided = {r[0] for r in out}
             for tid, *_r in retry:
