@@ -408,6 +408,8 @@ def _ge_add_holiday(styles: list) -> list:
 
 
 GE_WEIGHTS = {"discogs": 3.0, "discogs_g": 2.0, "mb": 2.0, "lfm_track": 2.0, "lfm_artist": 1.0,
+              "comp": 2.0, "comp_g": 1.0, "comp_kw": 1.0,   # compilation fallback (always ? LITTLE)
+              "mb_rec": 3.0,   # 🎧 MusicBrainz genres of the fingerprinted recording / album / artist
               "mine": 5.0}   # your own Christian/Gospel tags — the strongest voice
 GE_SACRED = {"ccm"}
 GE_DEFAULT_RULES = [{"prefix": "/music/FULL CHRISTIAN ALBUMS", "family": "ccm"}]
@@ -433,7 +435,7 @@ def _ge_apply_rule(family: str, vote: Optional[dict]) -> tuple:
             keep = ["ccm-pop"]
     return family, keep[:3]
 # Discogs lists an album's genres alphabetically, so their order carries no meaning
-_GE_FLAT = {"discogs_g"}
+_GE_FLAT = {"discogs_g", "comp_g"}
 _ge_job = {"status": "idle", "phase": "", "albums_done": 0, "albums_total": 0,
            "artists_done": 0, "artists_total": 0, "scored": 0, "check": 0, "message": ""}
 _ge_stop = {"flag": False}
@@ -758,6 +760,34 @@ def _ge_group_albums(tracks) -> tuple:
     return track_album, album_names, names
 
 
+# Album-title words → family/style key, most specific first (compilation fallback only)
+_GE_COMP_WORDS = [(re.compile(p, re.I), k) for p, k in (
+    (r"country\s*rock", "countryrock"), (r"classic\s*rock", "classicrock"),
+    (r"soft\s*rock|smooth\s*rock|yacht", "softrock"), (r"southern\s*rock", "southernrock"),
+    (r"power\s*ballad|hair\s*metal|glam", "glaemmetal"), (r"\bmetal\b", "metal"), (r"\bpunk\b", "punkrock"),
+    (r"new\s*wave", "newwave"), (r"alternative|\balt\b|grunge", "alternative"),
+    (r"oldies|doo.?wop|rock.?n.?roll|rock\s*&\s*roll|happy\s*days|\b50s\b|fifties", "rocknroll"),
+    (r"motown|\bsoul\b", "soul"), (r"\bfunk", "funk"), (r"r\s*&\s*b|\brnb\b", "rnb"),
+    (r"disco", "disco"), (r"euro\s*dance|eurodance", "eurodance"), (r"trance", "trance"), (r"\bhouse\b", "house"),
+    (r"\bdance\b|\bclub\b|\bedm\b|hitzone|538", "dance"), (r"hip.?hop|\brap\b", "hiphop"),
+    (r"smooth\s*jazz", "smoothjazz"), (r"swing|big\s*band", "swing"), (r"\bjazz", "jazz"), (r"blues", "blues"),
+    (r"outlaw|texas\s*country|red\s*dirt", "outlawcountry"), (r"bluegrass|americana", "americana"),
+    (r"\bcountry\b|honky", "country"), (r"folk", "folk"), (r"reggae|\bska\b", "reggae"), (r"latin|salsa", "latin"),
+    (r"worship|praise|\bwow\b|christian|\bccm\b", "ccm"), (r"gospel", "gospel"),
+    (r"chill|lounge|relax|ambient", "chill"), (r"easy\s*listening|love\s*songs|ballads", "easylistening"),
+    (r"soundtrack|\bost\b|movie|musical|disney", "soundtrack"), (r"classical|symphon|orchestra", "classical"),
+    (r"\brock\b", "rock"), (r"\bpop\b|top\s*40|now\s*that|\bhits\b|chart", "pop"),
+)]
+
+
+def _ge_comp_keys(album: str) -> list:
+    out = []
+    for rx, k in _GE_COMP_WORDS:
+        if rx.search(album or "") and k not in out:
+            out.append(k)
+    return out[:3]
+
+
 async def _run_genre_engine():
     global _ge_job
     from app.routers.groomer import _artist_key, _title_key, _FEAT_RE, _migrate_chart_data
@@ -825,6 +855,7 @@ async def _run_genre_engine():
                 "SELECT artist_key, title_key, tags FROM lastfm_tracks WHERE status='ok'")).fetchall()}
             la = {a: json.loads(g or "[]") for a, g in await (await db.execute(
                 "SELECT artist_key, tags FROM lastfm_artists WHERE status='ok'")).fetchall()}
+            fpd, mbid = await _ge_fp_data(db)
             # Your own tags: the genre each file had BEFORE ChartHound first wrote it
             mine = {tid: [x.strip() for x in (old or "").split(";") if x.strip()]
                     for tid, old in await (await db.execute(
@@ -857,6 +888,23 @@ async def _run_genre_engine():
                     ("lfm_artist", _ge_tag_keys(la.get(ak))),
                 ]
                 v = _ge_vote(sources)
+                fpi = fpd.get(fp)
+                if fpi and (not v or v["confidence"] == "thin"):   # 🎧 the song was fingerprinted
+                    fk = _artist_key(fpi[0])
+                    extra = [("mb_rec", _ge_tag_keys(_ge_fp_tags(mbid, fpi[1])))]
+                    if fk and fk != ak and not v:
+                        d2 = disc.get(f"artist:{fk}")
+                        extra += [("discogs", _ge_tag_keys(d2[1] if d2 else [])),
+                                  ("discogs_g", _ge_tag_keys(d2[0] if d2 else [])),
+                                  ("mb", _ge_tag_keys(mb.get(fk))),
+                                  ("lfm_track", _ge_tag_keys(lt.get((fk, tk)))),
+                                  ("lfm_artist", _ge_tag_keys(la.get(fk)))]
+                        v2 = _ge_vote(extra)
+                    else:
+                        v2 = _ge_vote(sources + extra)
+                    if v2:
+                        v2["sources"] = v2["sources"] + ["acoustid"]
+                        v = v2
                 # Your own Christian/Gospel tags and folder rules decide the family outright;
                 # the online sources then only choose the style.
                 my_sacred = [k for k in _ge_tag_keys(mine.get(tid)) if set(_ge_family_of(k)) & GE_SACRED]
@@ -941,6 +989,45 @@ async def _run_genre_engine():
                     n_conflict += v["confidence"] == "conflict"
                     out.append((tid, v["family"], json.dumps(v["styles"]), v["confidence"],
                                 ",".join(v["sources"] + ["alt"])))
+            # ── Last resort: the compilation the song came from (Discogs, then album-title words) ──
+            decided = {r[0] for r in out}
+            alb_of = {t[0]: t[4] for t in tracks}
+            comp_for = {}
+            for tid, artist, title, fp in retry:
+                if tid not in decided:
+                    name = _ge_album_name(alb_of.get(tid), fp or "")
+                    if name and _title_key(name):
+                        comp_for[tid] = (f"comp:{_title_key(name)}", name)
+            n_comp = 0
+            if comp_for:
+                todo = {k: ("Various", n) for k, n in comp_for.values()
+                        if k not in disc and not fresh(dcache.get(k))}
+                if todo and token and not _ge_revote_only["flag"] and not _ge_stop["flag"]:
+                    _ge_job.update({"phase": "lookups", "albums_done": 0, "artists_done": 0, "artists_total": 0,
+                                    "message": f"Last try: {len(todo):,} compilations on Discogs…"})
+                    await _guard("Discogs", _ge_discogs_phase(todo, {}, token))
+                    _ge_job.update({"phase": "voting", "message": "Voting on genres…"})
+                ck = sorted({k for k, _n in comp_for.values()})
+                for i in range(0, len(ck), 500):
+                    part = ck[i:i + 500]
+                    for k, g, st in await (await db.execute(
+                            f"SELECT lookup_key, genres, styles FROM ge_discogs WHERE status='ok' AND lookup_key IN ({','.join('?' * len(part))})",
+                            part)).fetchall():
+                        disc[k] = (json.loads(g or "[]"), json.loads(st or "[]"))
+                for tid, (k, name) in comp_for.items():
+                    d = disc.get(k)
+                    v = _ge_vote([("comp", _ge_tag_keys(d[1] if d else [])),
+                                  ("comp_g", _ge_tag_keys(d[0] if d else [])),
+                                  ("comp_kw", _ge_comp_keys(name))])
+                    if not v:
+                        continue
+                    if tid in hol:
+                        v["styles"] = _ge_add_holiday(v["styles"])
+                    n_comp += 1
+                    n_check += 1
+                    out.append((tid, v["family"], json.dumps(v["styles"]), "thin",
+                                ",".join(v["sources"] + ["compilation"])))
+                log.info(f"Genre Engine: compilation fallback — {n_comp:,} of {len(comp_for):,} songs decided")
             # Christmas songs no source knew: still filed as Holiday (Pop, little data) so they can be hidden
             decided = {r[0] for r in out}
             for tid, *_r in retry:
@@ -1469,12 +1556,16 @@ async def genre_engine_review(req: OnlineGenreRequest, page: int = 1, size: int 
     from app.routers.groomer import _artist_key
     page = max(1, page)
     chunk = rows[(page - 1) * size: page * size]
-    albums = {}
+    albums, fpa = {}, {}
     if chunk:
         async with aiosqlite.connect(settings.database_url) as db:
+            await _ac_migrate(db)
             albums = dict(await (await db.execute(
                 f"SELECT track_id, album_title FROM tracks WHERE track_id IN ({','.join('?' * len(chunk))})",
                 [r[0] for r in chunk])).fetchall())
+            fpa = dict(await (await db.execute(
+                f"SELECT file_path, artist FROM ac_fp WHERE status='ok' AND file_path IN ({','.join('?' * len(chunk))})",
+                [r[1] for r in chunk])).fetchall())
     return {
         "total": len(rows), "page": page, "size": size,
         "check": sum(1 for r in rows if r[6] in ("check", "conflict", "thin")),
@@ -1485,7 +1576,9 @@ async def genre_engine_review(req: OnlineGenreRequest, page: int = 1, size: int 
                   "checked": "approved" in (r[9] or "").split(","),
                   "akey": _artist_key(r[2] or ""),
                   "album": _ge_album_display(_ge_album_name(albums.get(r[0]), r[1] or ""), r[2] or "") or "(no album)",
-                  "alkey": _ge_album_dir(r[1] or "")} for r in chunk],
+                  "alkey": _ge_album_dir(r[1] or ""),
+                  "heard": fpa[r[1]] if fpa.get(r[1]) and not _ge_fp_same(r[2] or "", fpa[r[1]]) else ""}
+                 for r in chunk],
     }
 
 
@@ -1851,7 +1944,8 @@ _AC_SERIES = re.compile(r"\b(greatest|essentials?|hits|songs|collection|compilat
                         r"various artists|now that'?s|anthology|\d{2,4}s)\b|\s-\s\d+\s-\s", re.I)
 _AC_REASONS = {"joined": "Artist and title run together", "album": "Album or series name as artist",
                "multi": "Several artists in one tag", "twin": "Spelled differently elsewhere",
-               "intitle": "Artist name repeated in the title"}
+               "intitle": "Artist name repeated in the title",
+               "heard": "Fingerprint heard a different artist (from Genre Review 🎧)"}
 
 
 def _ac_best_spelling(variants: dict) -> str:
@@ -1879,10 +1973,14 @@ async def _ac_migrate(db):
         file_path TEXT PRIMARY KEY, size INTEGER, mtime INTEGER, status TEXT NOT NULL,
         artist TEXT, title TEXT, score REAL, tmatch INTEGER DEFAULT 0,
         fetched_at TEXT NOT NULL DEFAULT (datetime('now')))""")
-    try:
-        await db.execute("ALTER TABLE ac_fp ADD COLUMN req INTEGER DEFAULT 0")
-    except Exception:
-        pass
+    for col in ("req INTEGER DEFAULT 0", "rec_id TEXT"):
+        try:
+            await db.execute(f"ALTER TABLE ac_fp ADD COLUMN {col}")
+        except Exception:
+            pass
+    await db.execute("""CREATE TABLE IF NOT EXISTS ge_mb_ids (
+        id_key TEXT PRIMARY KEY, status TEXT NOT NULL, tags TEXT,
+        fetched_at TEXT NOT NULL DEFAULT (datetime('now')))""")
 
 
 async def _ac_rows() -> list:
@@ -1963,10 +2061,15 @@ async def _ac_rows() -> list:
                 best = _ac_best_spelling(sp)
                 if best != a:
                     reason, prop = "twin", best
+        # 5. 🎧 fingerprint (asked for) heard a different artist singing this exact title
+        if not reason:
+            h = heard.get(fp or "")
+            if h and h[4] == "ok" and h[3] and h[5] and not _ge_fp_same(a, h[0]):
+                reason, prop = "heard", h[0]
         if reason:
             out.append({"track_id": tid, "fp": fp or "", "artist": a, "title": title, "album": alb,
                         "proposed": prop or "", "proposed_title": ptitle or "", "reason": reason,
-                        "source": "", "fpt": reason == "album" or not prop})
+                        "source": "", "fpt": reason in ("album", "heard") or not prop})
             if not prop:
                 pending.append(out[-1])
     if pending:
@@ -2410,7 +2513,7 @@ def _fp_pick(results: list, title: str, spell: dict):
     from app.routers.groomer import _artist_key, _title_key
     results = sorted(results or [], key=lambda r: -(r.get("score") or 0))
     if not results:
-        return "none", None, None, 0.0, 0
+        return "none", None, None, 0.0, 0, None
     top = float(results[0].get("score") or 0)
     floor = _FP_MIN_SCORE if top >= _FP_MIN_SCORE else 0.0   # under 80%: still give a labelled guess
     cand = []
@@ -2423,15 +2526,15 @@ def _fp_pick(results: list, title: str, spell: dict):
             name = _fp_clean(arts[0].get("name", "")) if arts else ""
             ak = _artist_key(name)
             if name and ak not in ("", "variousartists", "various") and not _AC_SERIES.search(name):
-                cand.append((ak, name, rec.get("title") or "", sc))
+                cand.append((ak, name, rec.get("title") or "", sc, rec.get("id")))
     if not cand:
-        return "none", None, None, top, 0
+        return "none", None, None, top, 0, None
     tk = _title_key(title)
     match = [c for c in cand if tk and _title_key(c[2]) == tk]
     pool = match or cand
     votes = {}
-    for ak, name, t, sc in pool:
-        v = votes.setdefault(ak, [0, name, t, sc])
+    for ak, name, t, sc, rid in pool:
+        v = votes.setdefault(ak, [0, name, t, sc, rid])
         v[0] += 1
     ranked = sorted(votes.items(), key=lambda kv: -kv[1][0])
     if len(ranked) > 1:
@@ -2439,14 +2542,14 @@ def _fp_pick(results: list, title: str, spell: dict):
         if len(mine) == 1:
             ranked = mine
         elif ranked[0][1][0] < 2 * ranked[1][1][0]:
-            return "unsure", None, None, top, 0
-    ak, (_n, name, t, sc) = ranked[0]
+            return "unsure", None, None, top, 0, None
+    ak, (_n, name, t, sc, rid) = ranked[0]
     if ak in spell:   # use the spelling already in your library
         name = _ac_best_spelling(spell[ak])
-    return ("ok" if top >= _FP_MIN_SCORE else "low"), name, t, sc, int(bool(match))
+    return ("ok" if top >= _FP_MIN_SCORE else "low"), name, t, sc, int(bool(match)), rid
 
 
-async def _run_fingerprint(track_ids: Optional[List[int]] = None):
+async def _run_fingerprint(track_ids: Optional[List[int]] = None, force: bool = True):
     global _fp_job
     import shutil
     from app.routers.groomer import _artist_key
@@ -2476,8 +2579,8 @@ async def _run_fingerprint(track_ids: Optional[List[int]] = None):
                 if a:
                     d = spell.setdefault(_artist_key(a), {})
                     d[a] = d.get(a, 0) + 1
-            cache = {f: (sz, mt, st) for f, sz, mt, st in await (await db.execute(
-                "SELECT file_path, size, mtime, status FROM ac_fp")).fetchall()}
+            cache = {f: (sz, mt, st, rid) for f, sz, mt, st, rid in await (await db.execute(
+                "SELECT file_path, size, mtime, status, rec_id FROM ac_fp")).fetchall()}
         todo, seen = [], set()
         for r in rows:
             fp = r["fp"]
@@ -2489,8 +2592,9 @@ async def _run_fingerprint(track_ids: Optional[List[int]] = None):
                 st = os.stat(real)
             except OSError:
                 continue
-            c = None if track_ids else cache.get(fp)
-            if c and c[2] != "lookup_failed" and c[0] == st.st_size and c[1] == int(st.st_mtime):
+            c = None if (track_ids and force) else cache.get(fp)
+            if c and c[2] != "lookup_failed" and c[0] == st.st_size and c[1] == int(st.st_mtime) \
+                    and (c[3] or c[2] not in ("ok", "low")):   # older matches lack the recording id
                 continue
             todo.append((fp, real, st.st_size, int(st.st_mtime), r["title"]))
         _fp_job.update({"total": len(todo), "message": f"Fingerprinting {len(todo):,} songs…"})
@@ -2501,7 +2605,7 @@ async def _run_fingerprint(track_ids: Optional[List[int]] = None):
             for i, (fp, real, size, mtime, title) in enumerate(todo):
                 if _fp_stop["flag"]:
                     break
-                status, artist, heard, score, tm = "no_fp", None, None, 0.0, 0
+                status, artist, heard, score, tm, rid = "no_fp", None, None, 0.0, 0, None
                 calc = await loop.run_in_executor(None, _fp_calc, real)
                 if calc:
                     status = "lookup_failed"
@@ -2519,7 +2623,7 @@ async def _run_fingerprint(track_ids: Optional[List[int]] = None):
                             log.warning(f"AcoustID lookup failed for {fp}: {e}")
                             d, r = {}, None
                         if d.get("status") == "ok":
-                            status, artist, heard, score, tm = _fp_pick(d.get("results"), title, spell)
+                            status, artist, heard, score, tm, rid = _fp_pick(d.get("results"), title, spell)
                             break
                         err = d.get("error") or {}
                         if err.get("code") == 4 or "api key" in str(err.get("message", "")).lower():
@@ -2532,8 +2636,8 @@ async def _run_fingerprint(track_ids: Optional[List[int]] = None):
                             await asyncio.sleep(5)
                 await db.execute(
                     "INSERT OR REPLACE INTO ac_fp (file_path, size, mtime, status, artist, title, score, tmatch, "
-                    "req, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))",
-                    (fp, size, mtime, status, artist, heard, score, tm, 1 if track_ids else 0))
+                    "req, rec_id, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))",
+                    (fp, size, mtime, status, artist, heard, score, tm, 1 if track_ids else 0, rid))
                 _fp_job["found"] += status == "ok"
                 _fp_job["low"] = _fp_job.get("low", 0) + (status == "low")
                 _fp_job["unsure"] += status not in ("ok", "low")
@@ -2581,3 +2685,184 @@ async def artist_check_fp_status(user: dict = Depends(require_auth)):
 @router.get("/artist-check/status")
 async def artist_check_status(user: dict = Depends(require_auth)):
     return _ac_job
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  M12a — 🎧 FINGERPRINT in Genre Review
+# ══════════════════════════════════════════════════════════════════════════════
+#  fpcalc → AcoustID (recording id) → MusicBrainz genres of that recording, its original
+#  album and its artist (1 req/s, cached in ge_mb_ids) → re-vote from cache. The artist tag
+#  is never changed here; a different artist shows in Artist Check as 🎧 HEARD AS.
+
+def _ge_fp_same(tag_artist: str, heard: str) -> bool:
+    """Same artist, or the tag credits the heard artist first ("Alok And Bruno Martini ft. Zeeba")."""
+    from app.routers.groomer import _artist_key
+    a, h = _artist_key(tag_artist), _artist_key(heard)
+    return not h or a == h or a.startswith(h)
+
+
+def _ge_fp_tags(mbid: dict, rid: str) -> list:
+    rec = mbid.get(f"rec:{rid}") or {}
+    out = []
+    for t in (rec.get("t") or []) + (mbid.get(f"rg:{rec.get('rg')}") or []) + (mbid.get(f"ar:{rec.get('ar')}") or []):
+        if t not in out:
+            out.append(t)
+    return out
+
+
+async def _ge_fp_data(db) -> tuple:
+    """(file_path → (heard artist, recording id), id_key → tags) for fingerprinted songs."""
+    await _ac_migrate(db)
+    fpd = {f: (a, r) for f, a, r in await (await db.execute(
+        "SELECT file_path, artist, rec_id FROM ac_fp WHERE status='ok' AND rec_id IS NOT NULL")).fetchall()}
+    mbid = {k: json.loads(t or "null") for k, t in await (await db.execute(
+        "SELECT id_key, tags FROM ge_mb_ids WHERE status='ok'")).fetchall()}
+    return fpd, mbid
+
+
+def _mb_taglist(obj: dict) -> list:
+    items = sorted((obj.get("genres") or []) + (obj.get("tags") or []), key=lambda t: -int(t.get("count") or 0))
+    out = []
+    for t in items:
+        n = (t.get("name") or "").strip().lower()
+        if n and int(t.get("count") or 0) > 0 and n not in out:
+            out.append(n)
+    return out
+
+
+def _mb_pick_rg(rec: dict) -> Optional[str]:
+    """Original studio album first, then single/EP; a compilation only if nothing else exists."""
+    best = None
+    for rel in rec.get("releases") or []:
+        g = rel.get("release-group") or {}
+        if not g.get("id"):
+            continue
+        sec, pt = g.get("secondary-types") or [], g.get("primary-type")
+        rank = 0 if pt == "Album" and not sec else 1 if pt in ("Album", "Single", "EP") and "Compilation" not in sec else 2
+        key = (rank, g.get("first-release-date") or rel.get("date") or "9999")
+        if best is None or key < best[0]:
+            best = (key, g["id"])
+    return best[1] if best else None
+
+
+async def _ge_mbid_phase(rec_ids: list):
+    hdr = {"User-Agent": "ChartHound/1.0 (https://github.com/CurtisColby/ChartHound)"}
+    SQL = ("INSERT INTO ge_mb_ids (id_key, status, tags, fetched_at) VALUES (?, ?, ?, datetime('now')) "
+           "ON CONFLICT(id_key) DO UPDATE SET status=excluded.status, tags=excluded.tags, fetched_at=excluded.fetched_at")
+    _ge_job.update({"rec_done": 0, "rec_total": len(rec_ids)})
+    async with httpx.AsyncClient(timeout=20.0) as client, \
+            aiosqlite.connect(settings.database_url, timeout=120) as db:
+        known = {k for (k,) in await (await db.execute("SELECT id_key FROM ge_mb_ids")).fetchall()}
+
+        async def get(path, inc):
+            for _ in range(2):
+                await mb_limiter.acquire()
+                try:
+                    r = await client.get(f"https://musicbrainz.org/ws/2/{path}",
+                                         params={"inc": inc, "fmt": "json"}, headers=hdr)
+                except Exception:
+                    r = None
+                if r is not None and r.status_code != 503:
+                    return r
+                await asyncio.sleep(3)
+            return None
+
+        for i, rid in enumerate(rec_ids):
+            if _ge_stop["flag"]:
+                break
+            r = await get(f"recording/{rid}", "genres+tags+artists+releases+release-groups")
+            if r is not None and r.status_code == 400:
+                r = await get(f"recording/{rid}", "genres+tags+artists")
+            if r is not None and r.status_code == 404:
+                await db.execute(SQL, (f"rec:{rid}", "notfound", None))
+            elif r is not None and r.is_success:
+                d = r.json()
+                rg = _mb_pick_rg(d)
+                ac = d.get("artist-credit") or []
+                ar = ((ac[0] or {}).get("artist") or {}).get("id") if ac else None
+                await db.execute(SQL, (f"rec:{rid}", "ok", json.dumps({"t": _mb_taglist(d), "rg": rg, "ar": ar})))
+                for k, ent, eid in (("rg", "release-group", rg), ("ar", "artist", ar)):
+                    if not eid or f"{k}:{eid}" in known:
+                        continue
+                    r2 = await get(f"{ent}/{eid}", "genres+tags")
+                    if r2 is not None and (r2.is_success or r2.status_code == 404):
+                        await db.execute(SQL, (f"{k}:{eid}", "ok" if r2.is_success else "notfound",
+                                               json.dumps(_mb_taglist(r2.json())) if r2.is_success else None))
+                        known.add(f"{k}:{eid}")
+            await db.commit()
+            _ge_job["rec_done"] = i + 1
+            _ge_job["message"] = f"MusicBrainz: recording {i + 1:,} of {len(rec_ids):,}"
+
+
+async def _run_ge_fp(track_ids: List[int]):
+    global _ge_job
+    from app.routers.groomer import _artist_key, _FEAT_RE
+    _ge_stop["flag"] = False
+    _ge_job = {"status": "running", "phase": "fingerprint", "fp_done": 0, "fp_total": 0,
+               "albums_done": 0, "albums_total": 0, "artists_done": 0, "artists_total": 0,
+               "scored": 0, "check": 0, "message": "Fingerprinting…"}
+    try:
+        t = asyncio.create_task(_run_fingerprint(track_ids, force=False))
+        _fp_task["task"] = t
+        while not t.done():
+            if _ge_stop["flag"]:
+                _fp_stop["flag"] = True
+            _ge_job.update({"fp_done": _fp_job.get("done", 0), "fp_total": _fp_job.get("total", 0),
+                            "message": _fp_job.get("message", "")})
+            await asyncio.sleep(1)
+        if _fp_job.get("status") == "failed":
+            _ge_job.update({"status": "failed", "phase": "", "message": _fp_job.get("message", "")})
+            return
+        rows = []
+        async with aiosqlite.connect(settings.database_url) as db:
+            await _ac_migrate(db)
+            for i in range(0, len(track_ids), 500):
+                part = track_ids[i:i + 500]
+                rows += await (await db.execute(
+                    "SELECT f.rec_id, f.artist FROM ac_fp f JOIN tracks t ON t.file_path = f.file_path "
+                    f"WHERE f.status='ok' AND f.rec_id IS NOT NULL AND t.track_id IN ({','.join('?' * len(part))})",
+                    part)).fetchall()
+            have = {k for (k,) in await (await db.execute("SELECT id_key FROM ge_mb_ids")).fetchall()}
+            mb_have = {k for (k,) in await (await db.execute("SELECT artist_key FROM ge_mb_artists")).fetchall()}
+            dc_have = {k for (k,) in await (await db.execute("SELECT lookup_key FROM ge_discogs")).fetchall()}
+        found = len(rows)
+        recs = sorted({r for r, _a in rows if f"rec:{r}" not in have})
+        names = {_artist_key(a): _FEAT_RE.sub("", a) for _r, a in rows if a and _artist_key(a)}
+        if recs and not _ge_stop["flag"]:
+            _ge_job["phase"] = "mbrec"
+            await _ge_mbid_phase(recs)
+        mb_todo = {k: n for k, n in names.items() if k not in mb_have}
+        dc_todo = {f"artist:{k}": n for k, n in names.items() if f"artist:{k}" not in dc_have}
+        token = await _ge_get_discogs_token()
+        if (mb_todo or (token and dc_todo)) and not _ge_stop["flag"]:
+            _ge_job.update({"phase": "lookups", "message": f"Looking up {len(names):,} heard artists…"})
+            jobs = [_ge_mb_phase(mb_todo)] + ([_ge_discogs_phase({}, dc_todo, token)] if token and dc_todo else [])
+            for res in await asyncio.gather(*jobs, return_exceptions=True):
+                if isinstance(res, Exception):
+                    log.warning(f"Fingerprint genres: artist lookup failed — {res}")
+        stopped = _ge_stop["flag"]
+        _ge_revote_only["flag"] = True
+        try:
+            await _run_genre_engine()   # resets the stop flag; re-votes from cache only
+        finally:
+            _ge_revote_only["flag"] = False
+        _ge_job["message"] = (f"🎧 {found:,} of {len(track_ids):,} songs identified"
+                              + (" (stopped early)" if stopped else "") + " · " + _ge_job.get("message", ""))
+        log.info(f"Fingerprint genres: {_ge_job['message']}")
+    except Exception as e:
+        log.exception("Fingerprint genres failed")
+        _ge_job.update({"status": "failed", "phase": "", "message": f"Error: {e}"})
+
+
+@router.post("/genre-engine/fp")
+async def genre_engine_fp(req: OnlineGenreRequest, user: dict = Depends(require_auth)):
+    for t in (_ge_task["task"], _fp_task["task"], _af_task["task"]):
+        if t is not None and not t.done():
+            raise HTTPException(409, "A lookup or the Genre Engine is already running.")
+    ids = list(req.track_ids or []) or [r[0] for r in await _online_genre_rows(
+        req.scope, req.folder, req.search, req.family, hide_same=req.hide_same)]
+    ids = ids[:3000]
+    if not ids:
+        raise HTTPException(400, "No songs to fingerprint.")
+    _ge_task["task"] = asyncio.create_task(_run_ge_fp(ids))
+    return {"ok": True, "count": len(ids)}

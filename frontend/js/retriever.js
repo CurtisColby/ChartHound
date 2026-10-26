@@ -30,6 +30,8 @@ function _geJobView(d) {
     const done = (d.albums_done || 0) + (d.artists_done || 0), total = (d.albums_total || 0) + (d.artists_total || 0);
     return {label: `Looking up genres — Discogs ${(d.albums_done||0).toLocaleString()}/${(d.albums_total||0).toLocaleString()} · MusicBrainz ${(d.artists_done||0).toLocaleString()}/${(d.artists_total||0).toLocaleString()}`, done, total};
   }
+  if (ph === 'fingerprint') return {label: `🎧 Fingerprinting — ${(d.fp_done||0).toLocaleString()} / ${(d.fp_total||0).toLocaleString()} songs`, done: d.fp_done || 0, total: d.fp_total || 0};
+  if (ph === 'mbrec') return {label: `🎧 MusicBrainz genres — ${(d.rec_done||0).toLocaleString()} / ${(d.rec_total||0).toLocaleString()} recordings`, done: d.rec_done || 0, total: d.rec_total || 0};
   if (ph === 'voting') return {label: `Voting on genres — ${(d.vote_done||0).toLocaleString()} / ${(d.vote_total||0).toLocaleString()} songs`, done: d.vote_done || 0, total: d.vote_total || 0};
   if (ph === 'saving') return {label: 'Saving decisions…', done: 1, total: 1};
   return {label: 'Preparing…', done: 0, total: 0};
@@ -170,7 +172,7 @@ function geRender() {
                : x.confidence === 'manual' ? (x.checked ? badge('good', '✓ CHECKED', 'You confirmed this genre') : badge('edit', 'EDITED', 'You set this genre by hand')) + redo + (x.checked ? why : '')
                : badge('fine', 'ok', 'Sources agree') + why;
     html += `<tr id="ger-row-${i}" class="ger-song"><td><input type="checkbox" class="ger-cb" data-i="${i}" ${_ger.sel.has(x.track_id) ? 'checked' : ''} onchange="geToggle(${i}, this.checked)"></td>
-      <td>${gePlayBtn(x)}${esc(x.title)}${x.path ? `<button class="ger-copy" onclick="geCopyPath(${i}, event.shiftKey)" data-tip="Copies the folder this song lives in on your server (Shift-click: the file itself). In your file manager press Ctrl+L, paste, Enter. Delete it there if you want — the next Top Dogs ① SCAN drops missing songs.">📋</button>` : ''}</td>
+      <td>${gePlayBtn(x)}${esc(x.title)}${x.heard ? `<span class="ger-heard" data-tip="The fingerprint heard a different artist. Fix the artist tag in 🎤 ARTIST CHECK (shown there as 🎧 HEARD AS).">🎧 ${esc(x.heard)}</span>` : ''}${x.path ? `<button class="ger-copy" onclick="geCopyPath(${i}, event.shiftKey)" data-tip="Copies the folder this song lives in on your server (Shift-click: the file itself). In your file manager press Ctrl+L, paste, Enter. Delete it there if you want — the next Top Dogs ① SCAN drops missing songs.">📋</button>` : ''}</td>
       <td><span class="ger-new" onclick="geEditRow(${i})">${x.proposed.length ? esc(x.proposed.join('; ')) : '<i style="color:var(--muted2)">— set genre</i>'}</span></td>
       <td style="color:var(--muted2)">${esc(x.current.join('; ') || '—')}</td><td class="ger-conf">${conf}</td></tr>
       <tr class="ger-edit" id="ger-edit-${i}" style="display:none"><td></td><td colspan="4" id="ger-edit-cell-${i}"></td></tr>
@@ -207,6 +209,7 @@ function geSyncSel() {
   const es = document.getElementById('ger-edit-sel'); if (es) { es.textContent = `✎ EDIT SELECTED (${_ger.sel.size})`; es.disabled = !_ger.sel.size; es.style.opacity = _ger.sel.size ? '1' : '.4'; }
   const b = document.getElementById('ger-write-sel'); if (b) { b.textContent = `✎ WRITE SELECTED (${_ger.sel.size})`; b.disabled = !_ger.sel.size; b.style.opacity = _ger.sel.size ? '1' : '.4'; }
   const a = document.getElementById('ger-write-all'); if (a) a.textContent = `✎ WRITE ALL ${_ger.total.toLocaleString()} MATCHING`;
+  const f = document.getElementById('ger-fp'); if (f) f.textContent = _ger.sel.size ? `🎧 FINGERPRINT (${_ger.sel.size})` : `🎧 FINGERPRINT ALL ${_ger.total.toLocaleString()}`;
 }
 function _geEditorHTML(fam, styles, saveCall) {
   const famOpts = Object.entries(_geTax.families).map(([k, v]) => `<option value="${k}" ${k === fam ? 'selected' : ''}>${esc(v)}</option>`).join('');
@@ -681,7 +684,7 @@ async function geApprove(idsOrSel, artist, keepCursor) {
 
 // ══ ARTIST CHECK (M10d) — fix album names, run-together and multi-artist tags ══
 const _acr = {page: 1, pages: 1, total: 0, rows: [], sel: new Set(), edits: {}, poll: null};
-const _AC_BADGE = {joined: ['warn', 'RUN TOGETHER'], album: ['bad', 'ALBUM AS ARTIST'], multi: ['edit', 'SEVERAL'], twin: ['fine', 'SPELLING'], intitle: ['warn', 'ARTIST IN TITLE']};
+const _AC_BADGE = {heard: ['good', '🎧 HEARD AS'], joined: ['warn', 'RUN TOGETHER'], album: ['bad', 'ALBUM AS ARTIST'], multi: ['edit', 'SEVERAL'], twin: ['fine', 'SPELLING'], intitle: ['warn', 'ARTIST IN TITLE']};
 function acOpen() {
   if (document.getElementById('ret-main').classList.contains('ge-reviewing')) geCloseReview();
   document.getElementById('ret-main').classList.add('ac-reviewing');
@@ -710,7 +713,7 @@ async function acLoad(page) {
     _acr.sel.clear();
     const c = d.counts;
     document.getElementById('ac-count').innerHTML = `${d.total.toLocaleString()} songs`
-      + ` <span style="color:var(--muted2)">· run together ${c.joined} · album as artist ${c.album} · several ${c.multi} · spelling ${c.twin} · artist in title ${c.intitle || 0}`
+      + ` <span style="color:var(--muted2)">· run together ${c.joined} · album as artist ${c.album} · several ${c.multi} · spelling ${c.twin} · artist in title ${c.intitle || 0} · 🎧 heard ${c.heard || 0}`
       + (c.nofix ? ` · <span style="color:var(--amber)">${c.nofix} need you</span>` : '') + '</span>';
     document.getElementById('ac-page').textContent = `page ${_acr.page} / ${_acr.pages}`;
     acRender();
@@ -874,4 +877,18 @@ async function acIgnore(ids) {
   if (!r.ok) { toast(`HTTP ${r.status}`, 'error'); return; }
   toast(`Kept ${ids.length} as is — won't be flagged again.`, 'success');
   acLoad(_acr.page);
+}
+
+// ── M12a: 🎧 FINGERPRINT in Genre Review ──
+async function geFp() {
+  if (_geRunning) { toast('Wait for the Genre Engine to finish', 'info'); return; }
+  const ids = [..._ger.sel];
+  const n = ids.length || _ger.total;
+  if (!n) return;
+  if (!confirm(`Fingerprint ${ids.length ? 'the ' + n + ' ticked' : 'all ' + n.toLocaleString() + ' matching'} song${n > 1 ? 's' : ''}?\n\nListens to each file, asks AcoustID which recording it is, then gets that recording's genres from MusicBrainz and re-votes (about 1–4 s a song; already-fingerprinted files are skipped).\nNothing is written to files. A different artist is flagged in 🎤 ARTIST CHECK.`)) return;
+  const r = await fetch(`${API}/api/retriever/genre-engine/fp`, {method: 'POST', headers: authHdrs(), body: JSON.stringify({..._gerFilters(), track_ids: ids.length ? ids : null})});
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) { toast(d.detail || `HTTP ${r.status}`, 'error'); return; }
+  toast(`Fingerprinting ${d.count.toLocaleString()} songs — progress shows above the list`, 'ok');
+  setTimeout(gePoll, 800);
 }
