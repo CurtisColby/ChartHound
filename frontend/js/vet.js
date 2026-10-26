@@ -572,7 +572,7 @@ async function vetMovedApply() {
 
 // ── 🖼 Cover Art (M12c) ──────────────────────────────────────────────────────
 const _art = {page: 1, pages: 1, total: 0, rows: [], sel: new Set(), t: '', poll: null};
-const _ART_SRC = {local: ['var(--green)', 'IN FOLDER'], caa: ['var(--teal)', 'COVER ART ARCHIVE'], itunes: ['var(--teal)', 'ITUNES'], deezer: ['var(--teal)', 'DEEZER'], generic: ['var(--amber)', 'GENERIC']};
+const _ART_SRC = {local: ['var(--green)', 'IN FOLDER'], guess: ['var(--amber)', 'IN FOLDER · GUESS'], caa: ['var(--teal)', 'COVER ART ARCHIVE'], itunes: ['var(--teal)', 'ITUNES'], deezer: ['var(--teal)', 'DEEZER'], generic: ['var(--amber)', 'GENERIC']};
 async function artCheck() {
   try {
     const r = await fetch(`${API}/api/art/check`, {method: 'POST', headers: authHdrs()});

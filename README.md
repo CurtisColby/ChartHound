@@ -64,6 +64,13 @@ ChartHound knows which songs in your library were Billboard #1 hits, which album
 
 The October 2026 update is the biggest release since ChartHound went public:
 
+- **🎤 Artist Check** (The Retriever) — finds artist tags that are really an album name ("Disco Essentials"), several artists glued together, "Artist - Title" run together, or the same artist spelled two ways. It suggests the fix from the file name, the chart database, Last.fm — or by **listening to the song**. You confirm every change.
+- **🎧 Fingerprinting (AcoustID)** — ChartHound listens to a file, asks AcoustID which recording it is, and uses that to fix the artist *and* to find genres for songs no website knew by name.
+- **🎄 Holiday songs, new styles and a World family** — Christmas songs are tagged *Holiday* (hide, include or play only them in Top Dogs), plus New Wave, Art Rock, British Invasion, Contemporary R&B, Chill / Downtempo, Soundtrack, Reggae & Ska, Latin and more. Songs nobody knew fall back to the compilation they came from ("Country Rock Hits" → Country).
+- **🖼 Cover Art** (The Veterinarian) — finds covers for albums with none and photos for artists. Art already sitting in an `Artwork` folder is used first; then the Cover Art Archive, iTunes and Deezer. Various Artists albums with nothing found get a clean generic cover with the album title.
+- **💾 Backups** and **🔗 Fix Moved Files** — one-click database backups, and relinking songs after you move music to another drive.
+- **▶ Preview player, 🌐 Wikipedia / 💿 Discogs links and keyboard shortcuts** throughout the review screens.
+- **Logs never show your keys** — every log line is scrubbed of tokens and passwords before it's written.
 - **🧭 Start Here** — a guided first page with six numbered steps, live ✅/⚠️ status from your own data, **GO** buttons, and an "After new music arrives" routine. Plus an **A / A / A text-size control** in the sidebar.
 - **Top Dogs** (formerly The Groomer) — every song gets a **Hit Score (0–100)** from its Hot 100 peak, weeks, year-end rank and genre-chart breadth, boosted by Last.fm staying power. Build playlists by decade, genre and *hours of music*, with one-hit wonders, crossovers, presets and multi-day sets.
 - **Genre Engine** (The Retriever) — one genre family plus up to three styles per song, decided by a weighted vote of Discogs, MusicBrainz and Last.fm, reviewed by you before anything is written.
@@ -93,6 +100,10 @@ On first boot, ChartHound allows one user registration to create the admin accou
 
 Every API endpoint (except login/register and the health check) requires a valid JWT session token. Unauthenticated requests are rejected with a 401. There are no backdoor endpoints, no debug routes that bypass auth, no settings pages accessible without a session. Sessions last 7 days and gracefully redirect to the login screen with a clear banner when expired.
 
+### Logs Never Show Your Keys
+
+Every line ChartHound logs — `docker logs`, the Veterinarian's debug console, error tracebacks, web-server access lines — passes through a filter that replaces anything that looks like a token, API key or password with `***`. You can paste a log into a bug report without leaking your Plex token.
+
 ### Reverse Proxy Requirement
 
 ChartHound should always be accessed through a reverse proxy with a valid SSL/TLS certificate when exposed beyond your local network. The application itself runs on HTTP inside the container (port 8000). Your reverse proxy (Caddy, Nginx, Traefik) handles HTTPS termination. This ensures all traffic between your browser and ChartHound is encrypted in transit. See the [Reverse Proxy Setup](#reverse-proxy-setup) section below.
@@ -111,6 +122,8 @@ ChartHound connects to your existing media stack. You don't need all of these �
 - Plex, Emby, or Jellyfin (to read your library). Navidrome users can download M3U playlists.
 - **Last.fm API key** — *strongly recommended.* Adds the "staying power" boost to Hit Scores, finds never-charted classics everyone still plays, and is one of the three Genre Engine sources. Free, takes 30 seconds.
 - **Discogs personal access token** — *strongly recommended* for the Genre Engine (it carries the most weight in the genre vote).
+- **AcoustID application key** — *optional.* Lets ChartHound identify a song by listening to it (🎧 Fingerprint). Free.
+- MusicBrainz, the Cover Art Archive, iTunes and Deezer are used too — they need no key.
 
 **For music discovery (Sniffer & Bloodhound):**
 - Prowlarr (indexer manager)
@@ -247,6 +260,16 @@ In ChartHound, open **The Kennel**, find the Discogs card, paste the token, **Sa
 
 > Discogs rate-limits at 60 requests per minute. ChartHound respects this automatically.
 
+### AcoustID Application Key (optional — for 🎧 Fingerprint)
+
+AcoustID identifies a song from its sound, so ChartHound can fix an artist tag or find genres even when the tags are wrong.
+
+1. Go to [acoustid.org](https://acoustid.org/) and sign in with a MusicBrainz account (free).
+2. Open **Your applications → New application**, name it `ChartHound`, and copy the **application API key**.
+3. Paste it into the **AcoustID** card in The Kennel, **Save**, then **Test**.
+
+> Use the *application* key. The key shown on the "Your account" page is a different, personal key and will be rejected.
+
 ### Plex / Emby / Jellyfin Tokens
 
 Each media server hands out tokens differently:
@@ -305,7 +328,7 @@ The sidebar's **TEXT SIZE A / A / A** control makes the whole app larger or smal
 
 Connect ChartHound to your media stack. Each service has a card: enter the URL and key, **SAVE** (encrypted immediately with your SECRET_KEY), then **TEST** (decrypted server-side, one live API call). Verified cards collapse to a single green line.
 
-**Supported services:** Plex, Emby, Jellyfin, Last.fm, Discogs, Prowlarr, Radarr, Sonarr, qBittorrent, Deluge, Transmission, SABnzbd
+**Supported services:** Plex, Emby, Jellyfin, Last.fm, Discogs, AcoustID, Prowlarr, Radarr, Sonarr, qBittorrent, Deluge, Transmission, SABnzbd
 
 **Path Translator:** converts between your media server's file paths and Docker's `/music` mount, and sets the Navidrome music path for M3U playlists. **ChartHound Download Path** (Download Client card) sets where Sniffer/Bloodhound grabs are saved — as your download client sees it.
 
@@ -346,6 +369,30 @@ Lookups are batched **one per album** and cached, so the first run takes 1–3 h
 2. **REVIEW & WRITE** — page through every change, filter by family, folder or conflicts, edit any song or a whole artist, then write selected or all. Your edits are saved as **manual** and never overwritten.
 
 **Folder rules** let a folder decide the family (e.g. `FULL CHRISTIAN ALBUMS → Christian`) or be skipped entirely. Only the **GENRE tag** is written — and always to the file first.
+
+**Songs nobody knew.** Choose **No genre found** and press **🎧 FINGERPRINT**: ChartHound listens to each song, identifies the recording through AcoustID, and takes that recording's genres from MusicBrainz. Whatever is still unknown falls back to the compilation it came from — its Discogs entry, then words in the album title — and is marked **? LITTLE** for you to check.
+
+**🎄 Holiday.** Christmas songs get a *Holiday* style on top of their normal genre (detected from tags, album titles and song titles — Madonna's "Holiday" excepted). Top Dogs can hide them, include them or play only them.
+
+**▶ ✓ 🌐 💿.** Every row has a ▶ preview, a **why?** breakdown of what each source said, Wikipedia and Discogs links, and a 📋 copy of the real folder path. Keyboard: ↓↑ / J K move, Space plays, Y = ✓ looks right, E = edit, W = why.
+
+#### 🎤 Artist Check
+
+![Artist Check](screenshots/ArtistCheck.png)
+
+Bad artist tags break chart matching and genres, so Artist Check finds them:
+
+| Problem | Example | Suggested fix |
+|---|---|---|
+| Album or series name as artist | `Disco Essentials` | artist from the file name, the chart database, Last.fm or 🎧 |
+| Several artists in one tag | `Mabel; R3hab` | the first artist |
+| Artist and title run together | `Alexandra Stan - Mr. Saxobeat` | split into artist and title |
+| Spelling twins | `10cc` / `10 Cc` | the spelling used most in your library |
+| 🎧 Heard as | tag says one artist, the recording is another | the fingerprinted artist |
+
+**🔎 FIND ARTISTS** looks up songs with no suggestion in the chart database and Last.fm. **🎧 FINGERPRINT** listens to the file — it beats every guess by title, so "Dreams" by Gabrielle isn't mistaken for Fleetwood Mac. Low-confidence matches are labelled as guesses and never written by WRITE ALL. Nothing changes until you press ✓; **✕ KEEP AS IS** hides a song for good. Only the ARTIST tag changes (plus TITLE for run-together tags), file first.
+
+> After Artist Check writes, let Plex finish its scan before Top Dogs **① SCAN** — the scan reads artist names from Plex.
 
 > **Lidarr users:** set Lidarr → Settings → Metadata → "Tag Audio Files with Metadata" to **Never**, or Lidarr will overwrite ChartHound's genres.
 
@@ -403,6 +450,18 @@ Watches Radarr and Sonarr for missing movies and episodes and asks them to searc
 
 Also here: track/album/artist counts, skip-cache stats, library cache sync, **VACUUM** and **INTEGRITY CHECK**, and an in-tab debug console (off by default, 1,000-line cap).
 
+**🔗 Fix Moved Files** — moved music to another drive? **CHECK** finds where every song went and shows a preview: relink, merge with a copy a scan already found, or hide what's gone. **APPLY** changes ChartHound's database only — your genre edits and history move with the song. Top Dogs scans also follow moved songs on their own.
+
+**🖼 Cover Art** — **CHECK** finds album folders with no cover your media server can read and artist folders with no photo, then looks for art in this order:
+
+1. **Art you already have** — a `Front.jpg` / `cover` image in the album, its parent folder, or an `Artwork` / `Scans` / `Covers` subfolder (media servers ignore those). Other folder images are only used if nothing online matches, and are labelled **GUESS**; adverts and catalogue pages are skipped.
+2. **Cover Art Archive** (MusicBrainz), then **iTunes** — only when *both* artist and album match. Artist photos come from **Deezer**.
+3. **Generic cover** — Various Artists albums with nothing found get a cover in their genre's colours with the album title on it. ChartHound replaces its own generic cover if real art turns up later.
+
+![Cover Art](screenshots/CoverArt.png)
+
+Check the grid, **✕ DON'T USE** anything wrong, then **SAVE**. ChartHound adds `cover.jpg` (one in each CD folder of a multi-disc album) and `artist.jpg`, and never replaces art that's already there. Turn off your media server's automatic scan before saving thousands, then refresh the library.
+
 **💾 Backups** — **BACK UP NOW** saves a complete, consistent copy of the database to `/data/backups` (inside ChartHound's Docker volume, newest 5 kept) while ChartHound keeps running. Each backup has a ⬇ download link so you can keep a copy off the server. ChartHound's database holds months of lookups (see [The Little Things](#the-little-things)), so if it's ever damaged, restore a backup — see [Troubleshooting](#troubleshooting).
 
 ---
@@ -456,6 +515,14 @@ The first user to register becomes the admin. The moment that user exists, the r
 ### Encrypted credentials, never visible
 
 Every API key, token, and password is Fernet-encrypted before it touches the database. There is no "show password" button. There is no API endpoint that returns decrypted credentials. Keys are decrypted in memory only at the moment they're used, on the backend, never sent to the browser. If someone steals your `charthound.db` file, they get nothing usable without your `SECRET_KEY`.
+
+### Your own artwork comes first
+
+Plenty of downloads already include the real cover in an `Artwork` or `Scans` folder that Plex, Emby and Jellyfin never look in. Cover Art uses those before it goes online, matches online covers on artist *and* album (no Amy Grant cover on a Brad Paisley album), and never overwrites a cover you already have.
+
+### Listening beats guessing
+
+Two songs can share a title, and tags can be wrong. When it matters, ChartHound fingerprints the audio itself (AcoustID, 3 requests a second, every result cached) instead of trusting the text.
 
 ### iTunes rate-limit respect
 
@@ -578,6 +645,18 @@ Check that **ChartHound Download Path** in The Kennel is a path your download cl
 
 **A chart source shows "REFRESH FAILING":**
 The website changed. Your existing chart data is kept and still used; update ChartHound to pick up fixes.
+
+**Albums show no artist, or tracks are numbered 0, 1, 2… in Plex:**
+Usually junk "compilation" tags from a release group, or Plex scanned the files while they were still downloading. Use **⋯ → Match** on the album, or set the music library's agent to **Plex Personal Media** (Edit Library → Advanced) so Plex reads only your file tags, then **Refresh All Metadata**. Keep incomplete downloads in a folder Plex doesn't scan (qBittorrent → Options → Downloads → *Keep incomplete torrents in*).
+
+**Every compilation shows the same microphone picture in Plex:**
+That's Plex's placeholder — the album has no cover Plex can read. Run **🖼 Cover Art** on The Veterinarian.
+
+**Albums go blank in Plex after a big tag or cover write:**
+Plex scanned while files were changing. Turn off Plex's **Scan my library automatically** and **Run a partial scan** before big writes, then turn them back on and **Refresh All Metadata**.
+
+**AcoustID key rejected:**
+You pasted the personal key from "Your account". Use the key from **Your applications** instead.
 
 **Genres from ChartHound keep disappearing:**
 Lidarr is rewriting your tags. Set Lidarr → Settings → Metadata → "Tag Audio Files with Metadata" to **Never**.
